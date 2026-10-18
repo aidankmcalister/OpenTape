@@ -1,32 +1,40 @@
+import { memo } from "react";
 import { AppWindow, Monitor } from "lucide-react";
-import type { Highlight as HighlightData } from "@/lib/pickerView";
-import Pill from "@/components/Pill";
-import RecordButton from "@/components/RecordButton";
+import CaptureBar, { CaptureTile } from "@/components/CaptureBar";
+import { roundedRectPath, type Rect } from "@/lib/geometry";
+import {
+  sameHighlight,
+  type Highlight as HighlightData,
+} from "@/lib/pickerView";
 import DimOutside from "./DimOutside";
 
-/** Below this width the pill drops the name and size so it always fits inside the window. */
-const COMPACT_BELOW = 280;
+/** Roughly the corner of a macOS window, so the tint sits inside it. */
+const WINDOW_CORNER = 10;
 
-export default function Highlight({
+/** Below this width the bar drops the name and size so it always fits inside the window. */
+const COMPACT_BELOW = 300;
+
+/** Redrawn only when the highlight changes, not on every cursor move within one window. */
+export default memo(Highlight, (previous, next) =>
+  sameHighlight(previous.highlight, next.highlight),
+);
+
+function Highlight({
   highlight,
   onRecord,
 }: {
   highlight: HighlightData;
   onRecord: () => void;
 }) {
-  const { rect, label, title, icon, size, target } = highlight;
+  const { rect, covered, label, title, icon, size, target } = highlight;
   const isDisplay = target.kind === "display";
   return (
     <div className="fixed inset-0 overflow-hidden">
-      {!isDisplay && <DimOutside rect={rect} />}
-      <div
-        className="absolute rounded-[10px] border-2 border-highlight outline outline-edge"
-        style={{
-          left: rect.x,
-          top: rect.y,
-          width: rect.width,
-          height: rect.height,
-        }}
+      <Shade
+        rect={rect}
+        covered={covered}
+        corner={isDisplay ? 0 : WINDOW_CORNER}
+        dimsOutside={!isDisplay}
       />
       {label && (
         <div
@@ -38,18 +46,13 @@ export default function Highlight({
             height: label.height,
           }}
         >
-          <Pill className="gap-2 shadow-pill">
-            {isDisplay ? <DisplayIcon /> : <AppIcon src={icon} />}
-            {label.width >= COMPACT_BELOW && (
-              <div className="pr-1">
-                <p className="leading-5 text-foreground">{title}</p>
-                <p className="text-xs leading-4 font-normal text-muted-foreground tabular-nums">
-                  {inPixels(size.width)} × {inPixels(size.height)}
-                </p>
-              </div>
-            )}
-            <RecordButton onClick={onRecord} />
-          </Pill>
+          <CaptureBar
+            icon={isDisplay ? <DisplayIcon /> : <AppIcon src={icon} />}
+            title={title}
+            size={size}
+            isCompact={label.width < COMPACT_BELOW}
+            onRecord={onRecord}
+          />
         </div>
       )}
     </div>
@@ -58,27 +61,59 @@ export default function Highlight({
 
 function DisplayIcon() {
   return (
-    <span className="grid size-10 place-items-center rounded-full bg-highlight/16 text-highlight">
-      <Monitor className="size-4" />
-    </span>
+    <CaptureTile>
+      <Monitor />
+    </CaptureTile>
   );
 }
 
 function AppIcon({ src }: { src: string | null }) {
   return (
-    <span className="grid size-10 place-items-center">
-      {src ? (
-        <img src={src} alt="" className="size-8" />
-      ) : (
-        <span className="grid size-8 place-items-center rounded-lg bg-white/8 text-muted-foreground">
-          <AppWindow className="size-4" />
-        </span>
-      )}
-    </span>
+    <CaptureTile src={src}>
+      <AppWindow />
+    </CaptureTile>
   );
 }
 
-/** Shows the size the recording will have, which is in pixels on this display. */
-function inPixels(points: number): number {
-  return Math.round(points * window.devicePixelRatio);
+/**
+ * Tints what will be recorded and dims the rest. Parts of the target that other windows cover
+ * get the dim, not the tint, so only what you can see lights up. Plain boxes and a clip path,
+ * rather than SVG masks, which WebKit redraws slowly at the size of a display.
+ */
+function Shade({
+  rect,
+  covered,
+  corner,
+  dimsOutside,
+}: {
+  rect: Rect;
+  covered: Rect[];
+  corner: number;
+  dimsOutside: boolean;
+}) {
+  const visible = [
+    roundedRectPath(rect, corner),
+    ...covered.map((part) => roundedRectPath(part, 0)),
+  ].join("");
+  return (
+    <>
+      {dimsOutside && <DimOutside rect={rect} />}
+      {covered.map((part, index) => (
+        <div
+          key={index}
+          className="absolute bg-dim"
+          style={{
+            left: part.x,
+            top: part.y,
+            width: part.width,
+            height: part.height,
+          }}
+        />
+      ))}
+      <div
+        className="absolute inset-0 bg-tint"
+        style={{ clipPath: `path(evenodd, "${visible}")` }}
+      />
+    </>
+  );
 }

@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   AppWindow,
   ChevronDown,
@@ -7,6 +7,9 @@ import {
   MicOff,
   Monitor,
   MonitorSpeaker,
+  Pause,
+  Play,
+  RotateCcw,
   Scan,
   Settings,
   Square,
@@ -14,7 +17,6 @@ import {
   VideoOff,
   X,
 } from "lucide-react";
-import { useBarMorph } from "@/hooks/useBarMorph";
 import {
   useCaptureOptions,
   type CaptureOptions,
@@ -23,8 +25,14 @@ import {
   useRecordBar,
   type RecordBar as RecordBarState,
 } from "@/hooks/useRecordBar";
+import type { Mode } from "@/lib/picker";
 import { formatClock } from "@/lib/time";
-import Pill, { PillDivider, pillItem } from "./Pill";
+import { cn } from "@/lib/utils";
+import { shapeBar } from "@/lib/app";
+import { Button } from "@/components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import MorphPill from "./MorphPill";
+import { PillDivider } from "./Pill";
 
 const MODES = [
   { mode: "display", label: "Display", Icon: Monitor },
@@ -37,47 +45,30 @@ type BarState = "setup" | "recording" | "error";
 export default function RecordBar() {
   const bar = useRecordBar();
   const options = useCaptureOptions();
-  const morph = useBarMorph(stateOf(bar));
 
   return (
     <div className="flex h-screen w-screen justify-center">
-      <Pill
+      <MorphPill
         translucent
-        data-tauri-drag-region
-        className="relative block shrink-0 overflow-hidden p-0 transition-[width] duration-400 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none"
-        style={morph.pillStyle}
-      >
-        <Layer {...morph.layerProps("setup")}>
-          <Setup bar={bar} options={options} />
-        </Layer>
-        <Layer {...morph.layerProps("recording")}>
-          <Recording bar={bar} />
-        </Layer>
-        <Layer {...morph.layerProps("error")}>
-          <ErrorMessage bar={bar} />
-        </Layer>
-      </Pill>
+        isDragRegion
+        active={stateOf(bar)}
+        onShape={(size, animation) =>
+          void shapeBar(size.width, size.height, animation)
+        }
+        layerClassName="gap-1 p-2"
+        layers={{
+          setup: <Setup bar={bar} options={options} />,
+          recording: <Recording bar={bar} />,
+          error: <ErrorMessage bar={bar} />,
+        }}
+      />
     </div>
   );
 }
 
 function stateOf(bar: RecordBarState): BarState {
-  if (bar.phase === "recording" || bar.phase === "stopping") return "recording";
+  if (bar.phase !== "idle") return "recording";
   return bar.error ? "error" : "setup";
-}
-
-/**
- * One state of the bar, kept at its natural size so it's clipped, never squeezed, while the
- * pill animates. The leaving state fades out fast; the arriving one fades in just after.
- */
-function Layer(props: ComponentProps<"div">) {
-  return (
-    <div
-      data-tauri-drag-region
-      className="absolute top-0 left-1/2 flex w-max -translate-x-1/2 items-center gap-1 p-2 transition-[opacity,scale,filter] ease-out motion-reduce:transition-none data-[active=false]:pointer-events-none data-[active=false]:scale-95 data-[active=false]:opacity-0 data-[active=false]:blur-xs data-[active=false]:duration-150 data-[active=true]:delay-100 data-[active=true]:duration-300"
-      {...props}
-    />
-  );
 }
 
 function Setup({
@@ -89,74 +80,95 @@ function Setup({
 }) {
   return (
     <>
-      <button
+      <Button
+        variant="ghost"
+        size="icon-pill"
         aria-label="Quit"
         onClick={() => void bar.quit()}
-        className={pillItem({ size: "icon" })}
       >
         <X />
-      </button>
+      </Button>
       <PillDivider />
-      {MODES.map(({ mode, label, Icon }) => {
-        const isActive = bar.active === mode;
-        return (
-          <button
-            key={mode}
-            aria-pressed={isActive}
-            onClick={() => void bar.choose(isActive ? null : mode)}
-            disabled={bar.phase !== "idle"}
-            className={pillItem({ active: isActive })}
-          >
+      <ToggleGroup
+        size="pill"
+        spacing={1}
+        value={bar.active ? [bar.active] : []}
+        onValueChange={(modes) =>
+          void bar.choose((modes[0] as Mode | undefined) ?? null)
+        }
+        disabled={bar.phase !== "idle"}
+      >
+        {MODES.map(({ mode, label, Icon }) => (
+          <ToggleGroupItem key={mode} value={mode}>
             <Icon />
             {label}
-          </button>
-        );
-      })}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
       <PillDivider />
-      <button
-        onClick={(event) => void options.chooseCamera(event.currentTarget)}
-        className={pillItem({ active: Boolean(options.camera) })}
-      >
-        {options.camera ? <Video /> : <VideoOff />}
-        <DeviceName>{options.camera?.name ?? "No camera"}</DeviceName>
-      </button>
-      <button
-        onClick={(event) => void options.chooseMicrophone(event.currentTarget)}
-        className={pillItem({ active: Boolean(options.microphone) })}
-      >
-        {options.microphone ? <Mic /> : <MicOff />}
-        <DeviceName>{options.microphone?.name ?? "No microphone"}</DeviceName>
-      </button>
-      <button
-        aria-pressed={options.systemAudio}
-        onClick={options.toggleSystemAudio}
-        className={pillItem({ active: options.systemAudio })}
-      >
-        {options.systemAudio ? (
-          <MonitorSpeaker />
-        ) : (
-          <Slashed>
+      <DeviceButton
+        isOn={options.camera !== null}
+        icon={options.camera ? <Video /> : <VideoOff />}
+        label={options.camera?.name ?? "No camera"}
+        onClick={options.chooseCamera}
+      />
+      <DeviceButton
+        isOn={options.microphone !== null}
+        icon={options.microphone ? <Mic /> : <MicOff />}
+        label={options.microphone?.name ?? "No microphone"}
+        onClick={options.chooseMicrophone}
+      />
+      <DeviceButton
+        isOn={options.systemAudio}
+        icon={
+          options.systemAudio ? (
             <MonitorSpeaker />
-          </Slashed>
-        )}
-        {options.systemAudio ? "System audio" : "No system audio"}
-      </button>
+          ) : (
+            <Slashed>
+              <MonitorSpeaker />
+            </Slashed>
+          )
+        }
+        label={options.systemAudio ? "System audio" : "No system audio"}
+        onClick={options.toggleSystemAudio}
+      />
       <PillDivider />
-      <button
+      <Button
+        variant="ghost"
+        size="pill"
         aria-label="Settings"
+        className="gap-1 px-3"
         onClick={(event) => void bar.openSettings(event.currentTarget)}
-        className={pillItem({ className: "gap-1 px-3" })}
       >
         <Settings />
-        <ChevronDown className="size-3!" />
-      </button>
+        <ChevronDown />
+      </Button>
     </>
   );
 }
 
-/** Device names can be long, so they're capped to keep the bar's size steady. */
-function DeviceName({ children }: { children: string }) {
-  return <span className="max-w-40 truncate">{children}</span>;
+/** Opens a native menu of devices. Long names are capped so the bar keeps a steady size. */
+function DeviceButton({
+  isOn,
+  icon,
+  label,
+  onClick,
+}: {
+  isOn: boolean;
+  icon: ReactNode;
+  label: string;
+  onClick: (anchor: HTMLElement) => void;
+}) {
+  return (
+    <Button
+      variant={isOn ? "selected" : "ghost"}
+      size="pill"
+      onClick={(event) => onClick(event.currentTarget)}
+    >
+      {icon}
+      <span className="max-w-40 truncate">{label}</span>
+    </Button>
+  );
 }
 
 /** Crosses out an icon the way Lucide's own "off" icons do. */
@@ -179,20 +191,47 @@ function Slashed({ children }: { children: ReactNode }) {
 }
 
 function Recording({ bar }: { bar: RecordBarState }) {
+  const isPaused = bar.phase === "paused";
+  const isRunning = bar.phase === "recording" || isPaused;
   return (
     <>
-      <span className="ml-3 size-2 rounded-full bg-record" />
-      <span className="px-3 font-mono text-sm tabular-nums">
+      <span
+        className={cn(
+          "ml-3 size-2 rounded-full",
+          isPaused ? "bg-muted-foreground" : "bg-record",
+        )}
+      />
+      <span className="pr-8 pl-3 font-mono text-sm tabular-nums">
         {formatClock(bar.elapsedMs)}
       </span>
-      <button
-        aria-label="Stop recording"
-        onClick={() => void bar.stop()}
-        disabled={bar.phase === "stopping"}
-        className="grid size-10 place-items-center rounded-full bg-primary text-white transition-colors hover:bg-primary/80 disabled:opacity-50"
-      >
-        <Square className="size-3.5 fill-current" />
-      </button>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="icon-pill"
+          aria-label="Restart recording"
+          onClick={() => void bar.restart()}
+          disabled={!isRunning}
+        >
+          <RotateCcw />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-pill"
+          aria-label={isPaused ? "Resume recording" : "Pause recording"}
+          onClick={() => void bar.togglePause()}
+          disabled={!isRunning}
+        >
+          {isPaused ? <Play /> : <Pause />}
+        </Button>
+        <Button
+          size="icon-pill"
+          aria-label="Stop recording"
+          onClick={() => void bar.stop()}
+          disabled={!isRunning}
+        >
+          <Square className="fill-current" />
+        </Button>
+      </div>
     </>
   );
 }
@@ -201,16 +240,20 @@ function ErrorMessage({ bar }: { bar: RecordBarState }) {
   return (
     <>
       <CircleAlert className="ml-3 size-4 shrink-0 text-destructive" />
-      <span className="max-w-80 truncate px-2 text-xs" title={bar.error}>
+      <span
+        className="max-w-80 truncate px-2 text-xs"
+        title={bar.error ?? undefined}
+      >
         {bar.error}
       </span>
-      <button
+      <Button
+        variant="ghost"
+        size="icon-pill"
         aria-label="Dismiss"
         onClick={bar.dismissError}
-        className={pillItem({ size: "icon" })}
       >
         <X />
-      </button>
+      </Button>
     </>
   );
 }

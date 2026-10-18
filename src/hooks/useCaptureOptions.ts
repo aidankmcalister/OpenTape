@@ -19,6 +19,10 @@ export type CaptureOptions = {
 };
 
 const STORAGE_KEY = "capture-options";
+const DEVICE_MENUS = {
+  cameras: { key: "cameraId", none: "No camera" },
+  microphones: { key: "microphoneId", none: "No microphone" },
+} as const;
 const DEFAULTS: Options = {
   cameraId: null,
   microphoneId: null,
@@ -48,29 +52,24 @@ export function useCaptureOptions(): CaptureOptions {
   const update = (patch: Partial<Options>) =>
     setOptions((current) => ({ ...current, ...patch }));
 
+  async function chooseDevice(anchor: HTMLElement, kind: keyof Devices) {
+    const { key, none } = DEVICE_MENUS[kind];
+    const found = await refreshDevices();
+    await popupChoices(
+      anchor,
+      withNone(none, found[kind]),
+      options[key],
+      (id) => update({ [key]: id }),
+    );
+  }
+
   return {
     camera: devices.cameras.find(({ id }) => id === options.cameraId) ?? null,
     microphone:
       devices.microphones.find(({ id }) => id === options.microphoneId) ?? null,
     systemAudio: options.systemAudio,
-    chooseCamera: async (anchor) => {
-      const { cameras } = await refreshDevices();
-      await popupChoices(
-        anchor,
-        withNone("No camera", cameras),
-        options.cameraId,
-        (cameraId) => update({ cameraId }),
-      );
-    },
-    chooseMicrophone: async (anchor) => {
-      const { microphones } = await refreshDevices();
-      await popupChoices(
-        anchor,
-        withNone("No microphone", microphones),
-        options.microphoneId,
-        (microphoneId) => update({ microphoneId }),
-      );
-    },
+    chooseCamera: (anchor) => chooseDevice(anchor, "cameras"),
+    chooseMicrophone: (anchor) => chooseDevice(anchor, "microphones"),
     toggleSystemAudio: () => update({ systemAudio: !options.systemAudio }),
   };
 }

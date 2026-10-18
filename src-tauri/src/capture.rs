@@ -7,7 +7,10 @@
 
 use std::{
     path::{Path, PathBuf},
-    sync::mpsc::{self, Receiver, Sender},
+    sync::{
+        Arc, Mutex, MutexGuard, PoisonError,
+        mpsc::{self, Receiver, Sender},
+    },
     thread,
 };
 
@@ -15,8 +18,9 @@ use anyhow::{Context, Result, anyhow};
 use cidre::{arc, av, cg, cm, dispatch, ns, sc, sys};
 use serde::{Deserialize, Serialize};
 
-use crate::cursor_log::CursorLogger;
+use crate::cursor_log::{CursorLogger, host_time_now};
 use crate::recorder::{Recorder, RecorderState};
+use crate::timeline::Timeline;
 
 const FRAMES_PER_SECOND: i32 = 60;
 const FRAGMENT_SECONDS: i64 = 2;
@@ -50,24 +54,55 @@ pub enum Target {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SavedRecording {
-    pub folder: String,
     pub video_path: String,
-    pub frames: usize,
 }
 
 /// A recording in progress. Dropping it without calling [`RunningRecording::stop`]
 /// still stops and finishes the file, because the capture thread sees the channel close.
 pub struct RunningRecording {
+    target: Target,
+    folder: PathBuf,
+    timeline: Arc<Mutex<Timeline>>,
     stop_tx: Sender<()>,
     finished_rx: Receiver<Result<SavedRecording>>,
 }
 
 impl RunningRecording {
+    pub fn target(&self) -> &Target {
+        &self.target
+    }
+
+    /// Frames captured while paused are left out of the file.
+    pub fn pause(&self) {
+        self.timeline().pause(host_time_now());
+    }
+
+    pub fn resume(&self) {
+        self.timeline().resume(host_time_now());
+    }
+
+    /// Seconds recorded so far, not counting pauses.
+    pub fn elapsed(&self) -> f64 {
+        self.timeline().elapsed(host_time_now())
+    }
+
     pub fn stop(self) -> Result<SavedRecording> {
         let _ = self.stop_tx.send(());
         self.finished_rx
             .recv()
             .context("the capture thread ended without finishing the file")?
+    }
+
+    /// Stops and deletes everything recorded, to start over.
+    pub fn discard(self) -> Result<()> {
+        let folder = self.folder.clone();
+        self.stop()?;
+        std::fs::remove_dir_all(&folder)
+            .with_context(|| format!("could not delete {}", folder.display()))
+    }
+
+    fn timeline(&self) -> MutexGuard<'_, Timeline> {
+        self.timeline.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
@@ -76,15 +111,22 @@ pub fn start(target: Target, folder: PathBuf) -> Result<RunningRecording> {
     let (started_tx, started_rx) = mpsc::channel::<Result<(), String>>();
     let (stop_tx, stop_rx) = mpsc::channel::<()>();
     let (finished_tx, finished_rx) = mpsc::channel();
-    thread::spawn(move || {
-        let saved = record_until_stopped(&target, &folder, &started_tx, &stop_rx);
-        let _ = finished_tx.send(saved);
+    let timeline = Arc::new(Mutex::new(Timeline::new(host_time_now())));
+    thread::spawn({
+        let (target, folder, timeline) = (target.clone(), folder.clone(), Arc::clone(&timeline));
+        move || {
+            let saved = record_until_stopped(&target, &folder, timeline, &started_tx, &stop_rx);
+            let _ = finished_tx.send(saved);
+        }
     });
     started_rx
         .recv()
         .context("the capture thread ended before starting")?
         .map_err(|message| anyhow!(message))?;
     Ok(RunningRecording {
+        target,
+        folder,
+        timeline,
         stop_tx,
         finished_rx,
     })
@@ -94,10 +136,11 @@ pub fn start(target: Target, folder: PathBuf) -> Result<RunningRecording> {
 fn record_until_stopped(
     target: &Target,
     folder: &Path,
+    timeline: Arc<Mutex<Timeline>>,
     started_tx: &Sender<Result<(), String>>,
     stop_rx: &Receiver<()>,
 ) -> Result<SavedRecording> {
-    let mut capture = match ActiveCapture::start(target, folder) {
+    let mut capture = match ActiveCapture::start(target, folder, timeline) {
         Ok(capture) => capture,
         Err(err) => {
             let _ = started_tx.send(Err(format!("{err:#}")));
@@ -125,17 +168,23 @@ struct ActiveCapture {
     queue: arc::R<dispatch::Queue>,
     recorder: arc::R<Recorder>,
     cursor: Option<CursorLogger>,
+    timeline: Arc<Mutex<Timeline>>,
     plan: CapturePlan,
     folder: PathBuf,
 }
 
 impl ActiveCapture {
-    fn start(target: &Target, folder: &Path) -> Result<Self> {
+    fn start(target: &Target, folder: &Path, timeline: Arc<Mutex<Timeline>>) -> Result<Self> {
         std::fs::create_dir_all(folder)
             .with_context(|| format!("could not create {}", folder.display()))?;
         let plan = plan_capture(target)?;
-        let (writer, input) = create_writer(&folder.join("recording.mov"), plan.size)?;
-        let recorder = Recorder::with(RecorderState::new(writer, input));
+        let (writer, input, adaptor) = create_writer(&folder.join("recording.mov"), plan.size)?;
+        let recorder = Recorder::with(RecorderState::new(
+            writer,
+            input,
+            adaptor,
+            Arc::clone(&timeline),
+        ));
         let stream = sc::Stream::new(&plan.filter, &plan.cfg);
         let queue = dispatch::Queue::serial_with_ar_pool();
         stream
@@ -144,11 +193,15 @@ impl ActiveCapture {
         let cursor = CursorLogger::start(&folder.join("events.jsonl"))?;
         pollster::block_on(stream.start())
             .map_err(|err| anyhow!("could not start capture: {err:?}"))?;
+        // The clock starts once capture has, so the timer matches the file. Nothing can have
+        // paused yet, because the caller only gets the recording after this returns.
+        *timeline.lock().unwrap_or_else(PoisonError::into_inner) = Timeline::new(host_time_now());
         Ok(Self {
             stream,
             queue,
             recorder,
             cursor: Some(cursor),
+            timeline,
             plan,
             folder: folder.to_path_buf(),
         })
@@ -163,28 +216,28 @@ impl ActiveCapture {
             cursor.stop()?;
         }
         let first_frame_time = finish_writing(&mut self.recorder)?;
+        let timeline = self.timeline.lock().unwrap_or_else(PoisonError::into_inner);
         std::fs::write(
             self.folder.join("meta.json"),
-            meta_json(&self.plan, first_frame_time),
+            meta_json(&self.plan, first_frame_time, timeline.pauses()),
         )
         .context("could not write meta.json")?;
         Ok(SavedRecording {
-            folder: self.folder.display().to_string(),
             video_path: self.folder.join("recording.mov").display().to_string(),
-            frames: self.recorder.inner().frames,
         })
     }
 }
 
 /// Output video size in pixels, always even because H.264 needs even dimensions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct CaptureSize {
+/// A recording's size in pixels: what the file will be, and what the picker shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct CaptureSize {
     width: usize,
     height: usize,
 }
 
 impl CaptureSize {
-    fn of(rect: cg::Rect, scale: f64) -> Self {
+    pub fn of(rect: cg::Rect, scale: f64) -> Self {
         Self {
             width: even_pixels(rect.size.width, scale),
             height: even_pixels(rect.size.height, scale),
@@ -204,10 +257,7 @@ fn plan_capture(target: &Target) -> Result<CapturePlan> {
             let screen_rect = display.frame();
             let size = CaptureSize::of(screen_rect, display_scale(&display));
             Ok(CapturePlan {
-                filter: sc::ContentFilter::with_display_excluding_windows(
-                    &display,
-                    &ns::Array::new(),
-                ),
+                filter: without_this_app(&content, &display),
                 cfg: stream_config(size),
                 size,
                 screen_rect,
@@ -224,7 +274,7 @@ fn plan_capture(target: &Target) -> Result<CapturePlan> {
             Ok(CapturePlan {
                 filter: sc::ContentFilter::with_display_excluding_windows(
                     &display,
-                    &other_apps_windows(&content, app.process_id()),
+                    &hidden_windows(&content, Hiding::of(Some(app.process_id()))),
                 ),
                 cfg,
                 size,
@@ -244,10 +294,7 @@ fn plan_capture(target: &Target) -> Result<CapturePlan> {
             let mut cfg = stream_config(size);
             cfg.set_src_rect(rect);
             Ok(CapturePlan {
-                filter: sc::ContentFilter::with_display_excluding_windows(
-                    &display,
-                    &ns::Array::new(),
-                ),
+                filter: without_this_app(&content, &display),
                 cfg,
                 size,
                 screen_rect: on_screen(rect, display.frame()),
@@ -256,7 +303,7 @@ fn plan_capture(target: &Target) -> Result<CapturePlan> {
     }
 }
 
-fn shareable_content() -> Result<arc::R<sc::ShareableContent>> {
+pub fn shareable_content() -> Result<arc::R<sc::ShareableContent>> {
     pollster::block_on(sc::ShareableContent::current())
         .map_err(|err| anyhow!("could not read the screen (is Screen Recording allowed?): {err:?}"))
 }
@@ -279,7 +326,10 @@ fn find_display(content: &sc::ShareableContent, display_id: u32) -> Result<arc::
         .with_context(|| format!("display {display_id} is gone"))
 }
 
-fn display_of(content: &sc::ShareableContent, window: &sc::Window) -> Result<arc::R<sc::Display>> {
+pub fn display_of(
+    content: &sc::ShareableContent,
+    window: &sc::Window,
+) -> Result<arc::R<sc::Display>> {
     let origin = window.frame().origin;
     content
         .displays()
@@ -289,37 +339,79 @@ fn display_of(content: &sc::ShareableContent, window: &sc::Window) -> Result<arc
         .context("the window is not on any display")
 }
 
-fn display_scale(display: &sc::Display) -> f64 {
+pub fn display_scale(display: &sc::Display) -> f64 {
     let filter = sc::ContentFilter::with_display_excluding_windows(display, &ns::Array::new());
     f64::from(sc::ShareableContent::info_for_filter(&filter).point_pixel_scale())
 }
 
+/// The whole display without this app, including windows it opens after capture starts, like
+/// the frame and alerts. Falls back to leaving out this app's current windows.
+fn without_this_app(
+    content: &sc::ShareableContent,
+    display: &sc::Display,
+) -> arc::R<sc::ContentFilter> {
+    let own_pid = Hiding::of(None).own_pid;
+    let own_app: Vec<arc::R<sc::RunningApp>> = content
+        .apps()
+        .iter()
+        .filter(|app| app.process_id() == own_pid)
+        .map(|app| app.retained())
+        .collect();
+    if own_app.is_empty() {
+        return sc::ContentFilter::with_display_excluding_windows(
+            display,
+            &hidden_windows(content, Hiding::of(None)),
+        );
+    }
+    sc::ContentFilter::with_display_excluding_apps_excepting_windows(
+        display,
+        &ns::Array::from_slice_retained(&own_app),
+        &ns::Array::new(),
+    )
+}
+
 /// Every other app's normal windows (layer 0). Window recordings hide these, so windows
 /// dragged over the recorded one don't show, while dragged items and menus still do.
-fn other_apps_windows(
-    content: &sc::ShareableContent,
-    target_pid: sys::Pid,
-) -> arc::R<ns::Array<sc::Window>> {
+fn hidden_windows(content: &sc::ShareableContent, hiding: Hiding) -> arc::R<ns::Array<sc::Window>> {
     let hidden: Vec<arc::R<sc::Window>> = content
         .windows()
         .iter()
         .filter(|window| {
             let owner = window.owning_app().map(|app| app.process_id());
-            hides_in_window_recording(window.window_layer(), owner, target_pid)
+            hiding.hides(window.window_layer(), owner)
         })
         .map(|window| window.retained())
         .collect();
     ns::Array::from_slice_retained(&hidden)
 }
 
-/// Normal windows (layer 0) of other apps are hidden. The target app's windows, and anything
-/// on a higher layer (dragged items, menus, tooltips, the menu bar), stay visible.
-fn hides_in_window_recording(
-    layer: isize,
-    owner_pid: Option<sys::Pid>,
-    target_pid: sys::Pid,
-) -> bool {
-    layer == 0 && owner_pid.is_some_and(|pid| pid != target_pid)
+/// Which windows a capture leaves out.
+#[derive(Debug, Clone, Copy)]
+struct Hiding {
+    own_pid: sys::Pid,
+    /// Set when recording a window: the app that owns it.
+    recorded_app: Option<sys::Pid>,
+}
+
+impl Hiding {
+    fn of(recorded_app: Option<sys::Pid>) -> Self {
+        Self {
+            own_pid: sys::Pid::try_from(std::process::id()).unwrap_or(-1),
+            recorded_app,
+        }
+    }
+
+    /// This app's windows (the bar, the overlays) never show. When recording a window, other
+    /// apps' normal windows (layer 0) hide too; higher layers (drags, menus, tooltips) stay.
+    fn hides(self, layer: isize, owner: Option<sys::Pid>) -> bool {
+        let Some(owner) = owner else {
+            return false;
+        };
+        owner == self.own_pid
+            || self
+                .recorded_app
+                .is_some_and(|app| layer == 0 && owner != app)
+    }
 }
 
 fn stream_config(size: CaptureSize) -> arc::R<sc::StreamCfg> {
@@ -352,10 +444,13 @@ fn even_pixels(points: f64, scale: f64) -> usize {
     (points * scale) as usize / 2 * 2
 }
 
-fn create_writer(
-    path: &Path,
-    size: CaptureSize,
-) -> Result<(arc::R<av::AssetWriter>, arc::R<av::AssetWriterInput>)> {
+type Writer = (
+    arc::R<av::AssetWriter>,
+    arc::R<av::AssetWriterInput>,
+    arc::R<av::asset::WriterInputPixelBufAdaptor>,
+);
+
+fn create_writer(path: &Path, size: CaptureSize) -> Result<Writer> {
     let _ = std::fs::remove_file(path);
     let url = ns::Url::with_fs_path_str(&path.display().to_string(), false);
     let mut writer = av::AssetWriter::with_url_and_file_type(&url, av::FileType::qt())
@@ -372,8 +467,10 @@ fn create_writer(
     writer
         .add_input(&input)
         .map_err(|err| anyhow!("could not add video input: {err:?}"))?;
+    let adaptor = av::asset::WriterInputPixelBufAdaptor::with_input_writer(&input, None)
+        .map_err(|err| anyhow!("could not prepare the video input: {err:?}"))?;
     writer.start_writing();
-    Ok((writer, input))
+    Ok((writer, input, adaptor))
 }
 
 fn video_settings(size: CaptureSize) -> arc::R<ns::Dictionary<ns::String, ns::Id>> {
@@ -409,16 +506,18 @@ fn finish_writing(recorder: &mut Recorder) -> Result<Option<f64>> {
     Ok(state.first_frame_time)
 }
 
-fn meta_json(plan: &CapturePlan, first_frame_time: Option<f64>) -> String {
+fn meta_json(plan: &CapturePlan, first_frame_time: Option<f64>, pauses: &[[f64; 2]]) -> String {
     let rect = plan.screen_rect;
     let first_frame = first_frame_time.map_or_else(|| "null".to_string(), |t| format!("{t:.6}"));
+    let pauses = serde_json::to_string(pauses).unwrap_or_else(|_| "[]".to_string());
     format!(
         r#"{{
   "video_width": {},
   "video_height": {},
   "screen_rect": {{ "x": {:.1}, "y": {:.1}, "width": {:.1}, "height": {:.1} }},
   "first_frame_time": {first_frame},
-  "clock": "host time in seconds, same as the t values in events.jsonl"
+  "pauses": {pauses},
+  "clock": "host time in seconds, same as the t values in events.jsonl; pauses are cut from the video"
 }}
 "#,
         plan.size.width,
@@ -458,18 +557,34 @@ mod tests {
 
     #[test]
     fn window_recording_should_hide_other_apps_normal_windows() {
-        assert!(hides_in_window_recording(0, Some(200), 100));
+        assert!(RECORDING_APP_100.hides(0, Some(200)));
     }
 
     #[test]
     fn window_recording_should_keep_the_target_apps_windows() {
-        assert!(!hides_in_window_recording(0, Some(100), 100));
+        assert!(!RECORDING_APP_100.hides(0, Some(100)));
     }
 
     #[test]
     fn window_recording_should_keep_higher_layers_like_drags_and_menus() {
-        assert!(!hides_in_window_recording(101, Some(200), 100));
+        assert!(!RECORDING_APP_100.hides(101, Some(200)));
     }
+
+    #[test]
+    fn every_recording_should_hide_this_apps_own_windows() {
+        assert!(RECORDING_APP_100.hides(101, Some(1)));
+        assert!(RECORDING_DISPLAY.hides(25, Some(1)));
+        assert!(!RECORDING_DISPLAY.hides(0, Some(200)));
+    }
+
+    const RECORDING_APP_100: Hiding = Hiding {
+        own_pid: 1,
+        recorded_app: Some(100),
+    };
+    const RECORDING_DISPLAY: Hiding = Hiding {
+        own_pid: 1,
+        recorded_app: None,
+    };
 
     #[test]
     fn relative_and_on_screen_should_undo_each_other() {

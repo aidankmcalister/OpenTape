@@ -2,12 +2,10 @@ import { listen } from "@tauri-apps/api/event";
 
 export const EVENTS = {
   pickerCursor: "picker-cursor",
-  pickerChanged: "picker-changed",
+  pickerSession: "picker-session",
   pickerClosed: "picker-closed",
-  picked: "picked",
-  areaMoved: "area-moved",
-  windowPinned: "window-pinned",
   pickerKey: "picker-key",
+  recordingStatus: "recording-status",
 } as const;
 
 /** Listens to a Tauri event and returns a cleanup function React effects can use directly. */

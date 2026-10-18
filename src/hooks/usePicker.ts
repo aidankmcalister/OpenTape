@@ -1,74 +1,87 @@
-import { useEffect, useState } from "react";
-import { emit } from "@tauri-apps/api/event";
+import { useEffect, useMemo, useState } from "react";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { EVENTS, subscribe } from "@/lib/events";
-import type { Point } from "@/lib/geometry";
-import { pick, pickerSetup, type Setup } from "@/lib/picker";
-import {
-  nextWindowId,
-  pickerView,
-  type Focus,
-  type PickerView,
-} from "@/lib/pickerView";
+import type { Point, Rect } from "@/lib/geometry";
+import { pickerSetup, pinWindow, record, type Session } from "@/lib/picker";
+import { nextWindowId, pickerView, type PickerView } from "@/lib/pickerView";
+import { usePointerHover } from "./usePointerHover";
 import { usePickerKey } from "./usePickerKey";
 
+/**
+ * What this overlay shows. The overlays get no mouse moves of their own, so hover comes from
+ * the cursor Rust streams: what's under it gets `data-hovered`, which `hover:` styles match.
+ */
 export function usePicker(displayId: number): PickerView | null {
-  const setup = usePickerSetup();
-  const focus = useFocus();
-  const view = setup
-    ? pickerView(
-        setup,
-        { ...focus, cursor: focus.cursor ?? setup.cursor },
-        displayId,
-      )
-    : null;
-  usePickerKeys(setup, view);
+  const { session, cursor } = usePickerState();
+  const view = session ? pickerView(session, cursor, displayId) : null;
+  const origin = session?.sources.displays.find(
+    ({ id }) => id === displayId,
+  )?.frame;
+  const pointer = useMemo(
+    () =>
+      cursor && origin
+        ? { x: cursor.x - origin.x, y: cursor.y - origin.y }
+        : null,
+    [cursor, origin?.x, origin?.y],
+  );
+  usePickerKeys(session, view);
+  usePointerHover(pointer);
   return view;
 }
 
-function usePickerSetup(): Setup | null {
-  const [setup, setSetup] = useState<Setup | null>(null);
+/** Rust's session, plus the cursor it streams separately because it changes 60 times a second. */
+function usePickerState(): { session: Session | null; cursor: Point | null } {
+  const [session, setSession] = useState<Session | null>(null);
+  const [cursor, setCursor] = useState<Point | null>(null);
   useEffect(() => {
-    const load = () => pickerSetup().then(setSetup, () => setSetup(null));
-    void load();
-    return subscribe(EVENTS.pickerChanged, load);
-  }, []);
-  return setup;
-}
-
-function useFocus(): Focus {
-  const [focus, setFocus] = useState<Focus>({
-    cursor: null,
-    pinnedWindowId: null,
-  });
-  useEffect(() => {
-    const stopCursor = subscribe<Point>(EVENTS.pickerCursor, (cursor) =>
-      setFocus({ cursor, pinnedWindowId: null }),
-    );
-    const stopPinned = subscribe<number>(
-      EVENTS.windowPinned,
-      (pinnedWindowId) =>
-        setFocus((current) => ({ ...current, pinnedWindowId })),
+    void pickerSetup().then((setup) => {
+      setSession(setup.session);
+      setCursor((current) => current ?? setup.cursor);
+    });
+    const stopSession = subscribe<Session>(EVENTS.pickerSession, setSession);
+    const stopCursor = getCurrentWebviewWindow().listen<Point>(
+      EVENTS.pickerCursor,
+      ({ payload }) => setCursor(payload),
     );
     return () => {
-      stopCursor();
-      stopPinned();
+      stopSession();
+      void stopCursor.then((stop) => stop());
     };
   }, []);
-  return focus;
+  return { session, cursor };
 }
 
-/** Return records what's highlighted and Tab cycles windows, on the overlay under the cursor. */
-function usePickerKeys(setup: Setup | null, view: PickerView | null) {
+function usePickerKeys(session: Session | null, view: PickerView | null) {
   usePickerKey((key) => {
-    if (!setup || !view || view.mode === "area" || !view.hasCursor) return;
+    if (!session || !view || view.mode === "area") return;
     const target = view.highlight?.target;
-    if (key === "Enter" && target) void pick(target);
+    if (key === "Enter" && target) void record(target);
     if (key === "Tab" && view.mode === "window") {
       const currentId = target?.kind === "window" ? target.windowId : undefined;
-      void emit(
-        EVENTS.windowPinned,
-        nextWindowId(setup.sources.windows, currentId),
-      );
+      const nextId = nextWindowId(session.sources.windows, currentId);
+      if (nextId !== undefined) void pinWindow(nextId);
     }
   });
+}
+
+export type Framing = {
+  isFraming: boolean;
+  /** For a window recording, where the window sits on this display. */
+  window: Rect | null;
+};
+
+/** Whether this overlay now frames a recording. Rust tells only that overlay. */
+export function useFraming(): Framing {
+  const [framing, setFraming] = useState<Framing>({
+    isFraming: false,
+    window: null,
+  });
+  useEffect(() => {
+    const unlisten = getCurrentWebviewWindow().listen<Rect | null>(
+      "picker-recording",
+      ({ payload }) => setFraming({ isFraming: true, window: payload }),
+    );
+    return () => void unlisten.then((stop) => stop());
+  }, []);
+  return framing;
 }

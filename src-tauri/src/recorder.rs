@@ -1,9 +1,12 @@
-//! The object ScreenCaptureKit hands frames to. It appends each frame to the file writer.
+//! The object ScreenCaptureKit hands frames to. It appends each frame to the file writer,
+//! leaving out frames captured while paused and closing the gaps pauses leave.
 
 #![expect(
     clippy::useless_transmute,
     reason = "the lint fires inside cidre's define_obj_type! macro, not in this code"
 )]
+
+use std::sync::{Arc, Mutex, PoisonError};
 
 use cidre::{
     arc, av, cm, define_obj_type, objc,
@@ -13,20 +16,32 @@ use cidre::{
     },
 };
 
+use crate::timeline::Timeline;
+
 /// What the frame receiver needs between calls from ScreenCaptureKit.
 pub struct RecorderState {
     pub writer: arc::R<av::AssetWriter>,
     pub input: arc::R<av::AssetWriterInput>,
+    /// Appends frames at a chosen time, which is how pauses are cut out.
+    adaptor: arc::R<av::asset::WriterInputPixelBufAdaptor>,
+    timeline: Arc<Mutex<Timeline>>,
     /// Host-clock time of the first frame, in seconds. `None` until a frame arrives.
     pub first_frame_time: Option<f64>,
     pub frames: usize,
 }
 
 impl RecorderState {
-    pub fn new(writer: arc::R<av::AssetWriter>, input: arc::R<av::AssetWriterInput>) -> Self {
+    pub fn new(
+        writer: arc::R<av::AssetWriter>,
+        input: arc::R<av::AssetWriterInput>,
+        adaptor: arc::R<av::asset::WriterInputPixelBufAdaptor>,
+        timeline: Arc<Mutex<Timeline>>,
+    ) -> Self {
         Self {
             writer,
             input,
+            adaptor,
+            timeline,
             first_frame_time: None,
             frames: 0,
         }
@@ -46,17 +61,33 @@ impl OutputImpl for Recorder {
         sample_buf: &mut cm::SampleBuf,
         kind: sc::OutputType,
     ) {
-        // ScreenCaptureKit also sends "nothing changed" frames with no image; skip those.
-        if kind != sc::OutputType::Screen || sample_buf.image_buf().is_none() {
+        if kind != sc::OutputType::Screen {
             return;
         }
+        // ScreenCaptureKit also sends "nothing changed" frames with no image; skip those.
+        let Some(image) = sample_buf.image_buf() else {
+            return;
+        };
+        let captured = sample_buf.pts();
         let state = self.inner_mut();
+        let placed = state
+            .timeline
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .place(captured.as_secs());
+        let Some(placed) = placed else {
+            return;
+        };
+        let pts = cm::Time::with_secs(placed, captured.scale);
         if state.first_frame_time.is_none() {
-            state.writer.start_session_at_src_time(sample_buf.pts());
-            state.first_frame_time = Some(sample_buf.pts().as_secs());
+            state.writer.start_session_at_src_time(pts);
+            state.first_frame_time = Some(captured.as_secs());
         }
         if state.input.is_ready_for_more_media_data()
-            && state.input.append_sample_buf(sample_buf).is_ok()
+            && matches!(
+                state.adaptor.append_pixel_buf_with_pts(image, pts),
+                Ok(true)
+            )
         {
             state.frames += 1;
         }

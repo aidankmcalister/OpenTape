@@ -1,16 +1,22 @@
 import { useEffect, useRef } from "react";
-import { EVENTS, subscribe } from "@/lib/events";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
-export type PickerKey = "Enter" | "Tab";
+type PickerKey = "Enter" | "Tab";
 
-/** Return and Tab while picking, always calling the latest `handler`. Esc is handled in Rust. */
+/**
+ * Return and Tab, but only the ones Rust sends to this overlay: the one holding the Area box,
+ * or else the one under the cursor. Esc is handled entirely in Rust.
+ */
 export function usePickerKey(handler: (key: PickerKey) => void) {
   const latest = useRef(handler);
   useEffect(() => {
     latest.current = handler;
   });
-  useEffect(
-    () => subscribe<PickerKey>(EVENTS.pickerKey, (key) => latest.current(key)),
-    [],
-  );
+  useEffect(() => {
+    const unlisten = getCurrentWebviewWindow().listen<PickerKey>(
+      "picker-key",
+      ({ payload }) => latest.current(payload),
+    );
+    return () => void unlisten.then((stop) => stop());
+  }, []);
 }

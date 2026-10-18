@@ -1,6 +1,5 @@
-//! The record bar: placed top center under the menu bar, like Screen Studio, where it doesn't
-//! cover what you're picking. Its window stays one size; the pill inside animates, the glass
-//! follows it, and clicks beside the pill pass through to the apps underneath.
+//! The record bar: bottom center, just above the Dock. Its window stays one size; the pill inside animates, the glass follows it, and clicks
+//! beside the pill pass through to the apps underneath.
 
 use std::{
     sync::{
@@ -12,19 +11,20 @@ use std::{
 };
 
 use objc2::MainThreadMarker;
+use objc2_app_kit::NSPopUpMenuWindowLevel;
 use objc2_foundation::NSSize;
-use tauri::{LogicalPosition, State, WebviewWindow};
+use tauri::{AppHandle, Manager, State, WebviewWindow};
 
-use crate::glass;
+use crate::follow::{self, Anchor};
+use crate::glass::{self, Animation};
 use crate::macos_window;
-use crate::sources::Frame;
 
-/// Gap between the menu bar and the record bar, in points.
-const TOP_GAP: f64 = 12.0;
+pub const LABEL: &str = "bar";
+
 /// How often the pointer is checked to decide whether clicks reach the bar.
-const CLICK_CHECK_EVERY: Duration = Duration::from_millis(33);
+const CLICK_THROUGH_CHECK_EVERY: Duration = Duration::from_millis(33);
 
-/// The pill's current width, shared with the click-through check.
+/// The pill's current width, shared with the pointer check.
 #[derive(Default, Clone)]
 pub struct PillWidth(Arc<AtomicU64>);
 
@@ -45,25 +45,47 @@ pub fn shape_bar(
     pill_width: State<'_, PillWidth>,
     width: f64,
     height: f64,
-    animate: bool,
+    animation: Option<Animation>,
 ) -> Result<(), String> {
     pill_width.set(width);
     macos_window::with_ns_window(&window, move |ns_window| {
         macos_window::widen_to(ns_window, width);
-        glass::shape(ns_window, NSSize::new(width, height), animate);
+        glass::shape(ns_window, NSSize::new(width, height), animation);
     })
     .map_err(|err| err.to_string())
 }
 
-pub fn add_glass(bar: &WebviewWindow) -> tauri::Result<()> {
-    macos_window::with_ns_window(bar, |ns_window| {
-        if let Some(main_thread) = MainThreadMarker::new() {
-            glass::add(ns_window, main_thread);
-        }
-    })
+/// The bar is hidden in the config, so it doesn't flash in the middle before it's placed.
+pub fn setup(bar: WebviewWindow, pill_width: PillWidth) -> tauri::Result<()> {
+    macos_window::with_ns_window(&bar, |ns_window| {
+        let Some(main_thread) = MainThreadMarker::new() else {
+            return;
+        };
+        macos_window::float_panel(ns_window, NSPopUpMenuWindowLevel);
+        glass::add(ns_window, main_thread);
+        follow::place_on_primary_screen(ns_window, main_thread, Anchor::BottomCenter);
+        ns_window.orderFrontRegardless();
+    })?;
+    pass_clicks_beside_pill(bar, pill_width);
+    Ok(())
 }
 
-pub fn pass_clicks_beside_pill(bar: WebviewWindow, pill_width: PillWidth) {
+/// The bar steps aside while the recording preview is showing.
+pub fn hide(app: &AppHandle) {
+    if let Some(bar) = app.get_webview_window(LABEL) {
+        let _ = bar.hide();
+    }
+}
+
+/// Brings the bar back without taking focus from the app you're in.
+pub fn show(app: &AppHandle) {
+    if let Some(bar) = app.get_webview_window(LABEL) {
+        let _ = macos_window::with_ns_window(&bar, |ns_window| ns_window.orderFrontRegardless());
+    }
+}
+
+/// Keeps clicks beside the pill passing through to the apps underneath.
+fn pass_clicks_beside_pill(bar: WebviewWindow, pill_width: PillWidth) {
     thread::spawn(move || {
         loop {
             let width = pill_width.get();
@@ -73,46 +95,7 @@ pub fn pass_clicks_beside_pill(bar: WebviewWindow, pill_width: PillWidth) {
             if checked.is_err() {
                 return;
             }
-            thread::sleep(CLICK_CHECK_EVERY);
+            thread::sleep(CLICK_THROUGH_CHECK_EVERY);
         }
     });
-}
-
-pub fn place_at_top(bar: &WebviewWindow) -> tauri::Result<()> {
-    let Some(monitor) = bar.primary_monitor()? else {
-        return Ok(());
-    };
-    let scale = monitor.scale_factor();
-    let area = monitor.work_area();
-    let usable = Frame {
-        x: f64::from(area.position.x) / scale,
-        y: f64::from(area.position.y) / scale,
-        width: f64::from(area.size.width) / scale,
-        height: f64::from(area.size.height) / scale,
-    };
-    let bar_width = f64::from(bar.outer_size()?.width) / bar.scale_factor()?;
-    let (x, y) = top_center(usable, bar_width);
-    bar.set_position(LogicalPosition::new(x, y))
-}
-
-/// The bar's top-left corner when centered at the top of `usable` (the screen minus the menu bar).
-fn top_center(usable: Frame, bar_width: f64) -> (f64, f64) {
-    let x = usable.x + ((usable.width - bar_width) / 2.0).max(0.0);
-    (x.round(), usable.y + TOP_GAP)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn top_center_should_center_under_the_menu_bar() {
-        let usable = Frame {
-            x: 0.0,
-            y: 33.0,
-            width: 1512.0,
-            height: 949.0,
-        };
-        assert_eq!(top_center(usable, 420.0), (546.0, 45.0));
-    }
 }

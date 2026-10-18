@@ -1,17 +1,25 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Point, Rect } from "./geometry";
+import type { Point, Rect, Size } from "./geometry";
 import type { Target } from "./recording";
 
 export type Mode = "display" | "window" | "area";
 
-/** Frames are in global points from the top-left, the same space as the cursor. */
-export type DisplayInfo = { id: number; name: string; frame: Rect };
-export type WindowInfo = {
+/** Frames are in global points from the top-left, the same space as the cursor. `size` is
+ * what a recording would be, in pixels. */
+export type DisplayInfo = {
+  id: number;
+  name: string;
+  frame: Rect;
+  size: Size;
+  /** How far down from the top things stay clear of the menu bar and the notch. */
+  safeTop: number;
+};
+type WindowInfo = {
   id: number;
   pid: number;
   app: string;
-  title: string;
   frame: Rect;
+  size: Size;
 };
 /** Windows are ordered front to back. Icons are PNG data URLs, one per app process. */
 export type Sources = {
@@ -20,10 +28,26 @@ export type Sources = {
   icons: Record<number, string>;
 };
 
-export type Setup = { mode: Mode; sources: Sources; cursor: Point | null };
+/** Rust's picker session, the only copy of it. Matches the Rust `Session`. */
+export type Session = {
+  mode: Mode;
+  sources: Sources;
+  /** A window chosen with Tab. It wins over the cursor until the cursor moves. */
+  pinnedWindowId: number | null;
+  areaDisplayId: number | null;
+};
+
+export type Setup = { session: Session; cursor: Point | null };
 
 export const openPicker = (mode: Mode) => invoke<void>("open_picker", { mode });
 export const closePicker = () => invoke<void>("close_picker");
 export const pickerSetup = () => invoke<Setup>("picker_setup");
-/** Closes the picker, then the record bar starts recording `target`. */
-export const pick = (target: Target) => invoke<void>("pick", { target });
+export const pinWindow = (windowId: number) =>
+  invoke<void>("pin_window", { windowId });
+export const moveArea = (displayId: number) =>
+  invoke<void>("move_area", { displayId });
+/** Closes the picker and starts recording `target`. */
+export const record = (target: Target) => invoke<void>("record", { target });
+/** Puts Rust's frosted glass under the overlay's capture bar, or hides it with null. */
+export const placeOverlayGlass = (rect: Rect | null) =>
+  invoke<void>("place_overlay_glass", { rect });

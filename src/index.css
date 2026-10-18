@@ -4,8 +4,25 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * The bar, preview and picker never become the key window, so macOS sends their pages no mouse
+ * moves and :hover never fires. Rust reports the pointer instead, and the app marks what's under
+ * it with data-hovered, so every hover: style works there too, in shadcn components and ours.
+ */
+@custom-variant hover {
+  @media (hover: hover) {
+    &:hover {
+      @slot;
+    }
+  }
+  &[data-hovered] {
+    @slot;
+  }
+}
+
 @theme inline {
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -32,7 +49,19 @@
   --color-glass-solid: var(--glass-solid);
   --color-glass-border: var(--glass-border);
   --color-dim: var(--dim);
+  --color-tint: var(--tint);
+  --color-primary-tint: var(--primary-tint);
+  --color-primary-tint-hover: var(--primary-tint-hover);
+  --color-primary-tint-foreground: var(--primary-tint-foreground);
   --color-edge: var(--edge);
+  --color-island: var(--island);
+  --color-canvas: var(--canvas);
+  --color-hairline: var(--hairline);
+  --color-faint: var(--faint);
+  --color-raised: var(--raised);
+  --color-raised-hover: var(--raised-hover);
+  --color-speed: var(--speed);
+  --color-speed-foreground: var(--speed-foreground);
   --shadow-pill: 0 16px 32px rgb(0 0 0 / 0.45);
 
   --radius-sm: calc(var(--radius) * 0.6);
@@ -47,15 +76,16 @@
   --foreground: #ededf0;
   --card: #161618;
   --card-foreground: #ededf0;
-  --popover: #161618;
+  --popover: #202024;
   --popover-foreground: #ededf0;
   --primary: #d1440d;
   --primary-foreground: #ffffff;
-  --secondary: #1e1e21;
+  /* Secondary and accent are see-through, so they sit on any surface: glass, video, panels. */
+  --secondary: rgb(255 255 255 / 0.07);
   --secondary-foreground: #ededf0;
   --muted: #1e1e21;
   --muted-foreground: #a1a1aa;
-  --accent: #1e1e21;
+  --accent: rgb(255 255 255 / 0.1);
   --accent-foreground: #ededf0;
   --destructive: #e5484d;
   --border: #2a2a2e;
@@ -65,11 +95,27 @@
   --highlight: #ff7a1a;
   --highlight-foreground: #ff9a4d;
   /* The bar sits on a native blur; overlay pills can't, so theirs is nearly opaque. */
-  --glass: rgb(30 30 33 / 0.78);
+  /* Light enough that the blur behind it shows through. */
+  --glass: rgb(30 30 33 / 0.6);
   --glass-solid: rgb(30 30 33 / 0.96);
   --glass-border: rgb(255 255 255 / 0.14);
   --dim: rgb(0 0 0 / 0.5);
+  /* Covers the target the picker points at; a border can't follow every window's corners. */
+  --tint: rgb(255 122 26 / 0.22);
   --edge: rgb(0 0 0 / 0.6);
+  /* Primary buttons are tinted orange rather than filled. */
+  --primary-tint: rgb(255 122 26 / 0.18);
+  --primary-tint-hover: rgb(255 122 26 / 0.28);
+  --primary-tint-foreground: #ff9a4d;
+  /* The editor's panels sit on islands; the recording on a darker canvas. */
+  --island: #17171a;
+  --canvas: #101012;
+  --hairline: rgb(255 255 255 / 0.08);
+  --faint: #82828c;
+  --raised: #202024;
+  --raised-hover: #2a2a2f;
+  --speed: #3d9bff;
+  --speed-foreground: #8cc4ff;
   --radius: 0.625rem;
 }
 

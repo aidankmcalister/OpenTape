@@ -6,8 +6,8 @@ import {
   PredefinedMenuItem,
 } from "@tauri-apps/api/menu";
 
-export type Choice<T> = { value: T; label: string };
-export type Action = { label: string; run: () => void } | "separator";
+type Choice<T> = { value: T; label: string };
+type Action = { label: string; run: () => void } | "separator";
 
 /** A native menu under `anchor`, with a check next to the selected choice. */
 export async function popupChoices<T>(

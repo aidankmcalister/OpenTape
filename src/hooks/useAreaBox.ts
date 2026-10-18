@@ -1,33 +1,31 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
-import { emit } from "@tauri-apps/api/event";
-import { EVENTS, subscribe } from "@/lib/events";
 import {
   centeredArea,
   dragArea,
   fitRatio,
   panelPosition,
-  setAreaField,
+  pixelSize,
   type Handle,
   type Point,
   type Ratio,
   type Rect,
   type Size,
 } from "@/lib/geometry";
-import { pick, type DisplayInfo } from "@/lib/picker";
+import { moveArea, record, type DisplayInfo } from "@/lib/picker";
 import { usePickerKey } from "./usePickerKey";
 
 type Drag = { handle: Handle; from: Point; initial: Rect };
 type PointerHandler = (event: PointerEvent) => void;
 
 export type AreaBox = {
-  /** Only one display holds the box. The others spread `claimProps` to take it. */
-  hasBox: boolean;
   area: Rect;
   /** Null while the box is free-form. */
   ratio: Ratio | null;
+  /** What the recording will be, in pixels. */
+  size: Size;
   barPosition: Point;
-  setSize: (side: "width" | "height", value: number) => void;
-  chooseRatio: (ratio: Ratio) => void;
+  /** Null frees the box again. */
+  chooseRatio: (ratio: Ratio | null) => void;
   start: () => void;
   surfaceProps: {
     onPointerDown: PointerHandler;
@@ -42,27 +40,21 @@ export type AreaBox = {
 
 export function useAreaBox(
   display: DisplayInfo,
-  startsHere: boolean,
+  hasBox: boolean,
   barSize: Size,
 ): AreaBox {
   const bounds = { width: display.frame.width, height: display.frame.height };
-  const [hasBox, setHasBox] = useState(startsHere);
   const [area, setArea] = useState(() => centeredArea(bounds));
   const [ratio, setRatio] = useState<Ratio | null>(null);
   const drag = useRef<Drag | null>(null);
 
-  useEffect(
-    () =>
-      subscribe<number>(EVENTS.areaMoved, (displayId) => {
-        const movedHere = displayId === display.id;
-        setHasBox(movedHere);
-        if (movedHere) setArea(centeredArea(display.frame));
-      }),
-    [display],
-  );
+  // A box that arrives on this display starts centered again.
+  useEffect(() => {
+    if (hasBox) setArea(centeredArea(display.frame));
+  }, [hasBox, display.frame.width, display.frame.height]);
 
   const start = () =>
-    void pick({ kind: "area", displayId: display.id, ...area });
+    void record({ kind: "area", displayId: display.id, ...area });
   usePickerKey((key) => {
     if (key === "Enter" && hasBox) start();
   });
@@ -100,17 +92,13 @@ export function useAreaBox(
   };
 
   return {
-    hasBox,
     area,
     ratio,
-    barPosition: panelPosition(area, barSize, bounds),
-    setSize: (side, value) => {
-      setRatio(null);
-      setArea(setAreaField(area, side, value, bounds));
-    },
+    size: pixelSize(area, display.size.width / display.frame.width),
+    barPosition: panelPosition(area, barSize, bounds, display.safeTop),
     chooseRatio: (next) => {
       setRatio(next);
-      setArea(fitRatio(area, next.value, bounds));
+      if (next) setArea(fitRatio(area, next.value, bounds));
     },
     start,
     surfaceProps: {
@@ -121,8 +109,6 @@ export function useAreaBox(
     boxProps: { onPointerDown: beginDrag("move", area) },
     handleProps: (handle) => ({ onPointerDown: beginDrag(handle, area) }),
     barProps: { onPointerDown: (event) => event.stopPropagation() },
-    claimProps: {
-      onPointerDown: () => void emit(EVENTS.areaMoved, display.id),
-    },
+    claimProps: { onPointerDown: () => void moveArea(display.id) },
   };
 }

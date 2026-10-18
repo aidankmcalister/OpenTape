@@ -7,13 +7,21 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/80",
+        /** Tinted orange rather than filled: Record, Stop, Edit, Export. */
+        default:
+          "bg-primary-tint text-primary-tint-foreground hover:bg-primary-tint-hover",
         outline:
           "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+          "bg-secondary text-secondary-foreground hover:bg-accent aria-expanded:bg-accent",
         ghost:
-          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
+          "text-muted-foreground hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground",
+        /** A choice that's on, like a chosen device or the open panel. */
+        selected:
+          "bg-highlight/16 text-highlight-foreground hover:bg-highlight/24",
+        /** On top of a video: the same glass as the bars, blurred, readable on any frame. */
+        overlay:
+          "border-glass-border bg-glass text-foreground backdrop-blur-md hover:bg-raised-hover",
         destructive:
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
         link: "text-primary underline-offset-4 hover:underline",
@@ -30,6 +38,11 @@ const buttonVariants = cva(
         "icon-sm":
           "size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
         "icon-lg": "size-9",
+        /** The rounded controls on the app's pills. */
+        pill: "h-10 gap-2 rounded-full px-4 text-[13px]",
+        "pill-sm": "h-8 gap-2 rounded-full px-3 text-[13px]",
+        "icon-pill": "size-10 rounded-full",
+        "icon-round": "size-8 rounded-full",
       },
     },
     defaultVariants: {
@@ -48,6 +61,7 @@ function Button({
   return (
     <ButtonPrimitive
       data-slot="button"
+      data-variant={variant}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     />

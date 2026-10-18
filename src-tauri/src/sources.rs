@@ -3,16 +3,17 @@
 
 use std::collections::{HashMap, HashSet};
 
-use anyhow::{Result, anyhow};
-use cidre::{cg, sc};
-use serde::Serialize;
+use anyhow::Result;
+use cidre::cg;
+use serde::{Deserialize, Serialize};
 
 use crate::app_icons;
+use crate::capture::{self, CaptureSize};
 
 /// Smaller windows are usually invisible helpers, not something you'd record.
 const MIN_WINDOW_SIDE: f64 = 40.0;
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Frame {
     pub x: f64,
     pub y: f64,
@@ -21,11 +22,15 @@ pub struct Frame {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DisplayInfo {
     pub id: u32,
     /// "Display 1", "Display 2", in ScreenCaptureKit's order.
     pub name: String,
     pub frame: Frame,
+    pub size: CaptureSize,
+    /// How far down from the top things stay clear of the menu bar and the notch, in points.
+    pub safe_top: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -33,8 +38,8 @@ pub struct WindowInfo {
     pub id: u32,
     pub pid: u32,
     pub app: String,
-    pub title: String,
     pub frame: Frame,
+    pub size: CaptureSize,
 }
 
 /// Displays, and windows ordered front to back so the first hit under the cursor is the visible one.
@@ -47,19 +52,20 @@ pub struct Sources {
 }
 
 pub fn list() -> Result<Sources> {
-    let content = pollster::block_on(sc::ShareableContent::current()).map_err(|err| {
-        anyhow!("could not read the screen (is Screen Recording allowed?): {err:?}")
-    })?;
-    let displays = content
-        .displays()
-        .iter()
-        .enumerate()
-        .map(|(index, display)| DisplayInfo {
+    let content = capture::shareable_content()?;
+    let mut displays = Vec::new();
+    let mut scales = HashMap::new();
+    for (index, display) in content.displays().iter().enumerate() {
+        let scale = capture::display_scale(display);
+        scales.insert(display.display_id().0, scale);
+        displays.push(DisplayInfo {
             id: display.display_id().0,
             name: format!("Display {}", index + 1),
             frame: frame_of(display.frame()),
-        })
-        .collect();
+            size: CaptureSize::of(display.frame(), scale),
+            safe_top: 0.0,
+        });
+    }
     let own_pid = std::process::id();
     let mut windows: Vec<WindowInfo> = content
         .windows()
@@ -70,12 +76,14 @@ pub fn list() -> Result<Sources> {
             let owner_pid = u32::try_from(app.process_id()).ok()?;
             let pickable = is_pickable(window.window_layer(), window.is_on_screen(), frame)
                 && owner_pid != own_pid;
+            let display = capture::display_of(&content, window).ok()?;
+            let scale = scales.get(&display.display_id().0).copied()?;
             pickable.then(|| WindowInfo {
                 id: window.id(),
                 pid: owner_pid,
                 app: app.app_name().to_string(),
-                title: window.title().map(|t| t.to_string()).unwrap_or_default(),
                 frame,
+                size: CaptureSize::of(window.frame(), scale),
             })
         })
         .collect();
@@ -144,8 +152,8 @@ mod tests {
             id,
             pid: 1,
             app: "App".to_string(),
-            title: String::new(),
             frame: BIG,
+            size: CaptureSize::of(cidre::cg::Rect::zero(), 2.0),
         }
     }
 

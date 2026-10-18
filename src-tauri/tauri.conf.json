@@ -27,22 +27,40 @@
         "theme": "Dark"
       },
       {
+        "label": "preview",
+        "title": "Recording preview",
+        "width": 360,
+        "height": 225,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "visibleOnAllWorkspaces": true,
+        "acceptFirstMouse": true,
+        "visible": false,
+        "theme": "Dark"
+      },
+      {
         "label": "editor",
         "title": "screen-recorder",
-        "width": 1200,
-        "height": 780,
-        "minWidth": 900,
-        "minHeight": 600,
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1100,
+        "minHeight": 680,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
-        "trafficLightPosition": { "x": 18, "y": 18 },
+        "trafficLightPosition": { "x": 16, "y": 20 },
         "theme": "Dark",
         "backgroundColor": "#0e0e10",
         "visible": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPDATA/recordings/**"]
+      }
     }
   },
   "bundle": {

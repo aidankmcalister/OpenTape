@@ -71,32 +71,24 @@ export function dragArea(
     : resizeArea(initial, handle, delta, bounds);
 }
 
-export function setAreaField(
-  area: Rect,
-  field: keyof Rect,
-  value: number,
-  bounds: Size,
-): Rect {
-  if (!Number.isFinite(value)) return area;
-  const next = { ...area, [field]: Math.round(value) };
-  next.width = clamp(next.width, MIN_AREA_SIDE, bounds.width);
-  next.height = clamp(next.height, MIN_AREA_SIDE, bounds.height);
-  next.x = clamp(next.x, 0, bounds.width - next.width);
-  next.y = clamp(next.y, 0, bounds.height - next.height);
-  return next;
-}
+/** The most of the display a ratio change makes the box, so it never swallows the screen. */
+const MOST_OF_DISPLAY = 0.85;
 
-/** Reshapes around the same center, keeping the longest side, shrunk to fit the display. */
+/**
+ * The box at `ratio`, around the same center and with about the same area, so switching ratios
+ * back and forth never grows or shrinks it. Capped to most of the display.
+ */
 export function fitRatio(area: Rect, ratio: number, bounds: Size): Rect {
-  const longest = Math.max(area.width, area.height);
-  const wide = ratio >= 1 ? longest : longest * ratio;
+  const side = Math.sqrt(area.width * area.height);
+  const wide = side * Math.sqrt(ratio);
+  const tall = side / Math.sqrt(ratio);
   const shrink = Math.min(
     1,
-    bounds.width / wide,
-    bounds.height / (wide / ratio),
+    (bounds.width * MOST_OF_DISPLAY) / wide,
+    (bounds.height * MOST_OF_DISPLAY) / tall,
   );
   const width = Math.round(wide * shrink);
-  const height = Math.round((wide / ratio) * shrink);
+  const height = Math.round(tall * shrink);
   const centerX = area.x + area.width / 2;
   const centerY = area.y + area.height / 2;
   return {
@@ -107,19 +99,27 @@ export function fitRatio(area: Rect, ratio: number, bounds: Size): Rect {
   };
 }
 
-/** Centered under the box, or above it when there's no room below. */
-export function panelPosition(area: Rect, panel: Size, bounds: Size): Point {
-  const fitsBelow =
-    area.y + area.height + PANEL_GAP + panel.height <= bounds.height;
+/**
+ * Centered above the box, clear of the record bar at the bottom of the screen. When there's no
+ * room above, below the menu bar and the notch (`safeTop`), it sits just inside the box's top.
+ */
+export function panelPosition(
+  area: Rect,
+  panel: Size,
+  bounds: Size,
+  safeTop = 0,
+): Point {
+  const above = area.y - PANEL_GAP - panel.height;
   return {
     x: clamp(
       area.x + (area.width - panel.width) / 2,
       PANEL_GAP,
       bounds.width - panel.width - PANEL_GAP,
     ),
-    y: fitsBelow
-      ? area.y + area.height + PANEL_GAP
-      : Math.max(area.y - PANEL_GAP - panel.height, PANEL_GAP),
+    y:
+      above >= safeTop + PANEL_GAP
+        ? above
+        : Math.max(area.y, safeTop) + PANEL_GAP,
   };
 }
 
@@ -161,4 +161,39 @@ function resizeArea(
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+/** The largest size of `ratio` (width / height) that fits inside `bounds`. */
+export function fitInside(bounds: Size, ratio: number): Size {
+  const width = Math.min(bounds.width, bounds.height * ratio);
+  return { width, height: width / ratio };
+}
+
+/** A size in points as the recording's pixels: scaled, then rounded down to even, like Rust. */
+export function pixelSize(points: Size, scale: number): Size {
+  const even = (value: number) => Math.floor((value * scale) / 2) * 2;
+  return { width: even(points.width), height: even(points.height) };
+}
+
+/** An SVG path for a rectangle with rounded corners, for CSS `clip-path: path(...)`. */
+export function roundedRectPath(
+  { x, y, width, height }: Rect,
+  corner: number,
+): string {
+  const r = Math.min(corner, width / 2, height / 2);
+  const right = x + width;
+  const bottom = y + height;
+  const arc = (toX: number, toY: number) => `A${r} ${r} 0 0 1 ${toX} ${toY}`;
+  return [
+    `M${x + r} ${y}`,
+    `H${right - r}`,
+    arc(right, y + r),
+    `V${bottom - r}`,
+    arc(right - r, bottom),
+    `H${x + r}`,
+    arc(x, bottom - r),
+    `V${y + r}`,
+    arc(x + r, y),
+    "Z",
+  ].join("");
 }

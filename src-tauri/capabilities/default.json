@@ -2,11 +2,10 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the app windows",
-  "windows": ["bar", "editor", "picker-*"],
+  "windows": ["bar", "editor", "picker-*", "preview"],
   "permissions": [
     "core:default",
     "opener:default",
-    "opener:allow-reveal-item-in-dir",
     "core:window:allow-start-dragging"
   ]
 }
