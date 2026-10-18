@@ -5,3 +5,11 @@ export function formatTime(ms: number): string {
   const hundredths = totalHundredths % 100;
   return `${minutes}:${String(seconds).padStart(2, "0")}.${String(hundredths).padStart(2, "0")}`;
 }
+
+/** "mm:ss", for a running recording. */
+export function formatClock(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}

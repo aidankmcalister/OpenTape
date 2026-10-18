@@ -26,6 +26,14 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-record: var(--record);
+  --color-highlight: var(--highlight);
+  --color-highlight-foreground: var(--highlight-foreground);
+  --color-glass: var(--glass);
+  --color-glass-solid: var(--glass-solid);
+  --color-glass-border: var(--glass-border);
+  --color-dim: var(--dim);
+  --color-edge: var(--edge);
+  --shadow-pill: 0 16px 32px rgb(0 0 0 / 0.45);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -36,24 +44,32 @@
 
 :root {
   --background: #0e0e10;
-  --foreground: #ececef;
+  --foreground: #ededf0;
   --card: #161618;
-  --card-foreground: #ececef;
+  --card-foreground: #ededf0;
   --popover: #161618;
-  --popover-foreground: #ececef;
-  --primary: #6e6afc;
+  --popover-foreground: #ededf0;
+  --primary: #d1440d;
   --primary-foreground: #ffffff;
   --secondary: #1e1e21;
-  --secondary-foreground: #ececef;
+  --secondary-foreground: #ededf0;
   --muted: #1e1e21;
-  --muted-foreground: #9a9aa3;
+  --muted-foreground: #a1a1aa;
   --accent: #1e1e21;
-  --accent-foreground: #ececef;
+  --accent-foreground: #ededf0;
   --destructive: #e5484d;
   --border: #2a2a2e;
   --input: #2a2a2e;
-  --ring: #6e6afc;
+  --ring: #ff7a1a;
   --record: #e5484d;
+  --highlight: #ff7a1a;
+  --highlight-foreground: #ff9a4d;
+  /* The bar sits on a native blur; overlay pills can't, so theirs is nearly opaque. */
+  --glass: rgb(30 30 33 / 0.78);
+  --glass-solid: rgb(30 30 33 / 0.96);
+  --glass-border: rgb(255 255 255 / 0.14);
+  --dim: rgb(0 0 0 / 0.5);
+  --edge: rgb(0 0 0 / 0.6);
   --radius: 0.625rem;
 }
 

@@ -1,0 +1,175 @@
+//! What can be picked: the displays and the on-screen windows, with their frames in
+//! global points (top-left origin), the same space as the cursor position.
+
+use std::collections::{HashMap, HashSet};
+
+use anyhow::{Result, anyhow};
+use cidre::{cg, sc};
+use serde::Serialize;
+
+use crate::app_icons;
+
+/// Smaller windows are usually invisible helpers, not something you'd record.
+const MIN_WINDOW_SIDE: f64 = 40.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct Frame {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DisplayInfo {
+    pub id: u32,
+    /// "Display 1", "Display 2", in ScreenCaptureKit's order.
+    pub name: String,
+    pub frame: Frame,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WindowInfo {
+    pub id: u32,
+    pub pid: u32,
+    pub app: String,
+    pub title: String,
+    pub frame: Frame,
+}
+
+/// Displays, and windows ordered front to back so the first hit under the cursor is the visible one.
+#[derive(Debug, Clone, Serialize)]
+pub struct Sources {
+    pub displays: Vec<DisplayInfo>,
+    pub windows: Vec<WindowInfo>,
+    /// One icon per app, by process ID, so apps with many windows send it once.
+    pub icons: HashMap<u32, String>,
+}
+
+pub fn list() -> Result<Sources> {
+    let content = pollster::block_on(sc::ShareableContent::current()).map_err(|err| {
+        anyhow!("could not read the screen (is Screen Recording allowed?): {err:?}")
+    })?;
+    let displays = content
+        .displays()
+        .iter()
+        .enumerate()
+        .map(|(index, display)| DisplayInfo {
+            id: display.display_id().0,
+            name: format!("Display {}", index + 1),
+            frame: frame_of(display.frame()),
+        })
+        .collect();
+    let own_pid = std::process::id();
+    let mut windows: Vec<WindowInfo> = content
+        .windows()
+        .iter()
+        .filter_map(|window| {
+            let app = window.owning_app()?;
+            let frame = frame_of(window.frame());
+            let owner_pid = u32::try_from(app.process_id()).ok()?;
+            let pickable = is_pickable(window.window_layer(), window.is_on_screen(), frame)
+                && owner_pid != own_pid;
+            pickable.then(|| WindowInfo {
+                id: window.id(),
+                pid: owner_pid,
+                app: app.app_name().to_string(),
+                title: window.title().map(|t| t.to_string()).unwrap_or_default(),
+                frame,
+            })
+        })
+        .collect();
+    sort_front_to_back(&mut windows, &stacking_order());
+    let icons = icons_for(&windows);
+    Ok(Sources {
+        displays,
+        windows,
+        icons,
+    })
+}
+
+fn icons_for(windows: &[WindowInfo]) -> HashMap<u32, String> {
+    let pids: HashSet<u32> = windows.iter().map(|window| window.pid).collect();
+    pids.into_iter()
+        .filter_map(|pid| Some((pid, app_icons::data_url(pid)?)))
+        .collect()
+}
+
+/// Normal app windows (layer 0) that are on screen and big enough to mean something.
+fn is_pickable(layer: isize, on_screen: bool, frame: Frame) -> bool {
+    layer == 0 && on_screen && frame.width >= MIN_WINDOW_SIDE && frame.height >= MIN_WINDOW_SIDE
+}
+
+/// Window ids from front to back. ScreenCaptureKit doesn't promise an order, but this does.
+/// Cheap enough to poll: it changes when windows open, close, refocus or a space switches.
+pub fn stacking_order() -> Vec<u32> {
+    let options = cg::WindowListOpt::ON_SCREEN_ONLY | cg::WindowListOpt::EXCLUDE_DESKTOP_ELEMENTS;
+    cg::WindowList::new(options, cg::WINDOW_ID_NULL)
+        .map(|list| (0..list.len()).map(|index| list.get(index)).collect())
+        .unwrap_or_default()
+}
+
+/// Sorts by position in `order`. Windows missing from it go last.
+fn sort_front_to_back(windows: &mut [WindowInfo], order: &[u32]) {
+    windows.sort_by_key(|window| {
+        order
+            .iter()
+            .position(|&id| id == window.id)
+            .unwrap_or(usize::MAX)
+    });
+}
+
+fn frame_of(rect: cg::Rect) -> Frame {
+    Frame {
+        x: rect.origin.x,
+        y: rect.origin.y,
+        width: rect.size.width,
+        height: rect.size.height,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const BIG: Frame = Frame {
+        x: 0.0,
+        y: 0.0,
+        width: 800.0,
+        height: 600.0,
+    };
+
+    fn window(id: u32) -> WindowInfo {
+        WindowInfo {
+            id,
+            pid: 1,
+            app: "App".to_string(),
+            title: String::new(),
+            frame: BIG,
+        }
+    }
+
+    #[test]
+    fn sort_front_to_back_should_follow_the_stacking_order() {
+        let mut windows = vec![window(1), window(2), window(3)];
+        sort_front_to_back(&mut windows, &[3, 1, 2]);
+        let ids: Vec<u32> = windows.iter().map(|w| w.id).collect();
+        assert_eq!(ids, [3, 1, 2]);
+    }
+
+    #[test]
+    fn sort_front_to_back_should_put_unknown_windows_last() {
+        let mut windows = vec![window(9), window(1)];
+        sort_front_to_back(&mut windows, &[1]);
+        assert_eq!(windows[1].id, 9);
+    }
+
+    #[test]
+    fn is_pickable_should_skip_menus_and_tiny_windows() {
+        let tiny = Frame { width: 10.0, ..BIG };
+        assert!(is_pickable(0, true, BIG));
+        assert!(!is_pickable(25, true, BIG));
+        assert!(!is_pickable(0, false, BIG));
+        assert!(!is_pickable(0, true, tiny));
+    }
+}

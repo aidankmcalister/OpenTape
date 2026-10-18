@@ -1,4 +1,4 @@
-//! The Tauri commands the record bar calls: list what can be recorded, start, and stop.
+//! The Tauri commands the record bar calls: start and stop.
 //! Rust owns the recording state; the frontend only shows it.
 
 use std::{
@@ -9,16 +9,11 @@ use std::{
 
 use tauri::{AppHandle, Manager, State};
 
-use crate::capture::{self, RunningRecording, SavedRecording, Sources, Target};
+use crate::capture::{self, RunningRecording, SavedRecording, Target};
 
 /// The recording in progress, if any.
 #[derive(Default)]
 pub struct RecordingState(Mutex<Option<RunningRecording>>);
-
-#[tauri::command]
-pub async fn list_sources() -> Result<Sources, String> {
-    run_blocking(capture::list_sources).await
-}
 
 #[tauri::command]
 pub async fn start_recording(

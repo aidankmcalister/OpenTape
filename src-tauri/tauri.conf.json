@@ -15,15 +15,16 @@
       {
         "label": "bar",
         "title": "screen-recorder",
-        "width": 640,
-        "height": 64,
-        "center": true,
+        "width": 1000,
+        "height": 58,
         "resizable": false,
         "decorations": false,
         "transparent": true,
         "shadow": false,
-        "alwaysOnTop": true,
-        "visibleOnAllWorkspaces": true
+        "visibleOnAllWorkspaces": true,
+        "acceptFirstMouse": true,
+        "visible": false,
+        "theme": "Dark"
       },
       {
         "label": "editor",
@@ -36,7 +37,8 @@
         "hiddenTitle": true,
         "trafficLightPosition": { "x": 18, "y": 18 },
         "theme": "Dark",
-        "backgroundColor": "#0e0e10"
+        "backgroundColor": "#0e0e10",
+        "visible": false
       }
     ],
     "security": {

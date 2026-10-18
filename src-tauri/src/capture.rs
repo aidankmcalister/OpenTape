@@ -1,5 +1,5 @@
-//! Screen capture: list what can be recorded, and record a display, a window or an
-//! area to a crash-safe `.mov` with the cursor hidden, plus a cursor and click log.
+//! Screen capture: record a display, a window or an area to a crash-safe `.mov` with
+//! the cursor hidden, plus a cursor and click log.
 //!
 //! Apple's capture objects can't move between threads, so each recording runs on its
 //! own thread. [`start`] hands back a [`RunningRecording`] that talks to that thread
@@ -23,7 +23,7 @@ const FRAGMENT_SECONDS: i64 = 2;
 const BITS_PER_PIXEL_PER_SECOND: usize = 8;
 
 /// What to record. Sent from the frontend as `{ kind: "window", windowId: 398 }` and so on.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -44,31 +44,6 @@ pub enum Target {
         width: f64,
         height: f64,
     },
-}
-
-/// Everything that can be recorded right now.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Sources {
-    pub displays: Vec<DisplayInfo>,
-    pub windows: Vec<WindowInfo>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DisplayInfo {
-    pub id: u32,
-    /// Size in points.
-    pub width: f64,
-    pub height: f64,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WindowInfo {
-    pub id: u32,
-    pub app: String,
-    pub title: String,
 }
 
 /// A finished recording.
@@ -113,37 +88,6 @@ pub fn start(target: Target, folder: PathBuf) -> Result<RunningRecording> {
         stop_tx,
         finished_rx,
     })
-}
-
-pub fn list_sources() -> Result<Sources> {
-    let content = shareable_content()?;
-    let displays = content
-        .displays()
-        .iter()
-        .map(|display| {
-            let frame = display.frame();
-            DisplayInfo {
-                id: display.display_id().0,
-                width: frame.size.width,
-                height: frame.size.height,
-            }
-        })
-        .collect();
-    let windows = content
-        .windows()
-        .iter()
-        .filter_map(|window| {
-            let (app, title) = (window.owning_app()?, window.title()?);
-            let recordable =
-                window.window_layer() == 0 && window.is_on_screen() && !title.is_empty();
-            recordable.then(|| WindowInfo {
-                id: window.id(),
-                app: app.app_name().to_string(),
-                title: title.to_string(),
-            })
-        })
-        .collect();
-    Ok(Sources { displays, windows })
 }
 
 /// Runs on the capture thread: starts, reports that it started, waits for stop, finishes.
