@@ -5,11 +5,11 @@ import "@fontsource-variable/inter";
 import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import "./index.css";
-import Editor from "./components/editor/Editor";
-import RecordBar from "./components/RecordBar";
-import Picker from "./components/picker/Picker";
-import RecordingPreview from "./components/RecordingPreview";
-import { TooltipProvider } from "./components/ui/tooltip";
+import Editor from "@/features/editor/components/Editor";
+import RecordBar from "@/features/bar/components/RecordBar";
+import Picker from "@/features/picker/components/Picker";
+import RecordingPreview from "@/features/preview/components/RecordingPreview";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 const PICKER_PREFIX = "picker-";
 

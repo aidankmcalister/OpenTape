@@ -20,7 +20,11 @@ export function usePointerHover(pointer: Point | null): string | null {
           ?.closest<HTMLElement>(TARGET)
       : null;
     element?.setAttribute("data-hovered", "");
-    setName(element?.closest<HTMLElement>("[data-hover]")?.dataset.hover ?? null);
+    // What's under the pointer is only known after the DOM is drawn, so an effect sets it.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setName(
+      element?.closest<HTMLElement>("[data-hover]")?.dataset.hover ?? null,
+    );
     return () => element?.removeAttribute("data-hovered");
   }, [pointer]);
 

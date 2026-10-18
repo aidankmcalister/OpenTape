@@ -10,7 +10,7 @@ use anyhow::{Context, Result, bail};
 
 const AVCONVERT: &str = "/usr/bin/avconvert";
 
-pub fn to_mp4(video: &Path, output: &Path) -> Result<()> {
+pub(crate) fn to_mp4(video: &Path, output: &Path) -> Result<()> {
     let result = Command::new(AVCONVERT)
         .args(["--preset", "PresetPassthrough", "--replace", "--source"])
         .arg(video)
@@ -26,12 +26,12 @@ pub fn to_mp4(video: &Path, output: &Path) -> Result<()> {
 }
 
 /// `name.mp4`, with characters a file name can't hold swapped for dashes.
-pub fn file_name(name: &str) -> String {
+pub(crate) fn file_name(name: &str) -> String {
     format!("{}.mp4", name.replace(['/', ':'], "-"))
 }
 
 /// `name.mp4` in `folder`, or `name 2.mp4`, `name 3.mp4` and so on when it's taken, like Finder.
-pub fn free_path(folder: &Path, name: &str, is_taken: impl Fn(&Path) -> bool) -> PathBuf {
+pub(crate) fn free_path(folder: &Path, name: &str, is_taken: impl Fn(&Path) -> bool) -> PathBuf {
     (1..)
         .map(|copy| match copy {
             1 => folder.join(file_name(name)),

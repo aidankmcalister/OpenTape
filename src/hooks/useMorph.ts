@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import type { Animation } from "@/lib/app";
+import type { Animation } from "@/lib/bindings/Animation";
 import type { Size } from "@/lib/geometry";
 
 /** A pill's 1px border sits outside the measured layer. */
@@ -21,7 +21,9 @@ export function useMorph<Key extends string>(
   const hasShaped = useRef(false);
   const shapeListener = useRef(onShape);
   const [pill, setPill] = useState<Size | null>(null);
-  shapeListener.current = onShape;
+  useLayoutEffect(() => {
+    shapeListener.current = onShape;
+  });
 
   useLayoutEffect(() => {
     const layer = layers.current.get(active);

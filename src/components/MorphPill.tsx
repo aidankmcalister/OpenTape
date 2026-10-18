@@ -1,6 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 import { useMorph } from "@/hooks/useMorph";
-import type { Animation } from "@/lib/app";
+import type { Animation } from "@/lib/bindings/Animation";
 import type { Size } from "@/lib/geometry";
 import { cn } from "@/lib/utils";
 import Pill from "./Pill";

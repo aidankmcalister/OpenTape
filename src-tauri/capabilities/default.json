@@ -5,7 +5,6 @@
   "windows": ["bar", "editor", "picker-*", "preview"],
   "permissions": [
     "core:default",
-    "opener:default",
     "core:window:allow-start-dragging"
   ]
 }

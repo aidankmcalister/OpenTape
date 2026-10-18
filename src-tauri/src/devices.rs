@@ -2,21 +2,24 @@
 
 use cidre::{av, ns};
 use serde::Serialize;
+use ts_rs::TS;
 
-#[derive(Debug, Clone, Serialize)]
-pub struct Device {
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export)]
+pub(crate) struct Device {
     pub id: String,
     pub name: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct Devices {
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export)]
+pub(crate) struct Devices {
     pub cameras: Vec<Device>,
     pub microphones: Vec<Device>,
 }
 
 #[tauri::command]
-pub fn list_devices() -> Devices {
+pub(crate) fn list_devices() -> Devices {
     Devices {
         cameras: discover(
             &[

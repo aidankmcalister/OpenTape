@@ -1,26 +1,19 @@
-mod alert;
-mod app_icons;
-mod bar;
-mod capture;
-mod cursor_log;
-mod devices;
-mod editor;
-mod export;
-mod follow;
-mod glass;
-mod keys;
-mod macos_window;
-mod panel;
-mod pasteboard;
-mod picker;
-mod preview;
-mod recorder;
-mod recording;
-mod sources;
-mod timeline;
+//! The app's entry point: registers the shared state, sets up the fixed windows, and lists
+//! every command the frontend can call.
 
-use keys::Key;
+mod capture;
+mod devices;
+mod export;
+mod geometry;
+mod macos;
+mod picker;
+mod recording;
+mod util;
+mod windows;
+
+use macos::keys::{self, Key};
 use tauri::{AppHandle, Manager};
+use windows::{bar, editor, follow, preview};
 
 #[tauri::command]
 fn quit(app: AppHandle) {
@@ -38,7 +31,6 @@ fn on_key(app: &AppHandle, key: Key) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> tauri::Result<()> {
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(keys::plugin(on_key))
         .manage(recording::RecordingState::default())
