@@ -3,6 +3,8 @@
 
 mod capture;
 mod current_recording;
+#[cfg(debug_assertions)]
+mod dev;
 mod geometry;
 mod macos;
 mod picker;
@@ -120,6 +122,8 @@ pub fn run() -> tauri::Result<()> {
             preview::setup(app.handle())?;
             editor::setup(app.handle());
             picker::prepare(app.handle().clone());
+            #[cfg(debug_assertions)]
+            dev::open_editor_if_asked(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

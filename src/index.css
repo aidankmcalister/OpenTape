@@ -168,6 +168,9 @@
   --progress: var(--white);
   --progress-track: rgb(255 255 255 / 0.2);
 
+  /* The dots on the editor's canvas, behind the stage. */
+  --canvas-dot: rgb(255 255 255 / 0.07);
+
   /* Editor regions. Zoom uses the highlight; speed is blue. */
   --speed: var(--blue);
   --speed-foreground: var(--blue-soft);

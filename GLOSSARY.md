@@ -29,21 +29,21 @@ The names this project uses for its own things. Code, docs and reviews use them.
 - **Clip dock** (`ClipDock`): the morph pill at the bottom of the preview. It holds Save, Copy and Edit, then morphs to Saving, Copied, Saved with Show in Finder, or an error.
 - **Current recording** (`current_recording.rs`): the recording you've just made, named for when it started ("2026-10-16 07.41.28"). It waits in app storage while the preview and then the editor show it. It keeps, saves, copies, edits and closes itself, and each step decides which window shows: the bar, then the preview, then the editor. Save exports an `.mp4` to Downloads. Closing deletes the copy in app storage either way.
 - **Close (the preview or editor):** one flow for both. It asks first with a native alert centered on the screen, unless the recording is saved, then brings the bar back and deletes the copy in app storage. The alert's choices depend on the window: the editor can't save yet.
-- **Editor** (`src/editor`, `windows/editor.rs`): where Edit in the preview takes the recording. A prototype for now: it can't export, so closing an unsaved recording asks, then deletes it.
-- **Stage:** the editor's big view of the recording, framed the way it will export.
-- **Look:** how the editor frames the recording: background, padding, corners, inset, shadow and border. Sizes are measured on a 1920-wide frame, so a look matches at any size.
-- **Timeline:** the editor's strip under the stage, with the playhead and regions.
-- **Region:** a stretch of the timeline that zooms in or changes speed, added at the playhead with Z or S. A zoom can have a centre; without one it zooms on the middle.
-- **Frame at time t** (`frameAt` in `edits.ts`): everything needed to draw the edited video at one moment: the layout, corners, shadow, border, the eased zoom and which moment of the recording shows. The stage draws from it, and export will too.
-- **Rail:** the column of panel icons in the editor. Only Background has a panel so far.
-- **Island:** one of the editor's rounded areas, like the stage or the timeline.
+- **Editor** (`src/editor`, `windows/editor.rs`): where Edit in the preview takes the recording. Bare bones for now: a header with the recording's name, the stage and the timeline. Each editing piece comes back through its own issue. It can't export, so closing an unsaved recording asks, then deletes it.
+- **Stage:** the editor's big view of the recording, framed the way it will export. For now it always shows the default look (`DEFAULT_LOOK`).
+- **Look:** how the editor frames the recording: background, padding, corners, inset, shadow and border. Sizes are measured on a 1920-wide frame, so a look matches at any size. Nothing edits it yet; the stage uses the default.
+- **Timeline:** the editor's strip under the stage: play and pause (Space), the time against the length, the ruler and the playhead. Press or drag on it to seek. Tracks slot in under the ruler as they come back.
+- **Region:** a stretch of the timeline that zooms in or changes speed. A zoom can have a centre; without one it zooms on the middle. The logic is in `edits.ts`, but the editor doesn't show or add regions yet; they come back with the effect system.
+- **Frame at time t** (`frameAt` in `edits.ts`): everything needed to draw the edited video at one moment: the layout, corners, shadow, border, the eased zoom and which moment of the recording shows. Export and the stage will draw from it once regions are back; for now the stage uses only its layout (`frameLayout`).
+- **Rail:** the column of panel icons at the editor's left, with a panel like Background beside it. Removed for now; it comes back when there's a panel to open.
+- **Island:** one of the editor's rounded areas. Today there are two: the stage and the timeline.
 
 ## Shared pieces
 
 - **Pill** (`Pill`): the rounded bar shape every bar in the app uses.
 - **Morph pill** (`MorphPill`): a pill that glides between states of different widths, like the record bar's setup and recording states, or the clip dock. Each state keeps its own GPU layer so its text never shakes.
 - **Glass:** the native frosted view behind the record bar and the capture bar, owned by Rust in `macos/glass.rs`. A page can only blur its own content, so the blur of the apps behind is native.
-- **Panel:** a non-activating macOS panel (`NSPanel`). The bar, overlays and preview are panels, so they float over every space, including full-screen apps, without taking focus. Closing one crashes, so they're hidden, never closed. In the editor, "panel" also means a rail section like Background.
+- **Panel:** a non-activating macOS panel (`NSPanel`). The bar, overlays and preview are panels, so they float over every space, including full-screen apps, without taking focus. Closing one crashes, so they're hidden, never closed. In the editor, "panel" will also mean a rail section like Background.
 - **Floating windows** (`windows/floating.rs`): the record bar and the recording preview. They follow you to the display you click on. One module shows, hides and places them and runs their pointer loop; each window only says what to do when the pointer moves.
 - **Pointer hover** (`usePointerHover`): how hover works in windows that get no mouse moves (the preview and the overlays). Rust reports the pointer, and the page marks the element under it with `data-hovered`, which every `hover:` style matches too. This is what "hover bridge" refers to.
 - **System-wide keys** (`KeySet`): keys the app takes for a while because its windows aren't focused. Each key set handles its own keys. The picker takes Esc, Return and Tab (`PickerKey`), and Return and Tab go to every overlay: the one holding the Area box acts, or else the one under the pointer. The preview takes E, ⌘C and ⌘S (`PreviewKey`) while the pointer is over it.

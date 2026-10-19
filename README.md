@@ -4,7 +4,7 @@ A small, free, open-source screen recorder for macOS, in the spirit of Screen St
 
 ## Status
 
-Early and macOS only. Recording, pause, restart, the recording preview and Save work. The editor is a prototype: it can't export yet, and there's no audio or camera recording yet.
+Early and macOS only. Recording, pause, restart, the recording preview and Save work. The editor is bare bones for now (play and scrub the recording in the default look): it can't export yet, and there's no audio or camera recording yet.
 
 ## Requirements
 
@@ -51,7 +51,7 @@ src/                     the frontend (React, TypeScript, Tailwind)
   bar/                   the record bar: mode, devices, settings, the recording timer
   picker/                the overlays: highlight, Area box, capture bar
   preview/               the recording preview card and its Save, Copy and Edit
-  editor/                the editor prototype: stage, look, timeline, regions
+  editor/                the editor: stage and timeline; look and region logic in edits.ts
   components/            shared looks (Pill, MorphPill)
     ui/                  shadcn components on Base UI
   hooks/                 shared React hooks (Tauri events, pointer hover, morph, video clock)
