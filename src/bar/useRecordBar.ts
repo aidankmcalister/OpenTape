@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { LogicalPosition } from "@tauri-apps/api/dpi";
 import { CheckMenuItem, Menu, MenuItem } from "@tauri-apps/api/menu";
+import { usePointerHover } from "@/hooks/usePointerHover";
 import {
   useInvokeOnMount,
   useOneAtATime,
@@ -31,6 +32,9 @@ export function useRecordBar() {
   }
   useRustValue("recording_status", "recording-status", applyStatus);
   useTauriEvent("picker-closed", () => setPickerMode(null));
+  // The bar never takes focus, so Rust reports the pointer for hover.
+  const { setPointer } = usePointerHover();
+  useTauriEvent("bar-pointer", setPointer, "window");
 
   /** Runs `job` unless another is still running, showing its error on the bar if it fails. */
   async function attempt(job: () => Promise<unknown>) {

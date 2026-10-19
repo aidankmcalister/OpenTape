@@ -6,7 +6,7 @@
 use std::{sync::Mutex, time::Duration};
 
 use objc2::{MainThreadMarker, MainThreadOnly, rc::Retained};
-use objc2_app_kit::{NSEvent, NSPopUpMenuWindowLevel, NSScreen, NSWindow};
+use objc2_app_kit::{NSCursor, NSEvent, NSPopUpMenuWindowLevel, NSScreen, NSWindow};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use tauri::{AppHandle, Manager, WebviewWindow};
 
@@ -142,16 +142,19 @@ impl Floating {
                     follow_pointer(ns_window, self.window.anchor);
                 }
                 (self.window.on_pointer)(ns_window);
-                if self.window.hover.is_some() {
-                    // Nowhere on the page once it's hidden.
-                    let on_page = if ns_window.isVisible() {
-                        let pointer = ns_window.mouseLocationOutsideOfEventStream();
-                        page_point(pointer, ns_window.frame().size)
-                    } else {
-                        None
-                    };
-                    self.report_pointer(&app, on_page);
+                // Nowhere on the page once it's hidden.
+                let on_page = if ns_window.isVisible() {
+                    let pointer = ns_window.mouseLocationOutsideOfEventStream();
+                    page_point(pointer, ns_window.frame().size)
+                } else {
+                    None
+                };
+                // The window never becomes key, so macOS never resets the cursor over it: it
+                // would keep whatever the app underneath last showed, like a resize arrow.
+                if on_page.is_some() && !ns_window.ignoresMouseEvents() {
+                    NSCursor::arrowCursor().set();
                 }
+                self.report_pointer(&app, on_page);
             })
             .is_ok()
         });

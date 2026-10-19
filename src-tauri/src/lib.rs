@@ -37,6 +37,7 @@ pub(crate) enum PageEvent {
     PickerClosed,
     RecordingStatus(RecordingStatus),
     CurrentRecording(Option<ShownRecording>),
+    BarPointer(Option<Point>),
     PreviewPointer(Option<Point>),
     PreviewKey(PreviewKey),
 }
@@ -118,6 +119,7 @@ pub fn run() -> tauri::Result<()> {
             bar::setup(&bar)?;
             preview::setup(app.handle())?;
             editor::setup(app.handle());
+            picker::prepare(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

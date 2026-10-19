@@ -10,7 +10,7 @@ export default function Pill({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       className={cn(
-        "flex w-max items-center gap-1 rounded-full border border-glass-border bg-glass p-2 text-[13px] font-medium text-foreground",
+        "flex w-max items-center gap-1 rounded-full border border-glass-border bg-glass p-2 text-ui font-medium text-foreground",
         className,
       )}
       {...props}

@@ -12,7 +12,8 @@ use serde::Serialize;
 use tauri::{Manager, WebviewWindow};
 use ts_rs::TS;
 
-use super::floating::{Anchor, Behaviour, Floating};
+use super::floating::{Anchor, Behaviour, Floating, Hover};
+use crate::PageEvent;
 use crate::geometry;
 use crate::macos::{
     self,
@@ -22,13 +23,17 @@ use crate::util::CmdResult;
 
 pub(crate) const LABEL: &str = "bar";
 
-/// Clicks beside the pill pass through to the apps underneath.
+/// Clicks beside the pill pass through to the apps underneath. The bar never becomes the key
+/// window, so its page gets no mouse moves; Rust reports the pointer for its hover states.
 pub(crate) static WINDOW: Floating = Floating::new(Behaviour {
     label: LABEL,
     anchor: Anchor::BottomCenter,
     keeps_its_spot: true,
     on_pointer: let_clicks_through,
-    hover: None,
+    hover: Some(Hover {
+        event: PageEvent::BarPointer,
+        on_enter_or_leave: |_, _| {},
+    }),
 });
 /// The pill's current width, as `f64` bits, shared with the pointer loop.
 static PILL_WIDTH: AtomicU64 = AtomicU64::new(0);

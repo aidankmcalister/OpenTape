@@ -69,7 +69,7 @@ function Island({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-xl border border-hairline bg-island",
+        "overflow-hidden rounded-xl border border-hairline bg-card",
         className,
       )}
       {...props}
@@ -200,7 +200,7 @@ function Stage({ editor }: { editor: EditorState }) {
         className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle,rgb(255_255_255/0.07)_1px,transparent_1px)] bg-size-[16px_16px] bg-position-[8px_8px]"
       >
         <div
-          className="relative grid place-items-center overflow-hidden rounded-lg border border-glass-border shadow-[0_24px_48px_rgb(0_0_0/0.45)]"
+          className="relative grid place-items-center overflow-hidden rounded-lg border border-glass-border shadow-stage"
           style={{ ...frame, background: fillCss(look.fill) }}
         >
           <div

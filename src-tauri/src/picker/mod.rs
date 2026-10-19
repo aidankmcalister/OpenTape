@@ -6,16 +6,19 @@
 mod overlays;
 mod sources;
 
-use std::{collections::HashMap, sync::Mutex, time::Duration};
+use std::{sync::Mutex, time::Duration};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use cidre::cg;
+use objc2_app_kit::NSCursor;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State, WebviewWindow};
 use tauri_plugin_global_shortcut::{Code, Shortcut};
 use ts_rs::TS;
 
-use self::overlays::{is_overlay, overlay_label, overlays, place_glass, put_away, show_overlay};
+use self::overlays::{
+    is_overlay, overlay_label, overlays, place_glass, prepare_overlays, put_away, show_overlay,
+};
 pub(crate) use self::sources::Session;
 use self::sources::{Mode, Setup, apply_safe_tops, framing};
 use crate::capture::Target;
@@ -37,7 +40,7 @@ pub(crate) async fn open_picker(
     state: State<'_, PickerState>,
     mode: Mode,
 ) -> CmdResult {
-    let mut sources = run_blocking(|| sources::list(&HashMap::new())).await?;
+    let mut sources = run_blocking(sources::list).await?;
     let safe_tops = macos::run_on_main_thread(&app, safe_tops)?;
     apply_safe_tops(&mut sources.displays, &safe_tops);
     let displays = sources.displays.clone();
@@ -51,6 +54,9 @@ pub(crate) async fn open_picker(
     for display in &displays {
         show_overlay(&app, display)?;
     }
+    // An overlay put away earlier reloaded while no picker was open, so its own ask for the
+    // setup found none. This hands it the session; a page still loading asks and finds it.
+    announce_session(&app);
     watch_screen(app.clone());
     if let Err(err) = PickerKey::take(&app) {
         eprintln!("could not take the picker keys, so only the bar works: {err}");
@@ -58,10 +64,26 @@ pub(crate) async fn open_picker(
     Ok(())
 }
 
+/// Warms the picker at launch: draws the app icons and makes the overlays, so the first pick
+/// opens as fast as the rest. Without screen-recording permission it does nothing, and the first
+/// pick does this work instead.
+pub(crate) fn prepare(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let Ok(sources) = run_blocking(sources::list).await else {
+            return;
+        };
+        if let Err(err) = prepare_overlays(&app, &sources.displays) {
+            eprintln!("could not make the picker overlays ahead of time: {err:#}");
+        }
+    });
+}
+
 #[tauri::command]
-pub(crate) fn picker_setup(state: State<'_, PickerState>) -> CmdResult<Setup> {
-    let session = lock(&state.0).clone().context("the picker isn't open")?;
-    Ok(Setup {
+/// `None` while no picker is open: an overlay's page also loads while it's hidden, and then gets
+/// the session when the picker opens.
+pub(crate) fn picker_setup(state: State<'_, PickerState>) -> Option<Setup> {
+    let session = lock(&state.0).clone()?;
+    Some(Setup {
         session,
         cursor: cursor_position(),
     })
@@ -228,6 +250,9 @@ fn watch_screen(app: AppHandle) {
             // Only the overlays draw the cursor, so the other windows aren't woken for it.
             // Fails only once the overlays are gone.
             let _ = PageEvent::PickerCursor(point).send_to_each(&app, is_overlay);
+            // The overlays never become key, so macOS never resets the cursor over them: it
+            // would keep whatever the app underneath last showed. Fails only while quitting.
+            let _ = app.run_on_main_thread(|| NSCursor::arrowCursor().set());
             let is_pinned = lock(&app.state::<PickerState>().0)
                 .as_ref()
                 .is_some_and(|session| session.pinned_window_id.is_some());
@@ -248,14 +273,10 @@ fn watch_screen(app: AppHandle) {
     });
 }
 
-/// Lists the sources again, reusing the icons already sent so only new apps draw theirs.
+/// Lists the sources again after the window list changed.
 fn refresh_sources(app: &AppHandle) {
-    let known_icons = lock(&app.state::<PickerState>().0)
-        .as_ref()
-        .map(|session| session.sources.icons.clone())
-        .unwrap_or_default();
     // A failed refresh keeps the last list; the next change to the window list tries again.
-    let Ok(mut sources) = sources::list(&known_icons) else {
+    let Ok(mut sources) = sources::list() else {
         return;
     };
     update_session(app, |session| {

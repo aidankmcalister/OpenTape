@@ -42,7 +42,8 @@ export function usePicker(displayId: number) {
     setPointer(pointerOnDisplay(session.current, cursor.current, displayId));
   }
 
-  useInvokeOnMount<Setup>("picker_setup", (setup) => {
+  useInvokeOnMount<Setup | null>("picker_setup", (setup) => {
+    if (!setup) return;
     // Events that arrived first are newer than the setup.
     session.current ??= setup.session;
     cursor.current ??= setup.cursor;

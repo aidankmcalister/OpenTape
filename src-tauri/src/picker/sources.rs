@@ -2,7 +2,10 @@
 //! points (top-left origin), the same space as the cursor position. Also the picker session
 //! built from them, which is sent whole to the overlays whenever it changes.
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::{LazyLock, Mutex},
+};
 
 use anyhow::Result;
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -16,6 +19,7 @@ use ts_rs::TS;
 use crate::capture::{self, CaptureSize, NORMAL_WINDOW_LAYER, Target};
 use crate::geometry::{Frame, Point};
 use crate::macos;
+use crate::util::lock;
 use crate::windows::SafeTop;
 
 #[derive(Debug, Clone, Serialize, TS)]
@@ -107,8 +111,11 @@ pub(super) struct Framing {
     pub(super) window: Option<Frame>,
 }
 
-/// `known_icons` are reused by process ID, so only apps new since the last list draw theirs.
-pub(super) fn list(known_icons: &HashMap<u32, String>) -> Result<Sources> {
+/// App icons already drawn, by process ID. Drawing every icon again made each open of the picker
+/// slow, so only apps new since the last list draw theirs, and apps that quit drop out.
+static ICONS: LazyLock<Mutex<HashMap<u32, String>>> = LazyLock::new(Mutex::default);
+
+pub(super) fn list() -> Result<Sources> {
     let content = capture::shareable_content()?;
     let mut displays = Vec::new();
     for (index, display) in content.displays().iter().enumerate() {
@@ -130,16 +137,15 @@ pub(super) fn list(known_icons: &HashMap<u32, String>) -> Result<Sources> {
     }
     sort_front_to_back(&mut windows, &stacking_order());
     let pids: HashSet<u32> = windows.iter().map(|window| window.pid).collect();
+    let known = lock(&ICONS).clone();
     let mut icons = HashMap::new();
     for pid in pids {
-        let icon = known_icons
-            .get(&pid)
-            .cloned()
-            .or_else(|| icon_data_url(pid));
+        let icon = known.get(&pid).cloned().or_else(|| icon_data_url(pid));
         if let Some(icon) = icon {
             icons.insert(pid, icon);
         }
     }
+    lock(&ICONS).clone_from(&icons);
     Ok(Sources {
         displays,
         windows,

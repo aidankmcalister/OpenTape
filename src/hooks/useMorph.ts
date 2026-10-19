@@ -56,7 +56,9 @@ export function useMorph<Key extends string>(
     pillStyle: pillSize
       ? {
           ...pillSize,
-          transition: `width ${durationMs}ms cubic-bezier(${ease.join(",")})`,
+          // Opacity too, so a pill can fade itself: fading a wrapper instead would cut its
+          // backdrop blur off from what's behind until the fade ends.
+          transition: `width ${durationMs}ms cubic-bezier(${ease.join(",")}), opacity 200ms ease-out`,
         }
       : undefined,
     layerProps: (key: Key) => ({

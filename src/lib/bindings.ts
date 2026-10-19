@@ -44,7 +44,7 @@ export type Mode = "display" | "window" | "area";
  * Every event Rust sends the pages, named the way the pages hear it, with what it carries. The
  * pages read each event's payload type from this, so the two can't drift apart.
  */
-export type PageEvent = { "event": "picker-session", "payload": Session } | { "event": "picker-cursor", "payload": Point } | { "event": "picker-recording", "payload": Frame | null } | { "event": "picker-key", "payload": PickerKey } | { "event": "picker-closed" } | { "event": "recording-status", "payload": RecordingStatus } | { "event": "current-recording", "payload": ShownRecording | null } | { "event": "preview-pointer", "payload": Point | null } | { "event": "preview-key", "payload": PreviewKey };
+export type PageEvent = { "event": "picker-session", "payload": Session } | { "event": "picker-cursor", "payload": Point } | { "event": "picker-recording", "payload": Frame | null } | { "event": "picker-key", "payload": PickerKey } | { "event": "picker-closed" } | { "event": "recording-status", "payload": RecordingStatus } | { "event": "current-recording", "payload": ShownRecording | null } | { "event": "bar-pointer", "payload": Point | null } | { "event": "preview-pointer", "payload": Point | null } | { "event": "preview-key", "payload": PreviewKey };
 
 export type Phase = "idle" | "starting" | "recording" | "paused" | "stopping";
 

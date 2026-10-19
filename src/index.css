@@ -20,9 +20,24 @@
   }
 }
 
+/*
+ * Design tokens, in three layers:
+ *   1. Palette (:root, first block): the raw colours. Nothing outside this file uses them.
+ *   2. Roles (:root, second block): what a colour is for. Components use only these, through the
+ *      Tailwind names in @theme below (bg-card, text-faint, border-hairline, ...).
+ *   3. Scales (@theme): type sizes, radii and shadows.
+ * Change a value here and it changes everywhere; don't write colours or sizes in components.
+ * The app is dark only, so there's one set of values.
+ */
+
 @theme inline {
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* Type: the UI is set at 13px; captions and keycaps are smaller. */
+  --text-ui: 13px;
+  --text-caption: 11px;
+  --text-micro: 10px;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -53,67 +68,110 @@
   --color-primary-tint-hover: var(--primary-tint-hover);
   --color-primary-tint-foreground: var(--primary-tint-foreground);
   --color-edge: var(--edge);
-  --color-island: var(--island);
   --color-canvas: var(--canvas);
   --color-hairline: var(--hairline);
   --color-faint: var(--faint);
   --color-raised: var(--raised);
   --color-raised-hover: var(--raised-hover);
+  --color-progress: var(--progress);
+  --color-progress-track: var(--progress-track);
   --color-speed: var(--speed);
   --color-speed-foreground: var(--speed-foreground);
-  --shadow-pill: 0 16px 32px rgb(0 0 0 / 0.45);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.4);
   --radius-2xl: calc(var(--radius) * 1.8);
+
+  /* Floating pills, menus, the editor's stage, and a pressed toggle, from high to low. */
+  --shadow-pill: 0 16px 32px rgb(0 0 0 / 0.45);
+  --shadow-stage: 0 24px 48px rgb(0 0 0 / 0.45);
+  --shadow-popover: 0 12px 16px rgb(0 0 0 / 0.5);
+  --shadow-pressed: 0 1px 1px rgb(0 0 0 / 0.4);
 }
 
+/* 1. Palette. Grays run dark to light; each hue has a strong and a soft step. */
 :root {
-  --background: #0e0e10;
-  --foreground: #ededf0;
-  --card: #161618;
-  --card-foreground: #ededf0;
-  --popover: #202024;
-  --popover-foreground: #ededf0;
-  --primary: #d1440d;
-  --primary-foreground: #ffffff;
-  /* Secondary and accent are see-through, so they sit on any surface: glass, video, panels. */
-  --secondary: rgb(255 255 255 / 0.07);
-  --secondary-foreground: #ededf0;
-  --muted: #1e1e21;
-  --muted-foreground: #a1a1aa;
-  --accent: rgb(255 255 255 / 0.1);
-  --accent-foreground: #ededf0;
-  --destructive: #e5484d;
-  --border: #2a2a2e;
-  --input: #2a2a2e;
-  --ring: #ff7a1a;
-  --record: #e5484d;
-  --highlight: #ff7a1a;
-  --highlight-foreground: #ff9a4d;
-  /* The bar sits on a native blur; overlay pills can't, so theirs is nearly opaque. */
-  /* Light enough that the blur behind it shows through. */
-  --glass: rgb(30 30 33 / 0.6);
-  --glass-border: rgb(255 255 255 / 0.14);
-  --dim: rgb(0 0 0 / 0.5);
-  /* Covers the target the picker points at; a border can't follow every window's corners. */
-  --tint: rgb(255 122 26 / 0.22);
-  --edge: rgb(0 0 0 / 0.6);
-  /* Primary buttons are tinted orange rather than filled. */
+  --gray-1: #0e0e10;
+  --gray-2: #101012;
+  --gray-3: #161618;
+  --gray-4: #1e1e21;
+  --gray-5: #202024;
+  --gray-6: #2a2a2e;
+  --gray-9: #82828c;
+  --gray-10: #a1a1aa;
+  --gray-12: #ededf0;
+  --orange-strong: #d1440d;
+  --orange: #ff7a1a;
+  --orange-soft: #ff9a4d;
+  --red: #e5484d;
+  --blue: #3d9bff;
+  --blue-soft: #8cc4ff;
+  --white: #ffffff;
+}
+
+/* 2. Roles. */
+:root {
+  /* Surfaces, from the window's floor up to things that float. */
+  --background: var(--gray-1);
+  --canvas: var(--gray-2);
+  --card: var(--gray-3);
+  --card-foreground: var(--gray-12);
+  --muted: var(--gray-4);
+  --popover: var(--gray-5);
+  --popover-foreground: var(--gray-12);
+  --raised: var(--gray-5);
+  --raised-hover: var(--gray-6);
+
+  /* Text, strongest first. */
+  --foreground: var(--gray-12);
+  --muted-foreground: var(--gray-10);
+  --faint: var(--gray-9);
+
+  /* Lines. */
+  --border: var(--gray-6);
+  --input: var(--gray-6);
+  --hairline: rgb(255 255 255 / 0.08);
+
+  /* Brand. Primary buttons are tinted orange rather than filled. */
+  --primary: var(--orange-strong);
+  --primary-foreground: var(--white);
   --primary-tint: rgb(255 122 26 / 0.18);
   --primary-tint-hover: rgb(255 122 26 / 0.28);
-  --primary-tint-foreground: #ff9a4d;
-  /* The editor's panels sit on islands; the recording on a darker canvas. */
-  --island: #17171a;
-  --canvas: #101012;
-  --hairline: rgb(255 255 255 / 0.08);
-  --faint: #82828c;
-  --raised: #202024;
-  --raised-hover: #2a2a2f;
-  --speed: #3d9bff;
-  --speed-foreground: #8cc4ff;
+  --primary-tint-foreground: var(--orange-soft);
+  --highlight: var(--orange);
+  --highlight-foreground: var(--orange-soft);
+  --ring: var(--orange);
+
+  /* See-through fills, so they sit on any surface: glass, video, panels. */
+  --secondary: rgb(255 255 255 / 0.07);
+  --secondary-foreground: var(--gray-12);
+  --accent: rgb(255 255 255 / 0.1);
+  --accent-foreground: var(--gray-12);
+
+  /* Status. */
+  --destructive: var(--red);
+  --record: var(--red);
+
+  /* Glass: light enough that the native blur behind it shows through. */
+  --glass: rgb(30 30 33 / 0.6);
+  --glass-border: rgb(255 255 255 / 0.14);
+
+  /* The picker: dims what isn't picked, and tints the target, since a border can't follow every
+     window's corners. The edge keeps the Area box visible on light content. */
+  --dim: rgb(0 0 0 / 0.5);
+  --tint: rgb(255 122 26 / 0.22);
+  --edge: rgb(0 0 0 / 0.6);
+
+  /* The preview's loop progress. */
+  --progress: var(--white);
+  --progress-track: rgb(255 255 255 / 0.2);
+
+  /* Editor regions. Zoom uses the highlight; speed is blue. */
+  --speed: var(--blue);
+  --speed-foreground: var(--blue-soft);
+
   --radius: 0.625rem;
 }
 
@@ -122,6 +180,6 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply font-sans text-[13px] text-foreground antialiased select-none;
+    @apply font-sans text-ui text-foreground antialiased select-none;
   }
 }

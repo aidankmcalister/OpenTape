@@ -171,7 +171,7 @@ function AddMenu({ onAdd }: { onAdd: (kind: RegionKind) => void }) {
                   <span className="block text-xs leading-4 font-semibold">
                     {label}
                   </span>
-                  <span className="block text-[11px] leading-4 text-muted-foreground">
+                  <span className="block text-caption leading-4 text-muted-foreground">
                     {hint}
                   </span>
                 </span>
@@ -247,7 +247,7 @@ function Tracks({ editor }: { editor: Editor }) {
 function PlayTime({ clock }: { clock: Clock }) {
   const time = useClockValue(clock, (seconds) => formatTime(seconds * 1000));
   return (
-    <span className="w-16 pl-1 font-mono text-[13px] leading-5 text-muted-foreground tabular-nums">
+    <span className="w-16 pl-1 font-mono text-ui leading-5 text-muted-foreground tabular-nums">
       {time}
     </span>
   );
@@ -288,7 +288,7 @@ function Ruler({
           style={{ left: percentOf(ms) }}
         >
           {isMajor && (
-            <span className="absolute top-0 right-1 text-[11px] leading-4 font-medium text-faint tabular-nums">
+            <span className="absolute top-0 right-1 text-caption leading-4 font-medium text-faint tabular-nums">
               {rulerLabel(ms)}
             </span>
           )}

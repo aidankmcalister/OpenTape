@@ -137,7 +137,7 @@ function Heading({
   return (
     <h3
       className={cn(
-        "shrink-0 px-3 pt-3.5 pb-1.5 text-[13px] font-semibold",
+        "shrink-0 px-3 pt-3.5 pb-1.5 text-ui font-semibold",
         !isFirst && "mt-2 border-t border-hairline",
       )}
     >
@@ -153,7 +153,7 @@ function AmountBar({ editor, amount }: { editor: Editor; amount: Amount }) {
   const filled = `${(value / max) * 100}%`;
   return (
     <div className="px-3 py-1">
-      <label className="relative flex h-8 items-center justify-between overflow-hidden rounded-lg border border-hairline bg-white/5 px-[11px] text-xs">
+      <label className="relative flex h-8 items-center justify-between overflow-hidden rounded-lg border border-hairline bg-secondary px-[11px] text-xs">
         <span
           className="absolute inset-y-0 left-0 bg-highlight/20"
           style={{ width: filled }}

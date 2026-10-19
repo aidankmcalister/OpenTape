@@ -3,14 +3,13 @@ import { Check, CircleAlert, Copy, Download, Pencil, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
-import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { MorphPill } from "@/components/Pill";
+import { MorphPill, PillDivider } from "@/components/Pill";
 import { useClockValue } from "@/hooks/useVideoClock";
 import { formatClock, type Clock } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -22,6 +21,7 @@ export default function RecordingPreview() {
   const preview = useRecordingPreview();
   if (!preview.videoSrc) return null;
   const { durationMs, isHovered, activity, hoveredName } = preview;
+  const isDockShown = isHovered || activity !== "idle";
 
   return (
     <div className="relative h-screen w-screen overflow-hidden rounded-xl border border-glass-border bg-card">
@@ -53,14 +53,16 @@ export default function RecordingPreview() {
       {/* The actions, or what Save or Copy is doing. The clip behind is blurred, so it reads on any recording. */}
       <div
         className={cn(
-          "absolute inset-x-0 bottom-5 flex justify-center transition-opacity duration-200",
-          !(isHovered || activity !== "idle") &&
-            "pointer-events-none opacity-0",
+          "absolute inset-x-0 bottom-5 flex justify-center",
+          !isDockShown && "pointer-events-none",
         )}
       >
         <MorphPill
           active={activity === "idle" ? "actions" : activity}
-          className="backdrop-blur-xl backdrop-saturate-150"
+          className={cn(
+            "backdrop-blur-xl backdrop-saturate-150",
+            !isDockShown && "opacity-0",
+          )}
           layerClassName="gap-1 p-1"
           layers={{
             actions: (
@@ -85,10 +87,7 @@ export default function RecordingPreview() {
                 >
                   <Copy />
                 </Action>
-                <Separator
-                  orientation="vertical"
-                  className="mx-1 h-5 bg-glass-border"
-                />
+                <PillDivider />
                 <Action
                   name="edit"
                   label="Edit"
@@ -148,9 +147,9 @@ function LoopProgress({
     loopProgress(seconds, durationMs),
   );
   return (
-    <div className="absolute inset-x-3 bottom-2 h-1 overflow-hidden rounded-full bg-white/20">
+    <div className="absolute inset-x-3 bottom-2 h-1 overflow-hidden rounded-full bg-progress-track">
       <div
-        className="h-full bg-white"
+        className="h-full bg-progress"
         style={{ width: `${progress * 100}%` }}
       />
     </div>
@@ -200,7 +199,7 @@ function Action({
 
 function Message({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   return (
-    <span className="flex h-8 items-center gap-2 px-3 text-[13px] font-medium [&_svg]:size-4 [&_svg]:shrink-0">
+    <span className="flex h-8 items-center gap-2 px-3 text-ui font-medium [&_svg]:size-4 [&_svg]:shrink-0">
       {icon}
       {children}
     </span>

@@ -45,7 +45,7 @@ pub(super) fn is_overlay(target: &EventTarget) -> bool {
 /// show over another app's full-screen space.
 pub(super) fn show_overlay(app: &AppHandle, display: &DisplayInfo) -> Result<()> {
     let Some(window) = app.get_webview_window(&overlay_label(display.id)) else {
-        return build_overlay(app, display);
+        return build_overlay(app, display, true);
     };
     let frame = display.frame;
     window.set_position(LogicalPosition::new(frame.x, frame.y))?;
@@ -71,7 +71,18 @@ pub(super) fn place_glass(overlay: &WebviewWindow, rect: Option<Frame>) -> tauri
     })
 }
 
-fn build_overlay(app: &AppHandle, display: &DisplayInfo) -> Result<()> {
+/// Makes a hidden overlay for each display at launch, so the first pick doesn't wait for the
+/// webviews to start. A display plugged in later gets its overlay on first use.
+pub(super) fn prepare_overlays(app: &AppHandle, displays: &[DisplayInfo]) -> Result<()> {
+    for display in displays {
+        if app.get_webview_window(&overlay_label(display.id)).is_none() {
+            build_overlay(app, display, false)?;
+        }
+    }
+    Ok(())
+}
+
+fn build_overlay(app: &AppHandle, display: &DisplayInfo, visible: bool) -> Result<()> {
     let frame = display.frame;
     let window = WebviewWindowBuilder::new(app, overlay_label(display.id), WebviewUrl::default())
         .position(frame.x, frame.y)
@@ -84,6 +95,7 @@ fn build_overlay(app: &AppHandle, display: &DisplayInfo) -> Result<()> {
         // The first click on an overlay reaches its page, so a button works on the first press.
         .accept_first_mouse(true)
         .focused(false)
+        .visible(visible)
         .build()?;
     windows::never_close(&window);
     // Above the menu bar, so the overlay can dim and frame the whole display.
