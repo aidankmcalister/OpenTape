@@ -13,8 +13,8 @@ import { MorphPill, PillDivider } from "@/components/Pill";
 import { useClockValue } from "@/hooks/useVideoClock";
 import { formatClock, type Clock } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import { loopProgress } from "./preview";
-import { useRecordingPreview } from "./useRecordingPreview";
+import { loopProgress } from "@/lib/preview/preview";
+import { useRecordingPreview } from "@/hooks/preview/useRecordingPreview";
 
 /** The recording, playing on a loop, with its length and a close button. Hover shows the actions. */
 export default function RecordingPreview() {

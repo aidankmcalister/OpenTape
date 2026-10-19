@@ -10,7 +10,11 @@ import { usePointerHover } from "@/hooks/usePointerHover";
 import { useOneAtATime, useTauriEvent } from "@/hooks/useTauri";
 import { useVideoClock } from "@/hooks/useVideoClock";
 import type { PreviewKey } from "@/lib/bindings";
-import { IDLE_ACTIVITY, nextActivity, SHOWS_FOR_MS } from "./preview";
+import {
+  IDLE_ACTIVITY,
+  nextActivity,
+  SHOWS_FOR_MS,
+} from "@/lib/preview/preview";
 
 export function useRecordingPreview() {
   const video = useRef<HTMLVideoElement>(null);

@@ -4,9 +4,9 @@ The names this project uses for its own things. Code, docs and reviews use them.
 
 ## The flow
 
-- **Record bar** (`src/bar`, `windows/bar.rs`): the pill at the bottom center of the screen, just above the Dock. In setup it has Quit, the mode, camera and microphone, and Settings. While recording it shows the timer, Restart, Pause and Stop.
+- **Record bar** (`src/pages/RecordBar.tsx`, `windows/bar.rs`): the pill at the bottom center of the screen, just above the Dock. In setup it has Quit, the mode, camera and microphone, and Settings. While recording it shows the timer, Restart, Pause and Stop.
 - **Mode:** what you're about to record: a display, a window or an area.
-- **Picker** (`src/picker`, `picker/`): what opens after you choose a mode. It puts one overlay on each display and lets you point at the target.
+- **Picker** (`src/pages/Picker.tsx`, `picker/`): what opens after you choose a mode. It puts one overlay on each display and lets you point at the target.
 - **Overlay:** the see-through window the picker places over one display. It draws the highlight or the Area box. Overlays are made once, then hidden and shown, never closed.
 - **Picker session** (`Session`): what's being picked, sent whole from Rust to every overlay whenever it changes: the mode, the sources, the pinned window and the display holding the Area box. Rust works out each window's display and each display's scale once, so the overlays never derive them.
 - **Sources:** the displays and on-screen windows the picker can pick from.
@@ -25,18 +25,17 @@ The names this project uses for its own things. Code, docs and reviews use them.
 - **Pause:** frames captured while paused are left out, so the file plays straight through.
 - **Pause timeline** (`capture/timeline.rs`): a recording's time with its pauses cut out, on the clock ScreenCaptureKit stamps frames with. The bar's timer and the video agree because both use it. Not the editor's timeline.
 - **Restart:** throws away what's been recorded and records the same target again, after a native alert. It pauses while asking, so the alert never ends up in the recording.
-- **Recording preview** (`src/preview`, `windows/preview.rs`): the card in the bottom-left corner after you stop. It loops the clip. Hover shows the clip dock. The record bar hides while it shows.
+- **Recording preview** (`src/pages/RecordingPreview.tsx`, `windows/preview.rs`): the card in the bottom-left corner after you stop. It loops the clip. Hover shows the clip dock. The record bar hides while it shows.
 - **Clip dock** (`ClipDock`): the morph pill at the bottom of the preview. It holds Save, Copy and Edit, then morphs to Saving, Copied, Saved with Show in Finder, or an error.
 - **Current recording** (`current_recording.rs`): the recording you've just made, named for when it started ("2026-10-16 07.41.28"). It waits in app storage while the preview and then the editor show it. It keeps, saves, copies, edits and closes itself, and each step decides which window shows: the bar, then the preview, then the editor. Save exports an `.mp4` to Downloads. Closing deletes the copy in app storage either way.
 - **Close (the preview or editor):** one flow for both. It asks first with a native alert centered on the screen, unless the recording is saved, then brings the bar back and deletes the copy in app storage. The alert's choices depend on the window: the editor can't save yet.
-- **Editor** (`src/editor`, `windows/editor.rs`): where Edit in the preview takes the recording. Bare bones for now: a header with the recording's name, the stage and the timeline. Each editing piece comes back through its own issue. It can't export, so closing an unsaved recording asks, then deletes it.
-- **Stage:** the editor's big view of the recording, framed the way it will export. For now it always shows the default look (`DEFAULT_LOOK`).
+- **Editor** (`src/pages/Editor.tsx`, `windows/editor.rs`): where Edit in the preview takes the recording. Empty for now (a black box); it's being rebuilt one piece at a time. `bun run dev:editor` opens it on your newest download. It can't export, so closing an unsaved recording asks, then deletes it.
+- **Stage:** the editor's big view of the recording, framed the way it will export.
 - **Look:** how the editor frames the recording: background, padding, corners, inset, shadow and border. Sizes are measured on a 1920-wide frame, so a look matches at any size. Nothing edits it yet; the stage uses the default.
-- **Timeline:** the editor's strip under the stage: play and pause (Space), the time against the length, the ruler and the playhead. Press or drag on it to seek. Tracks slot in under the ruler as they come back.
+- **Timeline:** the editor's strip under the stage: play and pause (Space), the time, the ruler and the playhead. Effect tracks slot in under the ruler.
 - **Region:** a stretch of the timeline that zooms in or changes speed. A zoom can have a centre; without one it zooms on the middle. The logic is in `edits.ts`, but the editor doesn't show or add regions yet; they come back with the effect system.
-- **Frame at time t** (`frameAt` in `edits.ts`): everything needed to draw the edited video at one moment: the layout, corners, shadow, border, the eased zoom and which moment of the recording shows. Export and the stage will draw from it once regions are back; for now the stage uses only its layout (`frameLayout`).
-- **Rail:** the column of panel icons at the editor's left, with a panel like Background beside it. Removed for now; it comes back when there's a panel to open.
-- **Island:** one of the editor's rounded areas. Today there are two: the stage and the timeline.
+- **Frame at time t** (`frameAt` in `edits.ts`): everything needed to draw the edited video at one moment: the layout, corners, shadow, border, the eased zoom and which moment of the recording shows. The stage and export will both draw from it.
+- **Island:** one of the editor's rounded areas, such as the stage and the timeline.
 
 ## Shared pieces
 

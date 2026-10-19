@@ -32,5 +32,5 @@ export default tseslint.config(
   },
   // The one place cn is configured, and the editor's look presets, which are user-facing colours.
   { files: ["src/lib/utils.ts"], rules: { "no-restricted-imports": "off" } },
-  { files: ["src/editor/edits.ts", "src/editor/*.test.ts"], rules: { "no-restricted-syntax": "off" } },
+  { files: ["src/lib/editor/edits.ts", "src/lib/editor/*.test.ts"], rules: { "no-restricted-syntax": "off" } },
 );

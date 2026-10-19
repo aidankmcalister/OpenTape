@@ -16,7 +16,7 @@ import {
   record,
   sameView,
   type PickerView,
-} from "./view";
+} from "@/lib/picker/view";
 
 /**
  * What this overlay shows. The cursor streams in 60 times a second, so it's kept in a ref: the

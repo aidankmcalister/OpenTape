@@ -75,6 +75,9 @@
     ],
     "macOS": {
       "signingIdentity": "screen-recorder dev"
-    }
+    },
+    "copyright": "Copyright © 2026 Aidan McAlister. MIT License.",
+    "category": "Video",
+    "shortDescription": "A small, free, open-source screen recorder for macOS."
   }
 }

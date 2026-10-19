@@ -11,7 +11,7 @@ import {
 } from "@/hooks/useTauri";
 import type { Animation, Devices, Mode, RecordingStatus } from "@/lib/bindings";
 import type { Size } from "@/lib/geometry";
-import { elapsedMsAt, parseOptions } from "./bar";
+import { elapsedMsAt, parseOptions } from "@/lib/bar/bar";
 
 /** A status from Rust, and when it arrived, so the timer can count on from it. */
 type Timer = { status: RecordingStatus; receivedAt: number };

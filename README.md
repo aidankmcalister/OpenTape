@@ -4,7 +4,7 @@ A small, free, open-source screen recorder for macOS, in the spirit of Screen St
 
 ## Status
 
-Early and macOS only. Recording, pause, restart, the recording preview and Save work. The editor is bare bones for now (play and scrub the recording in the default look): it can't export yet, and there's no audio or camera recording yet.
+Early and macOS only. Recording, pause, restart, the recording preview and Save work. The editor is being rebuilt from scratch, so it's empty for now and can't export yet. There's no audio or camera recording yet.
 
 ## Requirements
 
@@ -47,15 +47,15 @@ Recordings wait in app storage, at `~/Library/Application Support/com.aidankmcal
 
 ```
 src/                     the frontend (React, TypeScript, Tailwind)
-  main.tsx               one entry for every window; picks a component by window label
-  bar/                   the record bar: mode, devices, settings, the recording timer
-  picker/                the overlays: highlight, Area box, capture bar
-  preview/               the recording preview card and its Save, Copy and Edit
-  editor/                the editor: stage and timeline; look and region logic in edits.ts
-  components/            shared looks (Pill, MorphPill)
+  main.tsx               one entry for every window; picks a page by window label
+  pages/                 one page per window: RecordBar, Picker, RecordingPreview, Editor
+  components/            looks: shared ones at the top (Pill, MorphPill)
     ui/                  shadcn components on Base UI
-  hooks/                 shared React hooks (Tauri events, pointer hover, morph, video clock)
-  lib/                   shared logic (geometry, time) and bindings.ts, generated from Rust
+    picker/ editor/ …    pieces that belong to one window
+  hooks/                 state: shared hooks at the top (Tauri events, pointer hover, morph, video clock)
+    bar/ picker/ …       hooks that belong to one window
+  lib/                   logic: shared at the top (geometry, time) and bindings.ts, generated from Rust
+    bar/ picker/ …       logic that belongs to one window, with its tests; editor/edits.ts is the look and region maths
 
 src-tauri/src/           the Rust side
   lib.rs                 entry point: state, window setup, page events, system-wide keys, the command list
@@ -69,14 +69,26 @@ src-tauri/src/           the Rust side
   util.rs                small shared helpers and the error type commands return
 ```
 
-Inside each frontend feature, the file name says what a file is, and the split matters:
+The folder says what kind of file it is, and the split matters:
 
-- `name.ts` is plain logic and the typed wrappers for Rust commands. No React.
-- `useName.ts` holds React state and actions, built on the logic.
-- `Name.tsx` is looks only. A component calls a hook and decides how things look.
+- `lib/` is plain logic and the typed wrappers for Rust commands (`name.ts`). No React.
+- `hooks/` holds React state and actions, built on the logic (`useName.ts`).
+- `components/` and `pages/` are looks only (`Name.tsx`). A component calls a hook and decides how things look.
 
-So a redesign touches the `.tsx` files and nothing else.
+So a redesign touches `pages/` and `components/` and nothing else.
+
+The top of `components/`, `hooks/` and `lib/` is shared by every window. A subfolder (`bar`, `picker`, `preview`, `editor`) belongs to one window. A piece gets its own file when it's reused or will grow; otherwise it stays private in its parent's file. Import with `@/…` between folders and `./…` inside one.
 
 ## Words
 
 The project uses its own names for things (record bar, capture bar, frame, current recording and so on). [GLOSSARY.md](GLOSSARY.md) lists them.
+
+## Contributing
+
+Bug reports and small fixes are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers how to set up, the rules the code follows, and what a pull request needs.
+
+## License
+
+[MIT](LICENSE). The bundled fonts, Inter and IBM Plex Mono, are under the SIL Open Font License 1.1.
+
+Recording and editing are free and open source, and will stay that way. Some optional extras may cost money one day, such as pro export formats or extra effect packs. Nothing that's free would move behind a paywall.

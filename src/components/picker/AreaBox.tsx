@@ -11,9 +11,9 @@ import {
 import type { DisplayInfo } from "@/lib/bindings";
 import { rectStyle } from "@/lib/geometry";
 import { cn } from "@/lib/utils";
-import { RATIOS, type Handle, type Ratio } from "./area";
+import { RATIOS, type Handle, type Ratio } from "@/lib/picker/area";
 import CaptureBar, { CaptureTile, DimOutside } from "./CaptureBar";
-import { useAreaBox } from "./useAreaBox";
+import { useAreaBox } from "@/hooks/picker/useAreaBox";
 
 const BAR_SIZE = { width: 440, height: 58 };
 

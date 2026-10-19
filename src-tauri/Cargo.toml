@@ -1,8 +1,10 @@
 [package]
 name = "screen-recorder"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "A small, free, open-source screen recorder for macOS, in the spirit of Screen Studio."
+authors = ["Aidan McAlister"]
+license = "MIT"
+repository = "https://github.com/aidankmcalister/screen-recorder"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

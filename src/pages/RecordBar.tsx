@@ -22,8 +22,12 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { MorphPill, PillDivider } from "@/components/Pill";
 import { formatClock } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import { barLayer } from "./bar";
-import { useCaptureOptions, useElapsedMs, useRecordBar } from "./useRecordBar";
+import { barLayer } from "@/lib/bar/bar";
+import {
+  useCaptureOptions,
+  useElapsedMs,
+  useRecordBar,
+} from "@/hooks/bar/useRecordBar";
 
 type Bar = ReturnType<typeof useRecordBar>;
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { latestWins, oneAtATime } from "../hooks/useTauri";
+import { latestWins, oneAtATime } from "@/hooks/useTauri";
 import {
   contains,
   fitInside,

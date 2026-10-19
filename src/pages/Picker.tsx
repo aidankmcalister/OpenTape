@@ -1,10 +1,16 @@
 import { memo } from "react";
 import { AppWindow, Monitor } from "lucide-react";
 import { rectStyle, roundedRectPath } from "@/lib/geometry";
-import AreaBox from "./AreaBox";
-import CaptureBar, { CaptureTile, DimOutside } from "./CaptureBar";
-import { sameHighlight, type Highlight as HighlightData } from "./view";
-import { usePicker } from "./usePicker";
+import AreaBox from "@/components/picker/AreaBox";
+import CaptureBar, {
+  CaptureTile,
+  DimOutside,
+} from "@/components/picker/CaptureBar";
+import {
+  sameHighlight,
+  type Highlight as HighlightData,
+} from "@/lib/picker/view";
+import { usePicker } from "@/hooks/picker/usePicker";
 
 export default function Picker({ displayId }: { displayId: number }) {
   const { view, framing, record } = usePicker(displayId);

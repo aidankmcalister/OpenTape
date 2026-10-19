@@ -5,11 +5,11 @@ import "@fontsource-variable/inter";
 import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import "./index.css";
-import RecordBar from "@/bar/RecordBar";
+import RecordBar from "@/pages/RecordBar";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import Editor from "@/editor/Editor";
-import Picker from "@/picker/Picker";
-import RecordingPreview from "@/preview/RecordingPreview";
+import Editor from "@/pages/Editor";
+import Picker from "@/pages/Picker";
+import RecordingPreview from "@/pages/RecordingPreview";
 
 function WindowContent({ label }: { label: string }) {
   if (label === "editor") return <Editor />;

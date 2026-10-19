@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import Pill from "@/components/Pill";
 import type { Rect, Size } from "@/lib/geometry";
-import { useGlass } from "./usePicker";
+import { useGlass } from "@/hooks/picker/usePicker";
 
 /**
  * The bar for every capture mode. It sits on Rust's frosted glass, so the apps behind it blur.

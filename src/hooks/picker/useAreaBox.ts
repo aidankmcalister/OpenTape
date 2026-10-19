@@ -11,8 +11,8 @@ import {
   pixelSize,
   type Handle,
   type Ratio,
-} from "./area";
-import { record } from "./view";
+} from "@/lib/picker/area";
+import { record } from "@/lib/picker/view";
 
 /** `barSize` is the capture bar's rendered size, so it can be kept on screen. */
 export function useAreaBox(

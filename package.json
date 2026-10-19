@@ -2,6 +2,10 @@
   "name": "screen-recorder",
   "private": true,
   "version": "0.1.0",
+  "description": "A small, free, open-source screen recorder for macOS, in the spirit of Screen Studio.",
+  "license": "MIT",
+  "author": "Aidan McAlister",
+  "repository": "github:aidankmcalister/screen-recorder",
   "type": "module",
   "scripts": {
     "dev": "vite",
