@@ -1,5 +1,4 @@
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+//! Starts the app. Everything else lives in the library, in `lib.rs`.
 
 fn main() -> tauri::Result<()> {
     screen_recorder_lib::run()

@@ -1,111 +1,126 @@
-//! The record bar: bottom center, just above the Dock. Its window stays one size; the pill
+//! The record bar: bottom center, right above the Dock. Its window stays one size; the pill
 //! inside animates, the glass follows it, and clicks beside the pill pass through to the apps
-//! underneath.
+//! underneath. It also offers the cameras and microphones, listed here.
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicU64, Ordering},
-};
+use std::sync::atomic::{AtomicU64, Ordering};
 
+use cidre::{av, ns};
 use objc2::MainThreadOnly;
-use objc2_app_kit::NSPopUpMenuWindowLevel;
+use objc2_app_kit::NSWindow;
 use objc2_foundation::NSSize;
-use tauri::{AppHandle, Manager, State, WebviewWindow};
+use serde::Serialize;
+use tauri::{Manager, WebviewWindow};
+use ts_rs::TS;
 
-use super::follow::{self, Anchor};
-use super::pointer::{self, CHECK_EVERY};
-use crate::error::CmdResult;
-use crate::macos::glass::{self, Animation};
-use crate::macos::window as macos_window;
-use crate::util::Poller;
+use super::floating::{Anchor, Behaviour, Floating};
+use crate::geometry;
+use crate::macos::{
+    self,
+    glass::{self, Animation},
+};
+use crate::util::CmdResult;
 
 pub(crate) const LABEL: &str = "bar";
 
-/// Watches the pointer while the bar shows.
-static POINTER_LOOP: Poller = Poller::new();
+/// Clicks beside the pill pass through to the apps underneath.
+pub(crate) static WINDOW: Floating = Floating::new(Behaviour {
+    label: LABEL,
+    anchor: Anchor::BottomCenter,
+    keeps_its_spot: true,
+    on_pointer: let_clicks_through,
+    hover: None,
+});
+/// The pill's current width, as `f64` bits, shared with the pointer loop.
+static PILL_WIDTH: AtomicU64 = AtomicU64::new(0);
 
-/// The pill's current width, shared with the pointer check.
-#[derive(Default, Clone)]
-pub(crate) struct PillWidth(Arc<AtomicU64>);
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "bindings.ts")]
+pub(crate) struct Device {
+    pub id: String,
+    pub name: String,
+}
 
-impl PillWidth {
-    fn get(&self) -> f64 {
-        f64::from_bits(self.0.load(Ordering::Relaxed))
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "bindings.ts")]
+pub(crate) struct Devices {
+    pub cameras: Vec<Device>,
+    pub microphones: Vec<Device>,
+}
+
+/// Listing the cameras and microphones needs no permission.
+#[tauri::command]
+pub(crate) fn list_devices() -> Devices {
+    Devices {
+        cameras: discover_devices(
+            &[
+                av::CaptureDeviceType::built_in_wide_angle_camera(),
+                av::CaptureDeviceType::external(),
+            ],
+            av::MediaType::video(),
+        ),
+        microphones: discover_devices(
+            &[av::CaptureDeviceType::microphone()],
+            av::MediaType::audio(),
+        ),
     }
+}
 
-    fn set(&self, width: f64) {
-        self.0.store(width.to_bits(), Ordering::Relaxed);
-    }
+fn discover_devices(types: &[&av::CaptureDeviceType], media: &av::MediaType) -> Vec<Device> {
+    let types = ns::Array::from_slice(types);
+    av::CaptureDeviceDiscoverySession::with_device_types_media_and_pos(
+        &types,
+        Some(media),
+        av::CaptureDevicePos::Unspecified,
+    )
+    .devices()
+    .iter()
+    .map(|device| Device {
+        id: device.unique_id().to_string(),
+        name: device.localized_name().to_string(),
+    })
+    .collect()
 }
 
 /// Called whenever the pill changes size, so the glass and the click area follow it.
 #[tauri::command]
 pub(crate) fn shape_bar(
     window: WebviewWindow,
-    pill_width: State<'_, PillWidth>,
     width: f64,
     height: f64,
     animation: Option<Animation>,
 ) -> CmdResult {
-    pill_width.set(width);
-    macos_window::with_ns_window(&window, move |ns_window| {
-        macos_window::widen_to(ns_window, width);
+    PILL_WIDTH.store(width.to_bits(), Ordering::Relaxed);
+    macos::with_ns_window(&window, move |ns_window| {
+        // Widens the window around its bottom center when the pill doesn't fit. It never
+        // narrows: the see-through sides let clicks pass instead, so the pill can animate
+        // without a resize.
+        let frame = ns_window.frame();
+        if width > frame.size.width {
+            let size = NSSize::new(width, frame.size.height);
+            ns_window.setFrame_display(geometry::keep_bottom_center(frame, size), true);
+        }
         glass::shape(ns_window, NSSize::new(width, height), animation);
+        let_clicks_through(ns_window);
     })?;
     Ok(())
 }
 
 /// The bar is hidden in the config, so it doesn't flash in the middle before it's placed.
-pub(crate) fn setup(bar: WebviewWindow, pill_width: PillWidth) -> tauri::Result<()> {
-    super::never_close(&bar);
-    macos_window::with_ns_window(&bar, |ns_window| {
-        let main_thread = ns_window.mtm();
-        macos_window::float_panel(ns_window, NSPopUpMenuWindowLevel);
-        glass::add(ns_window, main_thread);
-        follow::place_on_primary_screen(ns_window, main_thread, Anchor::BottomCenter);
-        ns_window.orderFrontRegardless();
-    })?;
-    watch_pointer(bar, pill_width);
+pub(crate) fn setup(bar: &WebviewWindow) -> tauri::Result<()> {
+    WINDOW.setup(bar)?;
+    macos::with_ns_window(bar, |ns_window| glass::add(ns_window, ns_window.mtm()))?;
+    WINDOW.show_on_main_display(bar.app_handle());
     Ok(())
 }
 
-/// Brings the bar back, on the display you're pointing at, without taking focus from the app
-/// you're in.
-pub(crate) fn show(app: &AppHandle) {
-    if let Some(bar) = app.get_webview_window(LABEL) {
-        // Fails only while the app quits.
-        let _ = macos_window::with_ns_window(&bar, |ns_window| {
-            follow::follow(ns_window, Anchor::BottomCenter);
-            ns_window.orderFrontRegardless();
-        });
-        watch_pointer(bar, app.state::<PillWidth>().inner().clone());
+/// Lets clicks through everywhere except the centered pill. Runs as the pointer moves and as
+/// the pill changes size.
+fn let_clicks_through(ns_window: &NSWindow) {
+    let width = f64::from_bits(PILL_WIDTH.load(Ordering::Relaxed));
+    let pointer = ns_window.mouseLocationOutsideOfEventStream();
+    let window_width = ns_window.frame().size.width;
+    let is_over_pill = (pointer.x - window_width / 2.0).abs() <= width / 2.0;
+    if ns_window.ignoresMouseEvents() == is_over_pill {
+        ns_window.setIgnoresMouseEvents(!is_over_pill);
     }
-}
-
-pub(crate) fn hide(app: &AppHandle) {
-    POINTER_LOOP.stop();
-    super::hide(app, LABEL);
-}
-
-/// While the bar shows: keeps clicks beside the pill passing through to the apps underneath,
-/// and follows clicks to other displays. The main thread is only asked when the pointer or
-/// the pill changed, so a still pointer costs next to nothing.
-fn watch_pointer(bar: WebviewWindow, pill_width: PillWidth) {
-    let mut watch = pointer::Watch::default();
-    let mut last_width = 0.0;
-    POINTER_LOOP.start(CHECK_EVERY, move || {
-        let change = watch.update(pointer::now());
-        let width = pill_width.get();
-        if !change.moved && !change.clicked && width == last_width {
-            return true;
-        }
-        last_width = width;
-        macos_window::with_ns_window(&bar, move |ns_window| {
-            if change.clicked {
-                follow::follow(ns_window, Anchor::BottomCenter);
-            }
-            macos_window::pass_clicks_beside(ns_window, width);
-        })
-        .is_ok()
-    });
 }

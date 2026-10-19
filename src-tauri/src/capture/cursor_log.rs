@@ -1,7 +1,6 @@
-//! Polls the cursor position and mouse buttons and writes the changes as JSON Lines.
-//!
-//! Polling needs no permission. An event tap would need Input Monitoring, and some
-//! cursor crates trigger an Accessibility prompt, which is why this polls instead.
+//! Polls the cursor position and mouse buttons and writes the changes as JSON Lines. Polling
+//! needs no permission, while an event tap would need Input Monitoring and some cursor crates
+//! trigger an Accessibility prompt.
 
 use std::{
     fs::File,
@@ -16,101 +15,12 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow};
-use cidre::{cg, cm};
+use cidre::cg;
 
-const POLLS_PER_SECOND: f64 = 240.0;
-const FLUSH_EVERY: Duration = Duration::from_secs(1);
+use super::timeline::host_time_now;
 
-/// One reading of the cursor, timestamped on the host clock (the clock video frames use).
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct Sample {
-    t: f64,
-    x: f64,
-    y: f64,
-    left: bool,
-    right: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Button {
-    Left,
-    Right,
-}
-
-/// Something worth writing down: the cursor moved, or a button went down or up.
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum Event {
-    Move {
-        t: f64,
-        x: f64,
-        y: f64,
-    },
-    Down {
-        t: f64,
-        x: f64,
-        y: f64,
-        button: Button,
-    },
-    Up {
-        t: f64,
-        x: f64,
-        y: f64,
-        button: Button,
-    },
-}
-
-impl Event {
-    fn to_json_line(self) -> String {
-        match self {
-            Self::Move { t, x, y } => {
-                format!(r#"{{"type":"move","t":{t:.6},"x":{x:.1},"y":{y:.1}}}"#)
-            }
-            Self::Down { t, x, y, button } => format!(
-                r#"{{"type":"down","t":{t:.6},"x":{x:.1},"y":{y:.1},"button":"{}"}}"#,
-                button.name()
-            ),
-            Self::Up { t, x, y, button } => format!(
-                r#"{{"type":"up","t":{t:.6},"x":{x:.1},"y":{y:.1},"button":"{}"}}"#,
-                button.name()
-            ),
-        }
-    }
-}
-
-impl Button {
-    fn name(self) -> &'static str {
-        match self {
-            Self::Left => "left",
-            Self::Right => "right",
-        }
-    }
-}
-
-/// Returns what changed between the previous reading and this one.
-fn events_between(previous: Option<&Sample>, now: &Sample) -> Vec<Event> {
-    let Sample { t, x, y, .. } = *now;
-    let Some(previous) = previous else {
-        return vec![Event::Move { t, x, y }];
-    };
-    let mut events = Vec::new();
-    if (previous.x, previous.y) != (x, y) {
-        events.push(Event::Move { t, x, y });
-    }
-    for (button, was_down, is_down) in [
-        (Button::Left, previous.left, now.left),
-        (Button::Right, previous.right, now.right),
-    ] {
-        match (was_down, is_down) {
-            (false, true) => events.push(Event::Down { t, x, y, button }),
-            (true, false) => events.push(Event::Up { t, x, y, button }),
-            _ => {}
-        }
-    }
-    events
-}
-
-/// A running background logger. Call [`CursorLogger::stop`] to finish the file. Dropping it
-/// without that, as when capture fails to start, still ends its thread.
+/// A running background logger. Call `stop` to finish the file. Dropping it without that, as
+/// when capture fails to start, still ends its thread.
 pub(super) struct CursorLogger {
     stop: Arc<AtomicBool>,
     /// Always there until `stop` takes it.
@@ -149,25 +59,44 @@ impl Drop for CursorLogger {
     }
 }
 
-fn poll_until_stopped(mut out: BufWriter<File>, stop: &AtomicBool) -> Result<()> {
-    let interval = Duration::from_secs_f64(1.0 / POLLS_PER_SECOND);
-    let started = Instant::now();
-    let mut next_poll = started;
-    let mut last_flush = started;
-    let mut previous: Option<Sample> = None;
+/// One reading of the cursor, timestamped on the host clock (the clock video frames use).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Sample {
+    t: f64,
+    x: f64,
+    y: f64,
+    left: bool,
+    right: bool,
+}
 
+fn poll_until_stopped(mut out: BufWriter<File>, stop: &AtomicBool) -> Result<()> {
+    // 240 readings a second.
+    let interval = Duration::from_secs_f64(1.0 / 240.0);
+    let mut next_poll = Instant::now();
+    let mut last_flush = Instant::now();
+    let mut previous: Option<Sample> = None;
     while !stop.load(Ordering::Relaxed) {
-        if let Some(sample) = read_sample() {
-            for event in events_between(previous.as_ref(), &sample) {
-                writeln!(out, "{}", event.to_json_line())?;
+        if let Some(event) = cg::Event::with_src(None) {
+            let location = event.location();
+            let buttons = cg::EventSrcState::CombinedSession;
+            let sample = Sample {
+                t: host_time_now(),
+                x: location.x,
+                y: location.y,
+                left: buttons.button_state(cg::MouseButton::Left),
+                right: buttons.button_state(cg::MouseButton::Right),
+            };
+            for line in lines_between(previous.as_ref(), &sample) {
+                writeln!(out, "{line}")?;
             }
             previous = Some(sample);
         }
-        if last_flush.elapsed() >= FLUSH_EVERY {
+        if last_flush.elapsed() >= Duration::from_secs(1) {
             out.flush()?;
             last_flush = Instant::now();
         }
-        // Sleep until the next fixed slot, not a fixed amount, so the rate doesn't drift.
+        // Sleeps until the next fixed slot, so the rate doesn't drift. A slot already missed
+        // starts the schedule over from now.
         next_poll += interval;
         match next_poll.checked_duration_since(Instant::now()) {
             Some(wait) => thread::sleep(wait),
@@ -178,21 +107,32 @@ fn poll_until_stopped(mut out: BufWriter<File>, stop: &AtomicBool) -> Result<()>
     Ok(())
 }
 
-fn read_sample() -> Option<Sample> {
-    let location = cg::Event::with_src(None)?.location();
-    let buttons = cg::EventSrcState::CombinedSession;
-    Some(Sample {
-        t: host_time_now(),
-        x: location.x,
-        y: location.y,
-        left: buttons.button_state(cg::MouseButton::Left),
-        right: buttons.button_state(cg::MouseButton::Right),
-    })
-}
-
-/// Seconds on the host clock, the same clock ScreenCaptureKit stamps video frames with.
-pub(super) fn host_time_now() -> f64 {
-    cm::Clock::host_time_clock().time().as_secs()
+/// The JSON lines for what changed between the previous reading and this one: a move, then any
+/// button going down or up. The first reading counts as a move.
+fn lines_between(previous: Option<&Sample>, now: &Sample) -> Vec<String> {
+    let position = format!(r#""t":{:.6},"x":{:.1},"y":{:.1}"#, now.t, now.x, now.y);
+    let move_line = format!(r#"{{"type":"move",{position}}}"#);
+    let Some(previous) = previous else {
+        return vec![move_line];
+    };
+    let mut lines = Vec::new();
+    if (previous.x, previous.y) != (now.x, now.y) {
+        lines.push(move_line);
+    }
+    for (button, was_down, is_down) in [
+        ("left", previous.left, now.left),
+        ("right", previous.right, now.right),
+    ] {
+        let kind = match (was_down, is_down) {
+            (false, true) => "down",
+            (true, false) => "up",
+            _ => continue,
+        };
+        lines.push(format!(
+            r#"{{"type":"{kind}",{position},"button":"{button}"}}"#
+        ));
+    }
+    lines
 }
 
 #[cfg(test)]
@@ -201,7 +141,7 @@ mod tests {
 
     fn sample(x: f64, left: bool, right: bool) -> Sample {
         Sample {
-            t: 1.0,
+            t: 1.5,
             x,
             y: 20.0,
             left,
@@ -210,69 +150,56 @@ mod tests {
     }
 
     #[test]
-    fn first_sample_should_be_a_move() {
-        let events = events_between(None, &sample(10.0, false, false));
-        assert_eq!(
-            events,
-            vec![Event::Move {
-                t: 1.0,
-                x: 10.0,
-                y: 20.0
-            }]
-        );
-    }
-
-    #[test]
-    fn unchanged_sample_should_produce_nothing() {
-        let same = sample(10.0, false, false);
-        assert!(events_between(Some(&same), &same).is_empty());
-    }
-
-    #[test]
-    fn pressing_left_should_produce_a_down() {
-        let events = events_between(
-            Some(&sample(10.0, false, false)),
-            &sample(10.0, true, false),
-        );
-        assert_eq!(
-            events,
-            vec![Event::Down {
-                t: 1.0,
-                x: 10.0,
-                y: 20.0,
-                button: Button::Left
-            }]
-        );
-    }
-
-    #[test]
-    fn releasing_right_should_produce_an_up() {
-        let events = events_between(
-            Some(&sample(10.0, false, true)),
-            &sample(10.0, false, false),
-        );
-        assert_eq!(
-            events,
-            vec![Event::Up {
-                t: 1.0,
-                x: 10.0,
-                y: 20.0,
-                button: Button::Right
-            }]
-        );
-    }
-
-    #[test]
-    fn dragging_should_produce_a_move_and_keep_the_button_down() {
-        let events = events_between(Some(&sample(10.0, true, false)), &sample(15.0, true, false));
-        assert_eq!(
-            events,
-            vec![Event::Move {
-                t: 1.0,
-                x: 15.0,
-                y: 20.0
-            }]
-        );
+    fn lines_between_should_log_a_move_then_each_button_change() {
+        let still = sample(10.0, false, false);
+        let move_10 = r#"{"type":"move","t":1.500000,"x":10.0,"y":20.0}"#;
+        let move_15 = r#"{"type":"move","t":1.500000,"x":15.0,"y":20.0}"#;
+        let cases: [(Option<Sample>, Sample, &[&str]); 8] = [
+            // The first reading is a move, even with a button down.
+            (None, sample(10.0, true, false), &[move_10]),
+            (Some(still), still, &[]),
+            (
+                Some(still),
+                sample(10.0, true, false),
+                &[r#"{"type":"down","t":1.500000,"x":10.0,"y":20.0,"button":"left"}"#],
+            ),
+            (
+                Some(sample(10.0, false, true)),
+                still,
+                &[r#"{"type":"up","t":1.500000,"x":10.0,"y":20.0,"button":"right"}"#],
+            ),
+            // Holding a button while moving logs only the move.
+            (
+                Some(sample(10.0, true, false)),
+                sample(15.0, true, false),
+                &[move_15],
+            ),
+            (
+                Some(sample(10.0, false, true)),
+                sample(10.0, false, true),
+                &[],
+            ),
+            // A move smaller than a point is still a move.
+            (
+                Some(still),
+                sample(10.4, false, false),
+                &[r#"{"type":"move","t":1.500000,"x":10.4,"y":20.0}"#],
+            ),
+            // A move with a click logs the move first.
+            (
+                Some(still),
+                sample(15.0, true, true),
+                &[
+                    move_15,
+                    r#"{"type":"down","t":1.500000,"x":15.0,"y":20.0,"button":"left"}"#,
+                    r#"{"type":"down","t":1.500000,"x":15.0,"y":20.0,"button":"right"}"#,
+                ],
+            ),
+        ];
+        for (previous, now, expected) in cases {
+            let lines = lines_between(previous.as_ref(), &now);
+            assert_eq!(lines, expected, "{previous:?} then {now:?}");
+        }
     }
 
     #[test]
@@ -283,20 +210,5 @@ mod tests {
         drop(logger);
         assert!(stop.load(Ordering::Relaxed));
         let _ = std::fs::remove_file(path);
-    }
-
-    #[test]
-    fn down_event_should_serialize_as_one_json_line() {
-        let line = Event::Down {
-            t: 1.5,
-            x: 10.0,
-            y: 20.0,
-            button: Button::Left,
-        }
-        .to_json_line();
-        assert_eq!(
-            line,
-            r#"{"type":"down","t":1.500000,"x":10.0,"y":20.0,"button":"left"}"#
-        );
     }
 }

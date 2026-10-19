@@ -1,0 +1,278 @@
+import { describe, expect, test } from "bun:test";
+import {
+  addRegion,
+  amountAt,
+  clampAmount,
+  DEFAULT_LOOK,
+  fillCss,
+  frameAt,
+  frameLayout,
+  regionKindForKey,
+  rulerLabel,
+  outputAt,
+  rulerMarks,
+  sourceAt,
+  type Region,
+} from "./edits";
+
+describe("look", () => {
+  test("fillCss draws a gradient corner to corner, and a color as its middle stop", () => {
+    expect(fillCss({ kind: "gradient", preset: 0 })).toBe(
+      "linear-gradient(135deg, #0f4c5c 0%, #2a9d8f 55%, #e9c46a 100%)",
+    );
+    expect(fillCss({ kind: "color", preset: 2 })).toBe("#3b82f6");
+  });
+
+  test.each([
+    ["padding", 200, 160],
+    ["radius", -3, 0],
+    ["shadowBlur", 47.6, 48],
+  ] as const)(
+    "clampAmount(%p, %p) keeps it in range, in whole steps",
+    (amount, value, clamped) => {
+      expect(clampAmount(amount, value)).toBe(clamped);
+    },
+  );
+
+  test("frameLayout fits the frame inside the margin and scales the padding", () => {
+    const { frame, recording, scale } = frameLayout(
+      { ...DEFAULT_LOOK, padding: 192 },
+      { width: 1056, height: 1000 },
+      16 / 9,
+    );
+    expect(frame).toEqual({ width: 960, height: 540 });
+    expect(scale).toBe(0.5);
+    expect(recording.width).toBeCloseTo(618.67, 2);
+    expect(recording.height).toBeCloseTo(348, 5);
+  });
+
+  test("frameLayout collapses to nothing on a canvas smaller than its margin", () => {
+    const { frame, recording } = frameLayout(
+      DEFAULT_LOOK,
+      { width: 40, height: 40 },
+      1,
+    );
+    expect(frame).toEqual({ width: 0, height: 0 });
+    expect(recording).toEqual({ width: 0, height: 0 });
+  });
+});
+
+describe("regions", () => {
+  const ZOOM_1_TO_3: Region = {
+    id: 1,
+    kind: "zoom",
+    startMs: 1000,
+    endMs: 3000,
+    amount: 1.5,
+  };
+  /** The regions' spans, like "0-1000 1000-3000". */
+  const spans = (regions: Region[]) =>
+    regions.map(({ startMs, endMs }) => `${startMs}-${endMs}`).join(" ");
+
+  test("addRegion adds two seconds of the kind's amount at the playhead", () => {
+    expect(addRegion([], "speed", 500, 10_000)[0]).toMatchObject({
+      kind: "speed",
+      startMs: 500,
+      endMs: 2500,
+      amount: 2,
+    });
+  });
+
+  test.each([
+    [0, "0-1000 1000-3000", "stops at the next region"],
+    [3000, "1000-3000 3000-5000", "starts where the one before ends"],
+    [9000, "1000-3000 9000-10000", "stops at the end"],
+    [9750, "1000-3000 9750-10000", "fits a quarter second at the end"],
+    [9800, "1000-3000", "adds nothing shorter than a quarter second"],
+    [1500, "1000-3000", "adds nothing inside a region, of either kind"],
+    [900, "1000-3000", "adds nothing without room before the next region"],
+  ])("addRegion at %p gives %p: %s", (atMs, expected) => {
+    expect(spans(addRegion([ZOOM_1_TO_3], "speed", atMs, 10_000))).toBe(
+      expected,
+    );
+  });
+
+  test("addRegion keeps regions in time order", () => {
+    const both = addRegion(
+      addRegion([], "zoom", 6000, 10_000),
+      "speed",
+      0,
+      10_000,
+    );
+    expect(both.map((region) => region.kind)).toEqual(["speed", "zoom"]);
+  });
+
+  test("a region added after a removal gets an id no other region has", () => {
+    const two = addRegion([ZOOM_1_TO_3], "speed", 5000, 10_000);
+    const added = addRegion(
+      two.filter(({ id }) => id !== 1),
+      "zoom",
+      0,
+      10_000,
+    );
+    const ids = added.map((region) => region.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  test.each([
+    ["zoom", 1500, 1.5],
+    ["zoom", 3000, 1],
+    ["speed", 1500, 1],
+  ] as const)(
+    "amountAt(%p, %p) is the region's amount inside it and 1 outside",
+    (kind, ms, amount) => {
+      expect(amountAt([ZOOM_1_TO_3], kind, ms)).toBe(amount);
+    },
+  );
+
+  test.each([
+    ["z", "zoom"],
+    ["S", "speed"],
+    ["x", undefined],
+  ] as const)("regionKindForKey(%p) matches in either case", (key, kind) => {
+    expect(regionKindForKey(key)).toBe(kind);
+  });
+
+  const labelled = (durationMs: number) =>
+    rulerMarks(durationMs)
+      .filter((mark) => mark.isMajor)
+      .map((mark) => mark.ms);
+
+  test("rulerMarks labels every two seconds of a 15 second clip, with a short mark between", () => {
+    expect(labelled(15_000)).toEqual([
+      0, 2000, 4000, 6000, 8000, 10_000, 12_000, 14_000,
+    ]);
+    expect(rulerMarks(15_000)[1]).toEqual({ ms: 1000, isMajor: false });
+  });
+
+  test("rulerMarks labels every second of a ten second clip, end included", () => {
+    expect(labelled(10_000)).toHaveLength(11);
+    const marks = rulerMarks(10_000);
+    expect(marks[marks.length - 1]).toEqual({ ms: 10_000, isMajor: true });
+  });
+
+  test("rulerMarks gives a single mark for an empty clip", () => {
+    expect(rulerMarks(0)).toEqual([{ ms: 0, isMajor: true }]);
+  });
+
+  test("rulerMarks falls back to ten-minute labels for very long clips", () => {
+    const [first, second] = labelled(3 * 60 * 60 * 1000);
+    expect(second - first).toBe(600_000);
+  });
+
+  test.each([
+    [4000, "0:04"],
+    [75_000, "1:15"],
+    [1400, "0:01"],
+    [59_600, "1:00"],
+  ])("rulerLabel(%p) rounds to the nearest second: %p", (ms, label) => {
+    expect(rulerLabel(ms)).toBe(label);
+  });
+});
+
+describe("frameAt", () => {
+  const LOOK = { ...DEFAULT_LOOK, inset: 10, borderWidth: 4 };
+  const at = (regions: Region[], outputMs: number, width = 1920 + 96) =>
+    frameAt(
+      { look: LOOK, regions, canvas: { width, height: 2000 }, ratio: 16 / 9 },
+      outputMs,
+    );
+  const region = (
+    kind: Region["kind"],
+    startMs: number,
+    endMs: number,
+    amount: number,
+  ) => ({ id: startMs, kind, startMs, endMs, amount }) satisfies Region;
+  const zoomAt = (regions: Region[], ms: number) => at(regions, ms).zoom.scale;
+
+  test("draws the look at its own sizes on a 1920 frame, and at half on a 960 one", () => {
+    const full = at([], 0);
+    expect(full.frame.width).toBe(1920);
+    expect(full).toMatchObject({
+      radius: 20,
+      shadow: { offsetY: 16, blur: 48, color: "rgb(0 0 0 / 0.4)" },
+      border: { width: 4 },
+      video: { x: -10, y: -10, width: full.recording.width + 20 },
+    });
+    const half = at([], 0, 960 + 96);
+    expect(half).toMatchObject({
+      radius: 10,
+      shadow: { offsetY: 8, blur: 24 },
+    });
+    expect(half.border.width).toBe(2);
+    expect(half.recording.width).toBeCloseTo(full.recording.width / 2, 5);
+  });
+
+  test("eases a zoom in from its start and back out from its end", () => {
+    const zoom = [region("zoom", 1000, 3000, 1.5)];
+    expect(zoomAt(zoom, 999)).toBe(1);
+    expect(zoomAt(zoom, 1000)).toBeCloseTo(1, 5);
+    // The curve rushes then settles, so halfway through the ease it's most of the way in.
+    expect(zoomAt(zoom, 1300)).toBeGreaterThan(1.4);
+    expect(zoomAt(zoom, 1600)).toBe(1.5);
+    expect(zoomAt(zoom, 3000)).toBeCloseTo(1.5, 5);
+    expect(zoomAt(zoom, 3300)).toBeLessThan(1.1);
+    expect(zoomAt(zoom, 3600)).toBe(1);
+    expect(at(zoom, 1001).zoom.target).toBe(1.5);
+  });
+
+  test("a short zoom eases back out from wherever it got to", () => {
+    const short = [region("zoom", 1000, 1250, 1.5)];
+    const reached = zoomAt(short, 1250);
+    expect(reached).toBeGreaterThan(1);
+    expect(reached).toBeLessThan(1.5);
+    expect(zoomAt(short, 1260)).toBeLessThan(reached);
+    expect(zoomAt(short, 1850)).toBe(1);
+  });
+
+  test("back-to-back zooms ease from one amount straight to the next", () => {
+    const both = [
+      region("zoom", 1000, 2000, 1.5),
+      region("zoom", 2000, 3000, 2),
+    ];
+    expect(zoomAt(both, 2000)).toBeCloseTo(1.5, 5);
+    expect(zoomAt(both, 2100)).toBeGreaterThan(1.5);
+    expect(zoomAt(both, 2600)).toBe(2);
+  });
+
+  test("a zoom inside a fast region eases over the same output time", () => {
+    const regions = [
+      region("speed", 0, 4000, 2),
+      region("zoom", 1000, 3000, 1.5),
+    ];
+    // The zoom starts at source 1000, output 500, and is in fully 600ms of output later.
+    expect(zoomAt(regions, 500)).toBeCloseTo(1, 5);
+    expect(zoomAt(regions, 1099)).toBeLessThan(1.5);
+    expect(zoomAt(regions, 1100)).toBe(1.5);
+  });
+
+  test("zooms on the middle unless the region has a centre, and keeps it zooming out", () => {
+    expect(at([], 0).zoom.centre).toEqual({ x: 0.5, y: 0.5 });
+    const centre = { x: 0.2, y: 0.7 };
+    const zoom = [{ ...region("zoom", 1000, 2000, 1.5), centre }];
+    expect(at(zoom, 500).zoom.centre).toEqual({ x: 0.5, y: 0.5 });
+    expect(at(zoom, 1500).zoom.centre).toEqual(centre);
+    expect(at(zoom, 2300).zoom.centre).toEqual(centre);
+  });
+
+  test.each([
+    [1000, 1000, "before both, they're in step"],
+    [1500, 2000, "a 2× region plays its 1000ms in 500"],
+    [2500, 2500, "a ½× region then plays its 1000ms in 2000"],
+    [3500, 3000, "so it ends 500ms later than the source"],
+    [4500, 4000, "and they stay 500ms apart after"],
+  ])(
+    "with back-to-back speed regions, output %p shows source %p: %s",
+    (outputMs, sourceMs) => {
+      const regions: Region[] = [
+        region("speed", 1000, 2000, 2),
+        region("speed", 2000, 3000, 0.5),
+      ];
+      expect(at(regions, outputMs).sourceMs).toBeCloseTo(sourceMs, 5);
+      expect(sourceAt(regions, outputAt(regions, sourceMs))).toBeCloseTo(
+        sourceMs,
+        5,
+      );
+    },
+  );
+});

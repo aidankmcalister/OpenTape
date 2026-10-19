@@ -1,17 +1,13 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import type { Animation } from "@/lib/bindings/Animation";
+import type { Animation } from "@/lib/bindings";
 import type { Size } from "@/lib/geometry";
-
-/** A pill's 1px border sits outside the measured layer. */
-const BORDER = 1;
 
 /** The one place the morph's timing lives: pills use it, and Rust's glass follows it. */
 const MORPH: Animation = { durationMs: 400, ease: [0.32, 0.72, 0, 1] };
 
 /**
- * Morphs a pill between layers of different widths, like the record bar's states.
  * Every layer stays mounted at its natural size, and the pill animates to the active one's.
- * `onShape` hears each new size, with the animation to follow, or null for the first.
+ * `onShape` hears each new size with the animation to follow, or null for the first.
  */
 export function useMorph<Key extends string>(
   active: Key,
@@ -21,7 +17,7 @@ export function useMorph<Key extends string>(
   /** The size last sent to `onShape`, so an unchanged one isn't sent again. */
   const shaped = useRef<Size | null>(null);
   const shapeListener = useRef(onShape);
-  const [pill, setPill] = useState<Size | null>(null);
+  const [pillSize, setPillSize] = useState<Size | null>(null);
   useLayoutEffect(() => {
     shapeListener.current = onShape;
   });
@@ -38,15 +34,16 @@ export function useMorph<Key extends string>(
     const layer = layers.current.get(active);
     if (!layer) return;
     const reshape = () => {
+      // The pill's 1px border sits outside the measured layer.
       const next = {
-        width: layer.offsetWidth + BORDER * 2,
-        height: layer.offsetHeight + BORDER * 2,
+        width: layer.offsetWidth + 2,
+        height: layer.offsetHeight + 2,
       };
       const last = shaped.current;
       if (last?.width === next.width && last.height === next.height) return;
       shaped.current = next;
-      setPill(next);
-      shapeListener.current?.(next, last ? morph() : null);
+      setPillSize(next);
+      shapeListener.current?.(next, last ? morphAnimation() : null);
     };
     reshape();
     const observer = new ResizeObserver(reshape);
@@ -54,8 +51,14 @@ export function useMorph<Key extends string>(
     return () => observer.disconnect();
   }, [active]);
 
+  const { durationMs, ease } = morphAnimation();
   return {
-    pillStyle: pill ? { ...pill, transition: widthTransition() } : undefined,
+    pillStyle: pillSize
+      ? {
+          ...pillSize,
+          transition: `width ${durationMs}ms cubic-bezier(${ease.join(",")})`,
+        }
+      : undefined,
     layerProps: (key: Key) => ({
       ref: (element: HTMLElement | null) => {
         if (element) layers.current.set(key, element);
@@ -67,14 +70,9 @@ export function useMorph<Key extends string>(
   };
 }
 
-function morph(): Animation {
+function morphAnimation(): Animation {
   const reduceMotion = window.matchMedia(
     "(prefers-reduced-motion: reduce)",
   ).matches;
   return reduceMotion ? { ...MORPH, durationMs: 0 } : MORPH;
-}
-
-function widthTransition(): string {
-  const { durationMs, ease } = morph();
-  return `width ${durationMs}ms cubic-bezier(${ease.join(",")})`;
 }

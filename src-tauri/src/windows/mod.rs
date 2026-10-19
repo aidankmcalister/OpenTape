@@ -1,21 +1,16 @@
-//! The app's fixed windows: the record bar, the recording preview and the editor, plus what
-//! keeps the floating ones on the display you're using and watches the pointer for them.
+//! The app's fixed windows: the record bar, the recording preview and the editor. They're
+//! hidden instead of closed, so they can come back. The bar and the preview float (`floating`).
 
 pub(crate) mod bar;
 pub(crate) mod editor;
-pub(crate) mod follow;
-mod pointer;
+mod floating;
 pub(crate) mod preview;
 
-use tauri::{AppHandle, Manager, WebviewWindow, WindowEvent};
+use objc2::MainThreadMarker;
+use objc2_app_kit::NSScreen;
+use tauri::{WebviewWindow, WindowEvent};
 
-/// Hides one of the fixed windows. They're never closed, so they can come back.
-pub(crate) fn hide(app: &AppHandle, label: &str) {
-    if let Some(window) = app.get_webview_window(label) {
-        // Fails only once the window is gone, and then it's hidden anyway.
-        let _ = window.hide();
-    }
-}
+use crate::geometry;
 
 /// Keeps a panel from ever closing: closing one crashes the app. ⌘W and `close()` both ask
 /// first, so refusing here covers both; the app hides panels instead.
@@ -25,4 +20,35 @@ pub(crate) fn never_close(window: &WebviewWindow) {
             api.prevent_close();
         }
     });
+}
+
+/// A screen's top-left corner in global points, measured like ScreenCaptureKit's displays, and
+/// how far down from its top things stay clear of the menu bar and the notch.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct SafeTop {
+    pub x: f64,
+    pub y: f64,
+    pub inset: f64,
+}
+
+pub(crate) fn safe_tops(main_thread: MainThreadMarker) -> Vec<SafeTop> {
+    let screens = NSScreen::screens(main_thread);
+    let Some(primary) = screens.firstObject() else {
+        return Vec::new();
+    };
+    let primary_height = primary.frame().size.height;
+    let mut tops = Vec::new();
+    for screen in screens.iter() {
+        let frame = screen.frame();
+        let visible = screen.visibleFrame();
+        let menu_bar =
+            (frame.origin.y + frame.size.height) - (visible.origin.y + visible.size.height);
+        tops.push(SafeTop {
+            x: frame.origin.x,
+            // NSScreen measures from the bottom-left of the primary screen.
+            y: geometry::flip(frame, primary_height).origin.y,
+            inset: menu_bar.max(screen.safeAreaInsets().top),
+        });
+    }
+    tops
 }

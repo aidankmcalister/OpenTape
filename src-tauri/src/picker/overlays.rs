@@ -12,7 +12,7 @@ use tauri::{
 
 use super::sources::DisplayInfo;
 use crate::geometry::Frame;
-use crate::macos::{glass, window as macos_window};
+use crate::macos::{self, glass};
 use crate::windows;
 
 const LABEL_PREFIX: &str = "picker-";
@@ -41,8 +41,8 @@ pub(super) fn is_overlay(target: &EventTarget) -> bool {
     }
 }
 
-/// Overlays are panels, so they can show over another app's full-screen space. Closing a panel
-/// crashes, so each display's overlay is made once, then hidden and shown again.
+/// Shows the overlay for `display`, making it the first time. Overlays are panels, so they can
+/// show over another app's full-screen space.
 pub(super) fn show_overlay(app: &AppHandle, display: &DisplayInfo) -> Result<()> {
     let Some(window) = app.get_webview_window(&overlay_label(display.id)) else {
         return build_overlay(app, display);
@@ -51,7 +51,7 @@ pub(super) fn show_overlay(app: &AppHandle, display: &DisplayInfo) -> Result<()>
     window.set_position(LogicalPosition::new(frame.x, frame.y))?;
     window.set_size(LogicalSize::new(frame.width, frame.height))?;
     window.set_ignore_cursor_events(false)?;
-    macos_window::with_ns_window(&window, |ns_window| ns_window.orderFrontRegardless())?;
+    macos::with_ns_window(&window, |ns_window| ns_window.orderFrontRegardless())?;
     Ok(())
 }
 
@@ -66,7 +66,7 @@ pub(super) fn put_away(overlay: &WebviewWindow) {
 /// Puts the frosted glass under the overlay's capture bar, or hides it with `None`.
 pub(super) fn place_glass(overlay: &WebviewWindow, rect: Option<Frame>) -> tauri::Result<()> {
     let pill = rect.map(NSRect::from);
-    macos_window::with_ns_window(overlay, move |ns_window| {
+    macos::with_ns_window(overlay, move |ns_window| {
         glass::place(ns_window, ns_window.mtm(), pill);
     })
 }
@@ -81,14 +81,14 @@ fn build_overlay(app: &AppHandle, display: &DisplayInfo) -> Result<()> {
         .shadow(false)
         .resizable(false)
         .skip_taskbar(true)
-        // The first click on an overlay should press its button, not just focus the window.
+        // The first click on an overlay reaches its page, so a button works on the first press.
         .accept_first_mouse(true)
         .focused(false)
         .build()?;
     windows::never_close(&window);
     // Above the menu bar, so the overlay can dim and frame the whole display.
-    macos_window::with_ns_window(&window, |ns_window| {
-        macos_window::float_panel(ns_window, NSStatusWindowLevel);
+    macos::with_ns_window(&window, |ns_window| {
+        macos::float_panel(ns_window, NSStatusWindowLevel);
     })?;
     Ok(())
 }

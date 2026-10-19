@@ -1,55 +1,106 @@
 //! The file writer: an H.264 `.mov` written in fragments, so a crash only loses the last few
-//! seconds. The [`Recorder`](super::recorder::Recorder) feeds it frames.
+//! seconds. ScreenCaptureKit hands each frame to the `Recorder`, which appends it, leaving out
+//! frames captured while paused and closing the gaps pauses leave.
 
-use std::{path::Path, sync::mpsc};
+#![expect(
+    clippy::useless_transmute,
+    reason = "the lint fires inside cidre's define_obj_type! macro, not in this code"
+)]
+
+use std::{
+    path::Path,
+    sync::{Arc, Mutex, mpsc},
+};
 
 use anyhow::{Context, Result, anyhow, bail};
-use cidre::{arc, av, av::AssetWriterStatus as Status, cm, ns};
+use cidre::{
+    arc, av,
+    av::AssetWriterStatus as Status,
+    cm, define_obj_type, ns, objc,
+    sc::{
+        self,
+        stream::{Output, OutputImpl},
+    },
+};
 
 use super::plan::CaptureSize;
-use super::recorder::Recorder;
+use super::timeline::Timeline;
+use crate::util::lock;
 
-const FRAGMENT_SECONDS: i64 = 2;
+/// What the `Recorder` needs between calls from ScreenCaptureKit.
+pub(super) struct RecorderState {
+    writer: arc::R<av::AssetWriter>,
+    input: arc::R<av::AssetWriterInput>,
+    /// Appends frames at a chosen time, which is how pauses are cut out.
+    adaptor: arc::R<av::asset::WriterInputPixelBufAdaptor>,
+    timeline: Arc<Mutex<Timeline>>,
+    /// Host-clock time of the first frame, in seconds. `None` until a frame arrives.
+    first_frame_time: Option<f64>,
+}
 
-pub(super) type Writer = (
-    arc::R<av::AssetWriter>,
-    arc::R<av::AssetWriterInput>,
-    arc::R<av::asset::WriterInputPixelBufAdaptor>,
-);
+define_obj_type!(pub Recorder + OutputImpl, RecorderState, RECORDER);
 
-pub(super) fn create_writer(path: &Path, size: CaptureSize) -> Result<Writer> {
+impl Output for Recorder {}
+
+#[objc::add_methods]
+impl OutputImpl for Recorder {
+    extern "C" fn impl_stream_did_output_sample_buf(
+        &mut self,
+        _cmd: Option<&objc::Sel>,
+        _stream: &sc::Stream,
+        sample_buf: &mut cm::SampleBuf,
+        kind: sc::OutputType,
+    ) {
+        if kind != sc::OutputType::Screen {
+            return;
+        }
+        let state = self.inner_mut();
+        // ScreenCaptureKit also sends "nothing changed" frames with no image; skip those.
+        let Some(image) = sample_buf.image_buf() else {
+            return;
+        };
+        let captured = sample_buf.pts();
+        let Some(video_time) = lock(&state.timeline).video_time(captured.as_secs()) else {
+            return;
+        };
+        let pts = cm::Time::with_secs(video_time, captured.scale);
+        if state.first_frame_time.is_none() {
+            // Starting a session on a writer that already failed would throw. Stopping reports
+            // the failure instead.
+            if state.writer.status() != Status::Writing {
+                return;
+            }
+            state.writer.start_session_at_src_time(pts);
+            state.first_frame_time = Some(captured.as_secs());
+        }
+        if state.input.is_ready_for_more_media_data() {
+            // A frame that doesn't go in means the writer failed, and stopping reports that.
+            let _ = state.adaptor.append_pixel_buf_with_pts(image, pts);
+        }
+    }
+}
+
+/// Starts writing a `.mov` of `size` at `path`, and returns the `Recorder` that feeds it.
+pub(super) fn create_recorder(
+    path: &Path,
+    size: CaptureSize,
+    timeline: Arc<Mutex<Timeline>>,
+) -> Result<arc::R<Recorder>> {
     // Usually there's nothing to remove. A file that can't be removed makes the writer fail below.
     let _ = std::fs::remove_file(path);
     let url = ns::Url::with_fs_path_str(&path.display().to_string(), false);
     let mut writer = av::AssetWriter::with_url_and_file_type(&url, av::FileType::qt())
         .map_err(|err| anyhow!("could not create {}: {err:?}", path.display()))?;
-    // CONTEXT: finishing the file in 2-second fragments means a crash only loses the last fragment.
-    writer.set_movie_fragment_interval(cm::Time::new(FRAGMENT_SECONDS, 1));
-
-    let mut input = av::AssetWriterInput::with_media_type_and_output_settings(
-        av::MediaType::video(),
-        Some(&video_settings(size)),
-    )
-    .map_err(|err| anyhow!("video settings were rejected: {err:?}"))?;
-    input.set_expects_media_data_in_real_time(true);
-    writer
-        .add_input(&input)
-        .map_err(|err| anyhow!("could not add video input: {err:?}"))?;
-    let adaptor = av::asset::WriterInputPixelBufAdaptor::with_input_writer(&input, None)
-        .map_err(|err| anyhow!("could not prepare the video input: {err:?}"))?;
-    if !writer.start_writing() {
-        return Err(failure(&writer));
-    }
-    Ok((writer, input, adaptor))
-}
-
-fn video_settings(size: CaptureSize) -> arc::R<ns::Dictionary<ns::String, ns::Id>> {
-    // CONTEXT: cidre has no named constant for AVVideoAverageBitRateKey; its value is "AverageBitRate".
+    // The file is finished up to the latest frame every 2 seconds, so a crash loses at most that.
+    writer.set_movie_fragment_interval(cm::Time::new(2, 1));
+    // 8 bits per pixel per second. cidre has no named constant for AVVideoAverageBitRateKey; its
+    // value is "AverageBitRate".
+    let bitrate = (size.width * size.height * 8) as i64;
     let compression = ns::Dictionary::with_keys_values(
         &[ns::str!(c"AverageBitRate")],
-        &[ns::Number::with_i64(size.bitrate()).as_ref()],
+        &[ns::Number::with_i64(bitrate).as_ref()],
     );
-    ns::Dictionary::with_keys_values(
+    let settings: arc::R<ns::Dictionary<ns::String, ns::Id>> = ns::Dictionary::with_keys_values(
         &[
             av::video::settings_keys::codec(),
             av::video::settings_keys::width(),
@@ -62,7 +113,28 @@ fn video_settings(size: CaptureSize) -> arc::R<ns::Dictionary<ns::String, ns::Id
             ns::Number::with_i64(size.height as i64).as_ref(),
             compression.as_ref(),
         ],
+    );
+    let mut input = av::AssetWriterInput::with_media_type_and_output_settings(
+        av::MediaType::video(),
+        Some(&settings),
     )
+    .map_err(|err| anyhow!("video settings were rejected: {err:?}"))?;
+    input.set_expects_media_data_in_real_time(true);
+    writer
+        .add_input(&input)
+        .map_err(|err| anyhow!("could not add video input: {err:?}"))?;
+    let adaptor = av::asset::WriterInputPixelBufAdaptor::with_input_writer(&input, None)
+        .map_err(|err| anyhow!("could not prepare the video input: {err:?}"))?;
+    if !writer.start_writing() {
+        return Err(write_error(&writer));
+    }
+    Ok(Recorder::with(RecorderState {
+        writer,
+        input,
+        adaptor,
+        timeline,
+        first_frame_time: None,
+    }))
 }
 
 /// How a recording's file can end.
@@ -94,7 +166,7 @@ pub(super) fn finish_writing(recorder: &mut Recorder) -> Result<f64> {
             state.writer.cancel_writing();
             bail!("no video was captured");
         }
-        Ending::Failed => return Err(failure(&state.writer)),
+        Ending::Failed => return Err(write_error(&state.writer)),
     };
     state.input.mark_as_finished();
     let (done_tx, done_rx) = mpsc::channel();
@@ -104,13 +176,13 @@ pub(super) fn finish_writing(recorder: &mut Recorder) -> Result<f64> {
     });
     done_rx.recv().context("the file writer never finished")?;
     if state.writer.status() != Status::Completed {
-        return Err(failure(&state.writer));
+        return Err(write_error(&state.writer));
     }
     Ok(first_frame_time)
 }
 
 /// Why the writer failed, in macOS's words.
-fn failure(writer: &av::AssetWriter) -> anyhow::Error {
+fn write_error(writer: &av::AssetWriter) -> anyhow::Error {
     match writer.error() {
         Some(err) => anyhow!("could not write the video: {}", *err),
         None => anyhow!("could not write the video"),
@@ -122,18 +194,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ending_should_finish_a_writer_that_got_frames() {
-        assert_eq!(ending(Status::Writing, Some(2.5)), Ending::Finish(2.5));
-    }
-
-    #[test]
-    fn ending_should_not_finish_a_writer_without_frames() {
-        assert_eq!(ending(Status::Writing, None), Ending::Empty);
-    }
-
-    #[test]
-    fn ending_should_report_a_writer_that_failed() {
-        assert_eq!(ending(Status::Failed, Some(2.5)), Ending::Failed);
-        assert_eq!(ending(Status::Cancelled, None), Ending::Failed);
+    fn ending_should_finish_only_a_writer_that_is_fine_and_got_frames() {
+        let cases = [
+            (Status::Writing, Some(2.5), Ending::Finish(2.5)),
+            (Status::Writing, None, Ending::Empty),
+            (Status::Failed, Some(2.5), Ending::Failed),
+            (Status::Cancelled, None, Ending::Failed),
+        ];
+        for (status, first_frame_time, expected) in cases {
+            assert_eq!(ending(status, first_frame_time), expected, "{status:?}");
+        }
     }
 }

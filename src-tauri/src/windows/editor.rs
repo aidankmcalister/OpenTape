@@ -1,26 +1,14 @@
-//! The editor: where a recording goes after Edit in the preview. Closing it deletes the
-//! recording unless it was saved, so an unsaved one asks first.
+//! The editor: where a recording goes after Edit in the preview. Its close button closes the
+//! recording, which asks first unless it's saved.
 
-use anyhow::Context;
-use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
-use ts_rs::TS;
+use anyhow::{Context, Result};
+use tauri::{AppHandle, Manager, WindowEvent};
 
-use super::{bar, preview};
-use crate::error::CmdResult;
-use crate::macos::alert::{self, Alert, Choice};
-use crate::recording::CurrentRecording;
+use crate::current_recording::CurrentRecording;
 
 pub(crate) const LABEL: &str = "editor";
 
-#[derive(Debug, Clone, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export)]
-pub(crate) struct Opened {
-    video_path: String,
-}
-
-/// The close button asks first instead of closing.
+/// The close button closes the recording instead of the window.
 pub(crate) fn setup(app: &AppHandle) {
     let Some(window) = app.get_webview_window(LABEL) else {
         return;
@@ -30,63 +18,30 @@ pub(crate) fn setup(app: &AppHandle) {
         if let WindowEvent::CloseRequested { api, .. } = event {
             api.prevent_close();
             let app = app.clone();
-            tauri::async_runtime::spawn_blocking(move || close(&app));
+            // Off the main thread, since closing waits for an alert's answer.
+            tauri::async_runtime::spawn_blocking(move || {
+                // Nothing is waiting to hear how it went, so a failure is only logged.
+                if let Err(err) = app.state::<CurrentRecording>().close(&app) {
+                    eprintln!("{err:#}");
+                }
+            });
         }
     });
 }
 
-/// Moves the recording from the preview into the editor.
-#[tauri::command]
-pub(crate) fn edit_recording(app: AppHandle, current: State<'_, CurrentRecording>) -> CmdResult {
+pub(crate) fn show(app: &AppHandle) -> Result<()> {
     let window = app
         .get_webview_window(LABEL)
         .context("the editor window is missing")?;
-    let opened = opened(&current).context("there's no recording to edit")?;
-    preview::hide(&app);
-    // A page that hasn't loaded yet asks with `editor_recording` instead.
-    let _ = app.emit_to(LABEL, "editor-open", opened);
     window.center()?;
     window.show()?;
     window.set_focus()?;
     Ok(())
 }
 
-/// The recording the editor has open, for a page that loads after `editor-open` was sent.
-#[tauri::command]
-pub(crate) fn editor_recording(current: State<'_, CurrentRecording>) -> Option<Opened> {
-    opened(&current)
-}
-
-/// Exporting from the editor isn't built yet, so an unsaved recording can only be deleted.
-fn close(app: &AppHandle) {
-    let current = app.state::<CurrentRecording>();
-    if current.saved_to().is_none() {
-        let choice = alert::ask(
-            app,
-            Alert {
-                title: "Delete this recording and close?",
-                message: "It hasn't been saved, and exporting from the editor isn't ready yet.",
-                first: "Delete and close",
-                second: None,
-            },
-        );
-        if choice != Choice::First {
-            return;
-        }
+pub(crate) fn hide(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(LABEL) {
+        // Fails only once the window is gone, and then it's hidden anyway.
+        let _ = window.hide();
     }
-    super::hide(app, LABEL);
-    // Fails only once the editor is gone, and then there's no page to reset.
-    let _ = app.emit_to(LABEL, "editor-closed", ());
-    bar::show(app);
-    // The editor is already closed, so there's nowhere to show this. The recording's folder
-    // stays in app storage.
-    if let Err(err) = current.discard() {
-        eprintln!("{err:#}");
-    }
-}
-
-fn opened(current: &CurrentRecording) -> Option<Opened> {
-    current.video_path().map(|path| Opened {
-        video_path: path.display().to_string(),
-    })
 }

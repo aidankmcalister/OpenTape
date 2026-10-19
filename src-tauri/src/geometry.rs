@@ -9,7 +9,7 @@ use ts_rs::TS;
 /// A spot in points. The picker's cursor is in global points, top-left origin, like the window
 /// and display frames.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, TS)]
-#[ts(export)]
+#[ts(export, export_to = "bindings.ts")]
 pub(crate) struct Point {
     pub x: f64,
     pub y: f64,
@@ -17,7 +17,7 @@ pub(crate) struct Point {
 
 /// A rectangle in points, as the frontend sends and receives it.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[ts(export, export_to = "bindings.ts")]
 pub(crate) struct Frame {
     pub x: f64,
     pub y: f64,
@@ -76,7 +76,7 @@ impl From<NSPoint> for Point {
 }
 
 /// Flips a rectangle between top-left and bottom-left measuring, inside a space `height` tall.
-/// The same sum works in both directions.
+/// The same sum works both ways.
 pub(crate) fn flip(rect: NSRect, height: f64) -> NSRect {
     NSRect::new(
         NSPoint::new(rect.origin.x, height - rect.origin.y - rect.size.height),
@@ -86,12 +86,12 @@ pub(crate) fn flip(rect: NSRect, height: f64) -> NSRect {
 
 /// A spot in a window (bottom-left origin) as a spot on its page (top-left origin), if it's
 /// inside the window.
-pub(crate) fn page_point(pointer: NSPoint, size: NSSize) -> Option<Point> {
-    let is_inside =
-        (0.0..size.width).contains(&pointer.x) && (0.0..size.height).contains(&pointer.y);
+pub(crate) fn page_point(window_point: NSPoint, window_size: NSSize) -> Option<Point> {
+    let is_inside = (0.0..window_size.width).contains(&window_point.x)
+        && (0.0..window_size.height).contains(&window_point.y);
     is_inside.then_some(Point {
-        x: pointer.x,
-        y: size.height - pointer.y,
+        x: window_point.x,
+        y: window_size.height - window_point.y,
     })
 }
 
@@ -107,7 +107,7 @@ pub(crate) fn keep_bottom_center(frame: NSRect, size: NSSize) -> NSRect {
 }
 
 /// Global screen rectangle to one relative to the display, which `src_rect` expects.
-pub(crate) fn relative_to(rect: cg::Rect, display_frame: cg::Rect) -> cg::Rect {
+pub(crate) fn to_display_relative(rect: cg::Rect, display_frame: cg::Rect) -> cg::Rect {
     let mut relative = rect;
     relative.origin.x -= display_frame.origin.x;
     relative.origin.y -= display_frame.origin.y;
@@ -115,7 +115,7 @@ pub(crate) fn relative_to(rect: cg::Rect, display_frame: cg::Rect) -> cg::Rect {
 }
 
 /// Display-relative rectangle back to global screen points.
-pub(crate) fn on_screen(rect: cg::Rect, display_frame: cg::Rect) -> cg::Rect {
+pub(crate) fn to_global(rect: cg::Rect, display_frame: cg::Rect) -> cg::Rect {
     let mut global = rect;
     global.origin.x += display_frame.origin.x;
     global.origin.y += display_frame.origin.y;
@@ -142,9 +142,11 @@ mod tests {
     }
 
     #[test]
-    fn flip_should_flip_a_top_left_rect() {
+    fn flip_should_move_the_origin_keep_the_size_and_undo_itself() {
         let rect = NSRect::new(NSPoint::new(10.0, 20.0), NSSize::new(100.0, 40.0));
-        assert_eq!(flip(rect, 800.0).origin.y, 740.0);
+        let flipped = flip(rect, 800.0);
+        assert_eq!((flipped.origin.y, flipped.size), (740.0, rect.size));
+        assert_eq!(flip(flipped, 800.0), rect);
     }
 
     #[test]
@@ -163,9 +165,11 @@ mod tests {
     }
 
     #[test]
-    fn relative_and_on_screen_should_undo_each_other() {
+    fn display_relative_rects_should_measure_from_the_displays_corner_and_back() {
         let rect = cg::Rect::new(1700.0, 300.0, 920.0, 436.0);
         let display = cg::Rect::new(1512.0, -200.0, 1920.0, 1080.0);
-        assert_eq!(on_screen(relative_to(rect, display), display), rect);
+        let relative = to_display_relative(rect, display);
+        assert_eq!(relative, cg::Rect::new(188.0, 500.0, 920.0, 436.0));
+        assert_eq!(to_global(relative, display), rect);
     }
 }

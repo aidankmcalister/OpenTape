@@ -1,22 +1,16 @@
-//! Screen capture: record a display, a window or an area to a crash-safe `.mov` with
-//! the cursor hidden, plus a cursor and click log.
-//!
-//! Apple's capture objects can't move between threads, so each recording runs on its
-//! own thread. [`start`] hands back a [`RunningRecording`] that talks to that thread
-//! through channels, and [`RunningRecording::stop`] finishes the file.
+//! Screen capture: record a display, a window or an area to a crash-safe `.mov` with the cursor
+//! hidden, plus a cursor and click log and a `meta.json`. Each recording runs on its own thread,
+//! because Apple's capture objects can't move between threads.
 
-mod content;
 mod cursor_log;
-mod meta;
 mod plan;
-mod recorder;
 mod timeline;
 mod writer;
 
 use std::{
     path::{Path, PathBuf},
     sync::{
-        Arc, Mutex, MutexGuard,
+        Arc, Mutex,
         mpsc::{self, Receiver, Sender},
     },
     thread,
@@ -24,30 +18,28 @@ use std::{
 
 use anyhow::{Context, Result, anyhow, bail};
 use cidre::{arc, dispatch, sc};
-use serde::Serialize;
-use ts_rs::TS;
 
-pub(crate) use content::{display_of, display_scale, shareable_content};
-pub(crate) use plan::{CaptureSize, Target};
+pub(crate) use plan::{
+    CaptureSize, NORMAL_WINDOW_LAYER, Target, display_of, display_scale, shareable_content,
+};
 
+use self::cursor_log::CursorLogger;
+use self::plan::{CapturePlan, plan_capture};
+use self::timeline::{Timeline, host_time_now};
+use self::writer::{Recorder, create_recorder, finish_writing};
 use crate::util::lock;
-use cursor_log::{CursorLogger, host_time_now};
-use meta::meta_json;
-use plan::{CapturePlan, plan_capture};
-use recorder::{Recorder, RecorderState};
-use timeline::Timeline;
-use writer::{create_writer, finish_writing};
+
+const VIDEO_FILE: &str = "recording.mov";
 
 /// A finished recording.
-#[derive(Debug, Serialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export)]
+#[derive(Debug)]
 pub(crate) struct SavedRecording {
     pub video_path: String,
 }
 
-/// A recording in progress. Dropping it without calling [`RunningRecording::stop`]
-/// still stops and finishes the file, because the capture thread sees the channel close.
+/// A recording in progress, talking to its capture thread through channels. Dropping it without
+/// calling `stop` still stops and finishes the file, because the capture thread sees the
+/// channel close.
 pub(crate) struct RunningRecording {
     target: Target,
     folder: PathBuf,
@@ -63,16 +55,16 @@ impl RunningRecording {
 
     /// Frames captured while paused are left out of the file.
     pub(crate) fn pause(&self) {
-        self.timeline().pause(host_time_now());
+        lock(&self.timeline).pause(host_time_now());
     }
 
     pub(crate) fn resume(&self) {
-        self.timeline().resume(host_time_now());
+        lock(&self.timeline).resume(host_time_now());
     }
 
     /// Seconds recorded so far, not counting pauses.
     pub(crate) fn elapsed(&self) -> f64 {
-        self.timeline().elapsed(host_time_now())
+        lock(&self.timeline).elapsed(host_time_now())
     }
 
     pub(crate) fn stop(self) -> Result<SavedRecording> {
@@ -89,33 +81,6 @@ impl RunningRecording {
         self.stop()?;
         std::fs::remove_dir_all(&folder)
             .with_context(|| format!("could not delete {}", folder.display()))
-    }
-
-    fn timeline(&self) -> MutexGuard<'_, Timeline> {
-        lock(&self.timeline)
-    }
-}
-
-#[cfg(test)]
-impl RunningRecording {
-    /// A recording with no capture behind it, for testing what holds one. Stopping it hands
-    /// back `video_path`.
-    pub(crate) fn fake(video_path: &str) -> Self {
-        let (stop_tx, _) = mpsc::channel();
-        let (finished_tx, finished_rx) = mpsc::channel();
-        let saved = SavedRecording {
-            video_path: video_path.to_string(),
-        };
-        finished_tx
-            .send(Ok(saved))
-            .expect("the receiver is right here");
-        Self {
-            target: Target::Display { display_id: 1 },
-            folder: PathBuf::from(video_path),
-            timeline: Arc::new(Mutex::new(Timeline::new(0.0))),
-            stop_tx,
-            finished_rx,
-        }
     }
 }
 
@@ -154,7 +119,7 @@ fn record_until_stopped(
     stop_rx: &Receiver<()>,
 ) -> Result<SavedRecording> {
     // `start` waits for this answer, so each send below always has someone to receive it.
-    let mut capture = match ActiveCapture::start(target, folder, timeline) {
+    let capture = match ActiveCapture::start(target, folder, timeline) {
         Ok(capture) => capture,
         Err(err) => {
             let _ = started_tx.send(Err(err));
@@ -173,7 +138,7 @@ struct ActiveCapture {
     stream: arc::R<sc::Stream>,
     queue: arc::R<dispatch::Queue>,
     recorder: arc::R<Recorder>,
-    cursor: Option<CursorLogger>,
+    cursor: CursorLogger,
     timeline: Arc<Mutex<Timeline>>,
     plan: CapturePlan,
     folder: PathBuf,
@@ -184,14 +149,8 @@ impl ActiveCapture {
         std::fs::create_dir_all(folder)
             .with_context(|| format!("could not create {}", folder.display()))?;
         let plan = plan_capture(target)?;
-        let (writer, input, adaptor) = create_writer(&folder.join("recording.mov"), plan.size)?;
-        let recorder = Recorder::with(RecorderState::new(
-            writer,
-            input,
-            adaptor,
-            Arc::clone(&timeline),
-        ));
-        let stream = sc::Stream::new(&plan.filter, &plan.cfg);
+        let recorder = create_recorder(&folder.join(VIDEO_FILE), plan.size, Arc::clone(&timeline))?;
+        let stream = sc::Stream::new(&plan.filter, &plan.config);
         let queue = dispatch::Queue::serial_with_ar_pool();
         stream
             .add_stream_output(recorder.as_ref(), sc::OutputType::Screen, Some(&queue))
@@ -206,33 +165,75 @@ impl ActiveCapture {
             stream,
             queue,
             recorder,
-            cursor: Some(cursor),
+            cursor,
             timeline,
             plan,
             folder: folder.to_path_buf(),
         })
     }
 
-    /// Finishes the file. A stream that already stopped on its own, because its display was
-    /// unplugged or Screen Recording was turned off, still leaves the frames it got.
-    fn finish(&mut self) -> Result<SavedRecording> {
+    /// Finishes the file and writes `meta.json` next to it. A stream that already stopped on its
+    /// own, because its display was unplugged or Screen Recording was turned off, still leaves
+    /// the frames it got.
+    fn finish(mut self) -> Result<SavedRecording> {
         if let Err(err) = pollster::block_on(self.stream.stop()) {
             eprintln!("capture had already stopped, keeping what it recorded: {err:?}");
         }
         // Frames are appended on `queue`; wait for any still in flight before finishing the file.
         self.queue.sync(|| {});
         // The video is finished before a cursor log error is reported, so it's never left open.
-        let cursor = self.cursor.take().map_or(Ok(()), CursorLogger::stop);
+        let cursor = self.cursor.stop();
         let first_frame_time = finish_writing(&mut self.recorder)?;
         cursor?;
-        let pauses = lock(&self.timeline).pauses().to_vec();
-        std::fs::write(
-            self.folder.join("meta.json"),
-            meta_json(&self.plan, first_frame_time, &pauses),
-        )
-        .context("could not write meta.json")?;
+        // `meta.json`: the video size, where it was on screen, and the clock times needed to
+        // line the cursor log up with the video.
+        let rect = self.plan.screen_rect;
+        // Can't fail: plain numbers always serialize.
+        let pauses = serde_json::to_string(lock(&self.timeline).pauses())
+            .unwrap_or_else(|_| "[]".to_string());
+        let meta = format!(
+            r#"{{
+  "video_width": {},
+  "video_height": {},
+  "screen_rect": {{ "x": {:.1}, "y": {:.1}, "width": {:.1}, "height": {:.1} }},
+  "first_frame_time": {first_frame_time:.6},
+  "pauses": {pauses},
+  "clock": "host time in seconds, same as the t values in events.jsonl; pauses are cut from the video"
+}}
+"#,
+            self.plan.size.width,
+            self.plan.size.height,
+            rect.origin.x,
+            rect.origin.y,
+            rect.size.width,
+            rect.size.height
+        );
+        std::fs::write(self.folder.join("meta.json"), meta).context("could not write meta.json")?;
         Ok(SavedRecording {
-            video_path: self.folder.join("recording.mov").display().to_string(),
+            video_path: self.folder.join(VIDEO_FILE).display().to_string(),
         })
+    }
+}
+
+#[cfg(test)]
+impl RunningRecording {
+    /// A recording with no capture behind it, for testing what holds one. Stopping it hands
+    /// back `video_path`.
+    pub(crate) fn fake(video_path: &str) -> Self {
+        let (stop_tx, _) = mpsc::channel();
+        let (finished_tx, finished_rx) = mpsc::channel();
+        let saved = SavedRecording {
+            video_path: video_path.to_string(),
+        };
+        finished_tx
+            .send(Ok(saved))
+            .expect("the receiver is right here");
+        Self {
+            target: Target::Display { display_id: 1 },
+            folder: PathBuf::from(video_path),
+            timeline: Arc::new(Mutex::new(Timeline::new(0.0))),
+            stop_tx,
+            finished_rx,
+        }
     }
 }

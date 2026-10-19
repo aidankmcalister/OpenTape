@@ -1,20 +1,20 @@
-//! Turns what to record (a display, a window or an area) into what ScreenCaptureKit needs: a
-//! content filter that leaves out the right windows, a stream config, and the output size.
+//! What's on screen as ScreenCaptureKit sees it, and how what to record (a display, a window or
+//! an area) becomes what ScreenCaptureKit needs: a content filter that leaves out the right
+//! windows, a stream config, and the output size.
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use cidre::{arc, cg, cm, ns, sc, sys};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use super::content::{display_of, display_scale, find_display, find_window, shareable_content};
-use crate::geometry::{on_screen, relative_to};
+use crate::geometry::{to_display_relative, to_global};
 
-const FRAMES_PER_SECOND: i32 = 60;
-const BITS_PER_PIXEL_PER_SECOND: usize = 8;
+/// The layer ordinary app windows sit on. Higher layers hold menus and dragged items.
+pub(crate) const NORMAL_WINDOW_LAYER: isize = 0;
 
 /// What to record. Sent from the frontend as `{ kind: "window", windowId: 398 }` and so on.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[ts(export, export_to = "bindings.ts")]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -40,7 +40,7 @@ pub(crate) enum Target {
 /// Everything needed to start a capture, whatever the target.
 pub(super) struct CapturePlan {
     pub filter: arc::R<sc::ContentFilter>,
-    pub cfg: arc::R<sc::StreamCfg>,
+    pub config: arc::R<sc::StreamCfg>,
     pub size: CaptureSize,
     /// Where the captured content was on screen at the start, in global points.
     pub screen_rect: cg::Rect,
@@ -49,23 +49,47 @@ pub(super) struct CapturePlan {
 /// A recording's size in pixels: what the file will be, and what the picker shows. Always even,
 /// because H.264 needs even dimensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
+#[ts(export, export_to = "bindings.ts")]
 pub(crate) struct CaptureSize {
     pub(super) width: usize,
     pub(super) height: usize,
 }
 
 impl CaptureSize {
+    /// `rect` in pixels at `scale`, each side rounded down to an even number. The Area box shows
+    /// its size live while you drag it, so the frontend's `pixelSize` (`src/picker/area.ts`) runs
+    /// this same rule on the same scale, checked by the same cases as the test below.
     pub(crate) fn of(rect: cg::Rect, scale: f64) -> Self {
         Self {
-            width: even_pixels(rect.size.width, scale),
-            height: even_pixels(rect.size.height, scale),
+            width: (rect.size.width * scale) as usize / 2 * 2,
+            height: (rect.size.height * scale) as usize / 2 * 2,
         }
     }
+}
 
-    pub(super) fn bitrate(self) -> i64 {
-        (self.width * self.height * BITS_PER_PIXEL_PER_SECOND) as i64
-    }
+/// Blocks until ScreenCaptureKit answers, so call it off the main thread.
+pub(crate) fn shareable_content() -> Result<arc::R<sc::ShareableContent>> {
+    pollster::block_on(sc::ShareableContent::current())
+        .map_err(|err| anyhow!("could not read the screen (is Screen Recording allowed?): {err:?}"))
+}
+
+pub(crate) fn display_of(
+    content: &sc::ShareableContent,
+    window: &sc::Window,
+) -> Result<arc::R<sc::Display>> {
+    let origin = window.frame().origin;
+    content
+        .displays()
+        .iter()
+        .find(|display| display.frame().contains_point(&origin))
+        .map(|display| display.retained())
+        .context("the window is not on any display")
+}
+
+/// Pixels per point.
+pub(crate) fn display_scale(display: &sc::Display) -> f64 {
+    let filter = sc::ContentFilter::with_display_excluding_windows(display, &ns::Array::new());
+    f64::from(sc::ShareableContent::info_for_filter(&filter).point_pixel_scale())
 }
 
 pub(super) fn plan_capture(target: &Target) -> Result<CapturePlan> {
@@ -73,32 +97,22 @@ pub(super) fn plan_capture(target: &Target) -> Result<CapturePlan> {
     match *target {
         Target::Display { display_id } => {
             let display = find_display(&content, display_id)?;
-            let screen_rect = display.frame();
-            let size = CaptureSize::of(screen_rect, display_scale(&display));
-            Ok(CapturePlan {
-                filter: without_this_app(&content, &display),
-                cfg: stream_config(size),
-                size,
-                screen_rect,
-            })
+            let filter = without_this_app(&content, &display);
+            Ok(plan(filter, &display, display.frame(), None))
         }
         Target::Window { window_id } => {
-            let window = find_window(&content, window_id)?;
+            let window = content
+                .windows()
+                .iter()
+                .find(|window| window.id() == window_id)
+                .map(|window| window.retained())
+                .with_context(|| format!("window {window_id} is gone"))?;
             let display = display_of(&content, &window)?;
             let app = window.owning_app().context("window has no app")?;
-            let screen_rect = window.frame();
-            let size = CaptureSize::of(screen_rect, display_scale(&display));
-            let mut cfg = stream_config(size);
-            cfg.set_src_rect(relative_to(screen_rect, display.frame()));
-            Ok(CapturePlan {
-                filter: sc::ContentFilter::with_display_excluding_windows(
-                    &display,
-                    &hidden_windows(&content, Hiding::of(Some(app.process_id()))),
-                ),
-                cfg,
-                size,
-                screen_rect,
-            })
+            let hidden = hidden_windows(&content, Some(app.process_id()));
+            let filter = sc::ContentFilter::with_display_excluding_windows(&display, &hidden);
+            let src_rect = to_display_relative(window.frame(), display.frame());
+            Ok(plan(filter, &display, window.frame(), Some(src_rect)))
         }
         Target::Area {
             display_id,
@@ -108,17 +122,49 @@ pub(super) fn plan_capture(target: &Target) -> Result<CapturePlan> {
             height,
         } => {
             let display = find_display(&content, display_id)?;
-            let rect = cg::Rect::new(x, y, width, height);
-            let size = CaptureSize::of(rect, display_scale(&display));
-            let mut cfg = stream_config(size);
-            cfg.set_src_rect(rect);
-            Ok(CapturePlan {
-                filter: without_this_app(&content, &display),
-                cfg,
-                size,
-                screen_rect: on_screen(rect, display.frame()),
-            })
+            let area = cg::Rect::new(x, y, width, height);
+            let filter = without_this_app(&content, &display);
+            Ok(plan(
+                filter,
+                &display,
+                to_global(area, display.frame()),
+                Some(area),
+            ))
         }
+    }
+}
+
+fn find_display(content: &sc::ShareableContent, display_id: u32) -> Result<arc::R<sc::Display>> {
+    content
+        .displays()
+        .iter()
+        .find(|display| display.display_id().0 == display_id)
+        .map(|display| display.retained())
+        .with_context(|| format!("display {display_id} is gone"))
+}
+
+/// `src_rect` is the part of the display to record, in points from its top-left corner; `None`
+/// records all of it.
+fn plan(
+    filter: arc::R<sc::ContentFilter>,
+    display: &sc::Display,
+    screen_rect: cg::Rect,
+    src_rect: Option<cg::Rect>,
+) -> CapturePlan {
+    let size = CaptureSize::of(screen_rect, display_scale(display));
+    let mut config = sc::StreamCfg::new();
+    config.set_width(size.width);
+    config.set_height(size.height);
+    config.set_shows_cursor(false);
+    config.set_minimum_frame_interval(cm::Time::new(1, 60));
+    if let Some(src_rect) = src_rect {
+        config.set_src_rect(src_rect);
+    }
+    CapturePlan {
+        filter,
+        config,
+        size,
+        screen_rect,
     }
 }
 
@@ -128,17 +174,17 @@ fn without_this_app(
     content: &sc::ShareableContent,
     display: &sc::Display,
 ) -> arc::R<sc::ContentFilter> {
-    let own_pid = Hiding::of(None).own_pid;
-    let own_app: Vec<arc::R<sc::RunningApp>> = content
-        .apps()
-        .iter()
-        .filter(|app| app.process_id() == own_pid)
-        .map(|app| app.retained())
-        .collect();
+    let own_pid = own_pid();
+    let mut own_app: Vec<arc::R<sc::RunningApp>> = Vec::new();
+    for app in content.apps().iter() {
+        if app.process_id() == own_pid {
+            own_app.push(app.retained());
+        }
+    }
     if own_app.is_empty() {
         return sc::ContentFilter::with_display_excluding_windows(
             display,
-            &hidden_windows(content, Hiding::of(None)),
+            &hidden_windows(content, None),
         );
     }
     sc::ContentFilter::with_display_excluding_apps_excepting_windows(
@@ -148,63 +194,43 @@ fn without_this_app(
     )
 }
 
-/// Every other app's normal windows (layer 0). Window recordings hide these, so windows
-/// dragged over the recorded one don't show, while dragged items and menus still do.
-fn hidden_windows(content: &sc::ShareableContent, hiding: Hiding) -> arc::R<ns::Array<sc::Window>> {
-    let hidden: Vec<arc::R<sc::Window>> = content
-        .windows()
-        .iter()
-        .filter(|window| {
-            let owner = window.owning_app().map(|app| app.process_id());
-            hiding.hides(window.window_layer(), owner)
-        })
-        .map(|window| window.retained())
-        .collect();
+/// The windows a capture leaves out. `recorded_app` is set when recording one of its windows.
+fn hidden_windows(
+    content: &sc::ShareableContent,
+    recorded_app: Option<sys::Pid>,
+) -> arc::R<ns::Array<sc::Window>> {
+    let own_pid = own_pid();
+    let mut hidden: Vec<arc::R<sc::Window>> = Vec::new();
+    for window in content.windows().iter() {
+        let owner = window.owning_app().map(|app| app.process_id());
+        if hides(window.window_layer(), owner, own_pid, recorded_app) {
+            hidden.push(window.retained());
+        }
+    }
     ns::Array::from_slice_retained(&hidden)
 }
 
-/// Which windows a capture leaves out.
-#[derive(Debug, Clone, Copy)]
-struct Hiding {
+/// This app's windows (the bar, the overlays) never show. When recording a window, other apps'
+/// normal windows hide too, so windows dragged over the recorded one don't show. Higher layers
+/// (drags and menus) stay.
+fn hides(
+    layer: isize,
+    owner: Option<sys::Pid>,
     own_pid: sys::Pid,
-    /// Set when recording a window: the app that owns it.
     recorded_app: Option<sys::Pid>,
-}
-
-impl Hiding {
-    fn of(recorded_app: Option<sys::Pid>) -> Self {
-        Self {
-            // A macOS process ID always fits. If it didn't, -1 matches no app.
-            own_pid: sys::Pid::try_from(std::process::id()).unwrap_or(-1),
-            recorded_app,
-        }
+) -> bool {
+    let Some(owner) = owner else {
+        return false;
+    };
+    if owner == own_pid {
+        return true;
     }
-
-    /// This app's windows (the bar, the overlays) never show. When recording a window, other
-    /// apps' normal windows (layer 0) hide too; higher layers (drags, menus, tooltips) stay.
-    fn hides(self, layer: isize, owner: Option<sys::Pid>) -> bool {
-        let Some(owner) = owner else {
-            return false;
-        };
-        owner == self.own_pid
-            || self
-                .recorded_app
-                .is_some_and(|app| layer == 0 && owner != app)
-    }
+    recorded_app.is_some_and(|app| layer == NORMAL_WINDOW_LAYER && owner != app)
 }
 
-fn stream_config(size: CaptureSize) -> arc::R<sc::StreamCfg> {
-    let mut cfg = sc::StreamCfg::new();
-    cfg.set_width(size.width);
-    cfg.set_height(size.height);
-    cfg.set_shows_cursor(false);
-    cfg.set_minimum_frame_interval(cm::Time::new(1, FRAMES_PER_SECOND));
-    cfg
-}
-
-/// Points times screen scale, rounded down to an even number of pixels.
-fn even_pixels(points: f64, scale: f64) -> usize {
-    (points * scale) as usize / 2 * 2
+fn own_pid() -> sys::Pid {
+    // A macOS process ID always fits. If it didn't, -1 matches no app.
+    sys::Pid::try_from(std::process::id()).unwrap_or(-1)
 }
 
 #[cfg(test)]
@@ -212,17 +238,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn target_should_read_a_window_from_the_frontend() {
-        let target: Target = serde_json::from_str(r#"{"kind":"window","windowId":398}"#).unwrap();
-        assert_eq!(target, Target::Window { window_id: 398 });
-    }
-
-    #[test]
-    fn target_should_read_an_area_from_the_frontend() {
+    fn target_should_read_what_the_frontend_sends() {
+        let window: Target = serde_json::from_str(r#"{"kind":"window","windowId":398}"#).unwrap();
+        assert_eq!(window, Target::Window { window_id: 398 });
         let json = r#"{"kind":"area","displayId":1,"x":100,"y":50,"width":1280,"height":720}"#;
-        let target: Target = serde_json::from_str(json).unwrap();
+        let area: Target = serde_json::from_str(json).unwrap();
         assert_eq!(
-            target,
+            area,
             Target::Area {
                 display_id: 1,
                 x: 100.0,
@@ -234,38 +256,50 @@ mod tests {
     }
 
     #[test]
-    fn window_recording_should_hide_other_apps_normal_windows() {
-        assert!(RECORDING_APP_100.hides(0, Some(200)));
+    fn hides_should_leave_out_this_app_and_whatever_covers_a_recorded_window() {
+        const OWN: sys::Pid = 1;
+        // (layer, owner, recording app 100's window?, hidden)
+        let cases = [
+            // Other apps' normal windows hide while recording a window...
+            (0, Some(200), true, true),
+            // ...but not the recorded app's, nor higher layers like drags and menus.
+            (0, Some(100), true, false),
+            (101, Some(200), true, false),
+            // This app's own windows always hide.
+            (101, Some(OWN), true, true),
+            (25, Some(OWN), false, true),
+            // Recording a display keeps other apps.
+            (0, Some(200), false, false),
+            // Windows without an owner never hide.
+            (0, None, true, false),
+            (0, None, false, false),
+        ];
+        for (layer, owner, recording_window, hidden) in cases {
+            let recorded_app = recording_window.then_some(100);
+            assert_eq!(
+                hides(layer, owner, OWN, recorded_app),
+                hidden,
+                "layer {layer}, owner {owner:?}, recorded app {recorded_app:?}"
+            );
+        }
+        assert_eq!(own_pid(), std::process::id() as sys::Pid);
     }
 
     #[test]
-    fn window_recording_should_keep_the_target_apps_windows() {
-        assert!(!RECORDING_APP_100.hides(0, Some(100)));
-    }
-
-    #[test]
-    fn window_recording_should_keep_higher_layers_like_drags_and_menus() {
-        assert!(!RECORDING_APP_100.hides(101, Some(200)));
-    }
-
-    #[test]
-    fn every_recording_should_hide_this_apps_own_windows() {
-        assert!(RECORDING_APP_100.hides(101, Some(1)));
-        assert!(RECORDING_DISPLAY.hides(25, Some(1)));
-        assert!(!RECORDING_DISPLAY.hides(0, Some(200)));
-    }
-
-    const RECORDING_APP_100: Hiding = Hiding {
-        own_pid: 1,
-        recorded_app: Some(100),
-    };
-    const RECORDING_DISPLAY: Hiding = Hiding {
-        own_pid: 1,
-        recorded_app: None,
-    };
-
-    #[test]
-    fn even_pixels_should_round_down_to_even() {
-        assert_eq!(even_pixels(920.5, 2.0), 1840);
+    fn capture_size_should_round_each_side_down_to_even_pixels() {
+        let cases = [
+            (920.5, 2.0, 1840),
+            (333.0, 1.5, 498),
+            (100.0, 1.0, 100),
+            (982.5, 2.0, 1964),
+        ];
+        for (points, scale, pixels) in cases {
+            let size = CaptureSize::of(cg::Rect::new(40.0, 60.0, points, points), scale);
+            assert_eq!(
+                (size.width, size.height),
+                (pixels, pixels),
+                "{points} at {scale}x"
+            );
+        }
     }
 }

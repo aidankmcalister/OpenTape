@@ -1,4 +1,4 @@
-import type { Point } from "@/lib/bindings/Point";
+import type { Point } from "@/lib/bindings";
 
 export type { Point };
 export type Size = { width: number; height: number };
@@ -11,14 +11,6 @@ export function contains(rect: Rect, point: Point): boolean {
     point.y >= rect.y &&
     point.y < rect.y + rect.height
   );
-}
-
-/** With items ordered front to back, this is the one you can see under `point`. */
-export function firstUnder<T extends { frame: Rect }>(
-  point: Point | null,
-  items: T[],
-): T | undefined {
-  return point ? items.find((item) => contains(item.frame, point)) : undefined;
 }
 
 export function relativeTo(rect: Rect, origin: Point): Rect {
@@ -37,6 +29,11 @@ export function intersect(a: Rect, b: Rect): Rect | null {
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+/** `rect` as absolute-position CSS. */
+export function rectStyle(rect: Rect) {
+  return { left: rect.x, top: rect.y, width: rect.width, height: rect.height };
 }
 
 /** The largest size of `ratio` (width / height) that fits inside `bounds`. */

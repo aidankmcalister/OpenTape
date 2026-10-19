@@ -4,7 +4,7 @@ import {
   useSyncExternalStore,
   type RefObject,
 } from "react";
-import { createClock, estimateTime, type Clock } from "@/lib/clock";
+import { createClock, estimateTime, type Clock } from "@/lib/time";
 
 /**
  * The video's time, smooth enough to drive a playhead, kept outside React state so the frames

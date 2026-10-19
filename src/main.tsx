@@ -5,19 +5,17 @@ import "@fontsource-variable/inter";
 import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import "./index.css";
-import Editor from "@/features/editor/components/Editor";
-import RecordBar from "@/features/bar/components/RecordBar";
-import Picker from "@/features/picker/components/Picker";
-import RecordingPreview from "@/features/preview/components/RecordingPreview";
+import RecordBar from "@/bar/RecordBar";
 import { TooltipProvider } from "@/components/ui/tooltip";
-
-const PICKER_PREFIX = "picker-";
+import Editor from "@/editor/Editor";
+import Picker from "@/picker/Picker";
+import RecordingPreview from "@/preview/RecordingPreview";
 
 function WindowContent({ label }: { label: string }) {
   if (label === "editor") return <Editor />;
   if (label === "preview") return <RecordingPreview />;
-  if (label.startsWith(PICKER_PREFIX)) {
-    return <Picker displayId={Number(label.slice(PICKER_PREFIX.length))} />;
+  if (label.startsWith("picker-")) {
+    return <Picker displayId={Number(label.slice("picker-".length))} />;
   }
   return <RecordBar />;
 }

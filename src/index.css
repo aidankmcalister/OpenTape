@@ -46,7 +46,6 @@
   --color-highlight: var(--highlight);
   --color-highlight-foreground: var(--highlight-foreground);
   --color-glass: var(--glass);
-  --color-glass-solid: var(--glass-solid);
   --color-glass-border: var(--glass-border);
   --color-dim: var(--dim);
   --color-tint: var(--tint);
@@ -97,7 +96,6 @@
   /* The bar sits on a native blur; overlay pills can't, so theirs is nearly opaque. */
   /* Light enough that the blur behind it shows through. */
   --glass: rgb(30 30 33 / 0.6);
-  --glass-solid: rgb(30 30 33 / 0.96);
   --glass-border: rgb(255 255 255 / 0.14);
   --dim: rgb(0 0 0 / 0.5);
   /* Covers the target the picker points at; a border can't follow every window's corners. */
