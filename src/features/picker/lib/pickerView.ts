@@ -158,3 +158,28 @@ export function sameHighlight(
   const { icon: iconB, ...restB } = b;
   return iconA === iconB && JSON.stringify(restA) === JSON.stringify(restB);
 }
+
+/** Whether two views draw the same, so a cursor move that changes nothing redraws nothing. */
+export function sameView(a: PickerView | null, b: PickerView | null): boolean {
+  if (a === null || b === null) return a === b;
+  if (a.mode === "area" || b.mode === "area") {
+    return (
+      a.mode === "area" &&
+      b.mode === "area" &&
+      a.display === b.display &&
+      a.hasBox === b.hasBox
+    );
+  }
+  return a.mode === b.mode && sameHighlight(a.highlight, b.highlight);
+}
+
+/** The cursor in this display's page coordinates, for hover, or null when it's unknown. */
+export function pointerOnDisplay(
+  session: Session | null,
+  cursor: Point | null,
+  displayId: number,
+): Point | null {
+  const display = session?.sources.displays.find(({ id }) => id === displayId);
+  if (!cursor || !display) return null;
+  return { x: cursor.x - display.frame.x, y: cursor.y - display.frame.y };
+}

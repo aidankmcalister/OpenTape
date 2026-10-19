@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { listDevices } from "@/features/bar/lib/bar";
+import { useOneAtATime } from "@/hooks/useOneAtATime";
 import type { Device } from "@/lib/bindings/Device";
 import type { Devices } from "@/lib/bindings/Devices";
 import { popupChoices } from "@/lib/menus";
@@ -38,31 +39,40 @@ export function useCaptureOptions(): CaptureOptions {
     microphones: [],
   });
   const [options, setOptions] = useState<Options>(loadOptions);
+  const oneAtATime = useOneAtATime();
 
-  useEffect(() => void refreshDevices(), []);
+  useEffect(() => {
+    let isMounted = true;
+    listDevices()
+      .then((found) => {
+        if (isMounted) setDevices(found);
+      })
+      .catch(console.error);
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   useEffect(
     () => localStorage.setItem(STORAGE_KEY, JSON.stringify(options)),
     [options],
   );
 
-  async function refreshDevices(): Promise<Devices> {
-    const found = await listDevices();
-    setDevices(found);
-    return found;
-  }
-
   const update = (patch: Partial<Options>) =>
     setOptions((current) => ({ ...current, ...patch }));
 
+  /** One menu at a time, so a double click doesn't open a second after the first. */
   async function chooseDevice(anchor: HTMLElement, kind: keyof Devices) {
     const { key, none } = DEVICE_MENUS[kind];
-    const found = await refreshDevices();
-    await popupChoices(
-      anchor,
-      withNone(none, found[kind]),
-      options[key],
-      (id) => update({ [key]: id }),
-    );
+    await oneAtATime(async () => {
+      const found = await listDevices();
+      setDevices(found);
+      await popupChoices(
+        anchor,
+        withNone(none, found[kind]),
+        options[key],
+        (id) => update({ [key]: id }),
+      );
+    }).catch(console.error);
   }
 
   return {
@@ -72,7 +82,11 @@ export function useCaptureOptions(): CaptureOptions {
     systemAudio: options.systemAudio,
     chooseCamera: (anchor) => chooseDevice(anchor, "cameras"),
     chooseMicrophone: (anchor) => chooseDevice(anchor, "microphones"),
-    toggleSystemAudio: () => update({ systemAudio: !options.systemAudio }),
+    toggleSystemAudio: () =>
+      setOptions((current) => ({
+        ...current,
+        systemAudio: !current.systemAudio,
+      })),
   };
 }
 

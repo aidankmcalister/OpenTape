@@ -4,6 +4,7 @@
 use anyhow::{Context, Result, anyhow};
 use cidre::{arc, ns, sc};
 
+/// Blocks until ScreenCaptureKit answers, so call it off the main thread.
 pub(crate) fn shareable_content() -> Result<arc::R<sc::ShareableContent>> {
     pollster::block_on(sc::ShareableContent::current())
         .map_err(|err| anyhow!("could not read the screen (is Screen Recording allowed?): {err:?}"))

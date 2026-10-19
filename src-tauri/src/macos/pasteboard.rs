@@ -2,15 +2,20 @@
 
 use std::path::Path;
 
+use anyhow::{Result, ensure};
 use objc2::runtime::ProtocolObject;
 use objc2_app_kit::NSPasteboard;
 use objc2_foundation::{NSArray, NSString, NSURL};
 
-/// Call on the main thread.
-pub(crate) fn copy_file(path: &Path) {
+/// Call on the main thread, through [`super::main_thread::run`].
+pub(crate) fn copy_file(path: &Path) -> Result<()> {
     let url = NSURL::fileURLWithPath(&NSString::from_str(&path.display().to_string()));
     let objects = NSArray::from_retained_slice(&[ProtocolObject::from_retained(url)]);
     let pasteboard = NSPasteboard::generalPasteboard();
     pasteboard.clearContents();
-    pasteboard.writeObjects(&objects);
+    ensure!(
+        pasteboard.writeObjects(&objects),
+        "could not put the recording on the clipboard"
+    );
+    Ok(())
 }

@@ -75,10 +75,16 @@ impl OutputImpl for Recorder {
         };
         let pts = cm::Time::with_secs(placed, captured.scale);
         if state.first_frame_time.is_none() {
+            // Starting a session on a writer that already failed would throw. Stopping reports
+            // the failure instead.
+            if state.writer.status() != av::AssetWriterStatus::Writing {
+                return;
+            }
             state.writer.start_session_at_src_time(pts);
             state.first_frame_time = Some(captured.as_secs());
         }
         if state.input.is_ready_for_more_media_data() {
+            // A frame that doesn't go in means the writer failed, and stopping reports that.
             let _ = state.adaptor.append_pixel_buf_with_pts(image, pts);
         }
     }

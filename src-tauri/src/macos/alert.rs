@@ -8,6 +8,8 @@ use tauri_plugin_dialog::{
     DialogExt, MessageDialogButtons, MessageDialogKind, MessageDialogResult,
 };
 
+use super::main_thread;
+
 const CANCEL: &str = "Cancel";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,14 +27,21 @@ pub(crate) struct Alert<'a> {
     pub second: Option<&'a str>,
 }
 
+/// Waits for an answer. On the main thread it answers Cancel straight away instead: the alert
+/// needs the main thread to show, so waiting there would never end.
 pub(crate) fn ask(app: &AppHandle, alert: Alert) -> Choice {
+    if MainThreadMarker::new().is_some() {
+        eprintln!("an alert was asked on the main thread, so it was cancelled");
+        return Choice::Cancel;
+    }
     // The bar and preview never activate the app, and an inactive app's alert opens behind
-    // whatever you're using.
-    let _ = app.run_on_main_thread(|| {
-        if let Some(main_thread) = MainThreadMarker::new() {
-            NSApplication::sharedApplication(main_thread).activate();
-        }
+    // whatever you're using. If that fails, the alert still opens, just maybe behind.
+    let activate = main_thread::run(app, |main_thread| {
+        NSApplication::sharedApplication(main_thread).activate();
     });
+    if let Err(err) = activate {
+        eprintln!("could not bring the app forward for an alert: {err:#}");
+    }
     let buttons = match alert.second {
         Some(second) => MessageDialogButtons::YesNoCancelCustom(
             alert.first.into(),

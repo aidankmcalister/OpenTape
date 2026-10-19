@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test";
 import type { Session } from "@/lib/bindings/Session";
-import { nextWindowId, pickerView, sameHighlight } from "./pickerView";
+import {
+  nextWindowId,
+  pickerView,
+  pointerOnDisplay,
+  sameHighlight,
+  sameView,
+} from "./pickerView";
 
 const LAPTOP = {
   id: 1,
@@ -148,4 +154,58 @@ test("sameHighlight should ignore cursor moves within one window", () => {
   expect(sameHighlight(highlightAt(150, 150), highlightAt(800, 700))).toBe(
     false,
   );
+});
+
+test("sameView should ignore cursor moves that change nothing drawn", () => {
+  const windows = session("window");
+  expect(
+    sameView(
+      pickerView(windows, { x: 150, y: 150 }, LAPTOP.id),
+      pickerView(windows, { x: 160, y: 170 }, LAPTOP.id),
+    ),
+  ).toBe(true);
+  expect(
+    sameView(
+      pickerView(windows, { x: 150, y: 150 }, LAPTOP.id),
+      pickerView(windows, { x: 800, y: 700 }, LAPTOP.id),
+    ),
+  ).toBe(false);
+  const area = session("area", { areaDisplayId: LAPTOP.id });
+  expect(
+    sameView(
+      pickerView(area, { x: 1, y: 1 }, LAPTOP.id),
+      pickerView(area, { x: 900, y: 900 }, LAPTOP.id),
+    ),
+  ).toBe(true);
+});
+
+test("sameView should see a change of mode or box", () => {
+  const area = session("area", { areaDisplayId: LAPTOP.id });
+  const display = session("display");
+  const cursor = { x: 10, y: 10 };
+  expect(
+    sameView(
+      pickerView(area, cursor, LAPTOP.id),
+      pickerView(display, cursor, LAPTOP.id),
+    ),
+  ).toBe(false);
+  expect(
+    sameView(
+      pickerView(area, cursor, LAPTOP.id),
+      pickerView({ ...area, areaDisplayId: MONITOR.id }, cursor, LAPTOP.id),
+    ),
+  ).toBe(false);
+  expect(sameView(null, pickerView(display, cursor, LAPTOP.id))).toBe(false);
+  expect(sameView(null, null)).toBe(true);
+});
+
+test("pointerOnDisplay should put the cursor in the display's own coordinates", () => {
+  const cursor = { x: 2000, y: 500 };
+  expect(pointerOnDisplay(session("window"), cursor, MONITOR.id)).toEqual({
+    x: 488,
+    y: 500,
+  });
+  expect(pointerOnDisplay(null, cursor, MONITOR.id)).toBeNull();
+  expect(pointerOnDisplay(session("window"), null, MONITOR.id)).toBeNull();
+  expect(pointerOnDisplay(session("window"), cursor, 99)).toBeNull();
 });

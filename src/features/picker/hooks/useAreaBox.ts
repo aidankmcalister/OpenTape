@@ -1,4 +1,5 @@
 import { useRef, useState, type PointerEvent } from "react";
+import { useOneAtATime } from "@/hooks/useOneAtATime";
 import { useTauriEvent } from "@/hooks/useTauriEvent";
 import type { DisplayInfo } from "@/lib/bindings/DisplayInfo";
 import { EVENTS } from "@/lib/events";
@@ -47,6 +48,8 @@ export function useAreaBox(
   const [area, setArea] = useState(() => centeredArea(bounds));
   const [ratio, setRatio] = useState<Ratio | null>(null);
   const drag = useRef<Drag | null>(null);
+  // Return and the Record button can land together; the box records once.
+  const oneAtATime = useOneAtATime();
 
   // A box that arrives on this display starts centered again.
   const [hadBox, setHadBox] = useState(hasBox);
@@ -56,7 +59,9 @@ export function useAreaBox(
   }
 
   const start = () =>
-    void record({ kind: "area", displayId: display.id, ...area });
+    void oneAtATime(() =>
+      record({ kind: "area", displayId: display.id, ...area }),
+    ).catch(console.error);
   useTauriEvent<PickerKey>(
     EVENTS.pickerKey,
     (key) => {
@@ -114,6 +119,8 @@ export function useAreaBox(
       onPointerDown: (event) => beginDrag(handle, area, event),
     }),
     barProps: { onPointerDown: (event) => event.stopPropagation() },
-    claimProps: { onPointerDown: () => void moveArea(display.id) },
+    claimProps: {
+      onPointerDown: () => void moveArea(display.id).catch(console.error),
+    },
   };
 }

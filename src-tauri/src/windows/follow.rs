@@ -1,19 +1,12 @@
 //! Keeps the floating windows (the record bar and the recording preview) on the display you're
-//! working on: a click on another display moves each one to its corner of that display.
+//! working on: while one shows, its pointer loop sees each click, and a click on another
+//! display moves it to its corner of that display.
 
-use std::{thread, time::Duration};
-
-use objc2::{MainThreadMarker, rc::Retained};
+use objc2::{MainThreadMarker, MainThreadOnly, rc::Retained};
 use objc2_app_kit::{NSEvent, NSScreen, NSWindow};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
-use tauri::{AppHandle, Manager};
 
-use super::{bar, preview};
 use crate::geometry::{self, Frame, Point};
-use crate::macos::window as macos_window;
-
-const CLICK_CHECK_EVERY: Duration = Duration::from_millis(33);
-const LEFT_BUTTON: usize = 1;
 /// Space between a floating window and the edge of the screen's usable area, in points.
 const EDGE_GAP: f64 = 12.0;
 
@@ -21,25 +14,6 @@ const EDGE_GAP: f64 = 12.0;
 pub(crate) enum Anchor {
     BottomCenter,
     BottomLeft,
-}
-
-const FLOATING: [(&str, Anchor); 2] = [
-    (bar::LABEL, Anchor::BottomCenter),
-    (preview::LABEL, Anchor::BottomLeft),
-];
-
-pub(crate) fn start(app: AppHandle) {
-    thread::spawn(move || {
-        let mut was_down = false;
-        loop {
-            let is_down = NSEvent::pressedMouseButtons() & LEFT_BUTTON != 0;
-            if is_down && !was_down {
-                follow_click(&app);
-            }
-            was_down = is_down;
-            thread::sleep(CLICK_CHECK_EVERY);
-        }
-    });
 }
 
 /// A screen's top-left corner in global points, measured like ScreenCaptureKit's displays, and
@@ -88,24 +62,15 @@ pub(crate) fn place_on_primary_screen(
 }
 
 pub(crate) fn place_on_pointer_screen(ns_window: &NSWindow, anchor: Anchor) {
-    if let Some(screen) = screen_under_pointer() {
+    if let Some(screen) = screen_under_pointer(ns_window.mtm()) {
         place(ns_window, &screen, anchor);
     }
 }
 
-fn follow_click(app: &AppHandle) {
-    for (label, anchor) in FLOATING {
-        if let Some(window) = app.get_webview_window(label) {
-            let _ = macos_window::with_ns_window(&window, move |ns_window| {
-                follow(ns_window, anchor);
-            });
-        }
-    }
-}
-
-/// A window already on the clicked display stays put, so a dragged bar keeps its spot.
-fn follow(ns_window: &NSWindow, anchor: Anchor) {
-    let Some(screen) = screen_under_pointer() else {
+/// Moves the window to the display under the pointer. A window already there stays put, so a
+/// dragged bar keeps its spot.
+pub(crate) fn follow(ns_window: &NSWindow, anchor: Anchor) {
+    let Some(screen) = screen_under_pointer(ns_window.mtm()) else {
         return;
     };
     let current = ns_window.screen().map(|current| current.frame());
@@ -114,8 +79,7 @@ fn follow(ns_window: &NSWindow, anchor: Anchor) {
     }
 }
 
-fn screen_under_pointer() -> Option<Retained<NSScreen>> {
-    let main_thread = MainThreadMarker::new()?;
+fn screen_under_pointer(main_thread: MainThreadMarker) -> Option<Retained<NSScreen>> {
     let pointer = NSEvent::mouseLocation();
     NSScreen::screens(main_thread)
         .into_iter()

@@ -9,12 +9,14 @@ export function useElementSize<T extends HTMLElement>() {
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
-    const observer = new ResizeObserver(([entry]) =>
-      setSize({
-        width: entry.contentRect.width,
-        height: entry.contentRect.height,
-      }),
-    );
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      setSize((size) =>
+        size.width === width && size.height === height
+          ? size
+          : { width, height },
+      );
+    });
     observer.observe(element);
     return () => observer.disconnect();
   }, []);

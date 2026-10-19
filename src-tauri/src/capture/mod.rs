@@ -22,7 +22,7 @@ use std::{
     thread,
 };
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use cidre::{arc, dispatch, sc};
 use serde::Serialize;
 use ts_rs::TS;
@@ -76,6 +76,7 @@ impl RunningRecording {
     }
 
     pub(crate) fn stop(self) -> Result<SavedRecording> {
+        // Fails only if the capture thread already ended, and then its result is waiting below.
         let _ = self.stop_tx.send(());
         self.finished_rx
             .recv()
@@ -95,9 +96,32 @@ impl RunningRecording {
     }
 }
 
+#[cfg(test)]
+impl RunningRecording {
+    /// A recording with no capture behind it, for testing what holds one. Stopping it hands
+    /// back `video_path`.
+    pub(crate) fn fake(video_path: &str) -> Self {
+        let (stop_tx, _) = mpsc::channel();
+        let (finished_tx, finished_rx) = mpsc::channel();
+        let saved = SavedRecording {
+            video_path: video_path.to_string(),
+        };
+        finished_tx
+            .send(Ok(saved))
+            .expect("the receiver is right here");
+        Self {
+            target: Target::Display { display_id: 1 },
+            folder: PathBuf::from(video_path),
+            timeline: Arc::new(Mutex::new(Timeline::new(0.0))),
+            stop_tx,
+            finished_rx,
+        }
+    }
+}
+
 /// Starts recording `target` into `folder` on a new thread, and returns once capture is running.
 pub(crate) fn start(target: Target, folder: PathBuf) -> Result<RunningRecording> {
-    let (started_tx, started_rx) = mpsc::channel::<Result<(), String>>();
+    let (started_tx, started_rx) = mpsc::channel();
     let (stop_tx, stop_rx) = mpsc::channel::<()>();
     let (finished_tx, finished_rx) = mpsc::channel();
     let timeline = Arc::new(Mutex::new(Timeline::new(host_time_now())));
@@ -105,13 +129,13 @@ pub(crate) fn start(target: Target, folder: PathBuf) -> Result<RunningRecording>
         let (target, folder, timeline) = (target.clone(), folder.clone(), Arc::clone(&timeline));
         move || {
             let saved = record_until_stopped(&target, &folder, timeline, &started_tx, &stop_rx);
+            // Fails only if the recording was dropped without `stop`, so no one wants the result.
             let _ = finished_tx.send(saved);
         }
     });
     started_rx
         .recv()
-        .context("the capture thread ended before starting")?
-        .map_err(|message| anyhow!(message))?;
+        .context("the capture thread ended before starting")??;
     Ok(RunningRecording {
         target,
         folder,
@@ -126,14 +150,16 @@ fn record_until_stopped(
     target: &Target,
     folder: &Path,
     timeline: Arc<Mutex<Timeline>>,
-    started_tx: &Sender<Result<(), String>>,
+    started_tx: &Sender<Result<()>>,
     stop_rx: &Receiver<()>,
 ) -> Result<SavedRecording> {
+    // `start` waits for this answer, so each send below always has someone to receive it.
     let mut capture = match ActiveCapture::start(target, folder, timeline) {
         Ok(capture) => capture,
         Err(err) => {
-            let _ = started_tx.send(Err(format!("{err:#}")));
-            return Err(err);
+            let _ = started_tx.send(Err(err));
+            // `start` returns the error above, so no one reads this one.
+            bail!("capture never started");
         }
     };
     let _ = started_tx.send(Ok(()));
@@ -187,19 +213,22 @@ impl ActiveCapture {
         })
     }
 
+    /// Finishes the file. A stream that already stopped on its own, because its display was
+    /// unplugged or Screen Recording was turned off, still leaves the frames it got.
     fn finish(&mut self) -> Result<SavedRecording> {
-        pollster::block_on(self.stream.stop())
-            .map_err(|err| anyhow!("could not stop capture: {err:?}"))?;
+        if let Err(err) = pollster::block_on(self.stream.stop()) {
+            eprintln!("capture had already stopped, keeping what it recorded: {err:?}");
+        }
         // Frames are appended on `queue`; wait for any still in flight before finishing the file.
         self.queue.sync(|| {});
-        if let Some(cursor) = self.cursor.take() {
-            cursor.stop()?;
-        }
+        // The video is finished before a cursor log error is reported, so it's never left open.
+        let cursor = self.cursor.take().map_or(Ok(()), CursorLogger::stop);
         let first_frame_time = finish_writing(&mut self.recorder)?;
-        let timeline = lock(&self.timeline);
+        cursor?;
+        let pauses = lock(&self.timeline).pauses().to_vec();
         std::fs::write(
             self.folder.join("meta.json"),
-            meta_json(&self.plan, first_frame_time, timeline.pauses()),
+            meta_json(&self.plan, first_frame_time, &pauses),
         )
         .context("could not write meta.json")?;
         Ok(SavedRecording {

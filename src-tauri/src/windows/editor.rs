@@ -1,11 +1,13 @@
 //! The editor: where a recording goes after Edit in the preview. Closing it deletes the
 //! recording unless it was saved, so an unsaved one asks first.
 
+use anyhow::Context;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 use ts_rs::TS;
 
 use super::{bar, preview};
+use crate::error::CmdResult;
 use crate::macos::alert::{self, Alert, Choice};
 use crate::recording::CurrentRecording;
 
@@ -35,19 +37,18 @@ pub(crate) fn setup(app: &AppHandle) {
 
 /// Moves the recording from the preview into the editor.
 #[tauri::command]
-pub(crate) fn edit_recording(
-    app: AppHandle,
-    current: State<'_, CurrentRecording>,
-) -> Result<(), String> {
+pub(crate) fn edit_recording(app: AppHandle, current: State<'_, CurrentRecording>) -> CmdResult {
     let window = app
         .get_webview_window(LABEL)
-        .ok_or("the editor window is missing")?;
-    let opened = opened(&current).ok_or("there's no recording to edit")?;
-    super::hide(&app, preview::LABEL);
+        .context("the editor window is missing")?;
+    let opened = opened(&current).context("there's no recording to edit")?;
+    preview::hide(&app);
+    // A page that hasn't loaded yet asks with `editor_recording` instead.
     let _ = app.emit_to(LABEL, "editor-open", opened);
-    window.center().map_err(|err| err.to_string())?;
-    window.show().map_err(|err| err.to_string())?;
-    window.set_focus().map_err(|err| err.to_string())
+    window.center()?;
+    window.show()?;
+    window.set_focus()?;
+    Ok(())
 }
 
 /// The recording the editor has open, for a page that loads after `editor-open` was sent.
@@ -74,10 +75,13 @@ fn close(app: &AppHandle) {
         }
     }
     super::hide(app, LABEL);
+    // Fails only once the editor is gone, and then there's no page to reset.
     let _ = app.emit_to(LABEL, "editor-closed", ());
     bar::show(app);
+    // The editor is already closed, so there's nowhere to show this. The recording's folder
+    // stays in app storage.
     if let Err(err) = current.discard() {
-        eprintln!("{err}");
+        eprintln!("{err:#}");
     }
 }
 

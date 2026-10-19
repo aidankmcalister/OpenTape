@@ -22,6 +22,7 @@ import {
   type CaptureOptions,
 } from "@/features/bar/hooks/useCaptureOptions";
 import {
+  useElapsedMs,
   useRecordBar,
   type RecordBar as RecordBarState,
 } from "@/features/bar/hooks/useRecordBar";
@@ -198,9 +199,7 @@ function Recording({ bar }: { bar: RecordBarState }) {
           isPaused ? "bg-muted-foreground" : "bg-record",
         )}
       />
-      <span className="pr-8 pl-3 font-mono text-sm tabular-nums">
-        {formatClock(bar.elapsedMs)}
-      </span>
+      <Elapsed timer={bar.timer} />
       <div className="flex items-center gap-2">
         <Button
           variant="ghost"
@@ -230,6 +229,16 @@ function Recording({ bar }: { bar: RecordBarState }) {
         </Button>
       </div>
     </>
+  );
+}
+
+/** Ticks on its own, so the rest of the bar doesn't redraw ten times a second. */
+function Elapsed({ timer }: { timer: RecordBarState["timer"] }) {
+  const elapsedMs = useElapsedMs(timer);
+  return (
+    <span className="pr-8 pl-3 font-mono text-sm tabular-nums">
+      {formatClock(elapsedMs)}
+    </span>
   );
 }
 

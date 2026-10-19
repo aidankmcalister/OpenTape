@@ -109,10 +109,12 @@ fn events_between(previous: Option<&Sample>, now: &Sample) -> Vec<Event> {
     events
 }
 
-/// A running background logger. Call [`CursorLogger::stop`] to finish the file.
+/// A running background logger. Call [`CursorLogger::stop`] to finish the file. Dropping it
+/// without that, as when capture fails to start, still ends its thread.
 pub(super) struct CursorLogger {
     stop: Arc<AtomicBool>,
-    thread: JoinHandle<Result<()>>,
+    /// Always there until `stop` takes it.
+    thread: Option<JoinHandle<Result<()>>>,
 }
 
 impl CursorLogger {
@@ -124,14 +126,26 @@ impl CursorLogger {
             let stop = Arc::clone(&stop);
             thread::spawn(move || poll_until_stopped(BufWriter::new(file), &stop))
         };
-        Ok(Self { stop, thread })
+        Ok(Self {
+            stop,
+            thread: Some(thread),
+        })
     }
 
-    pub(super) fn stop(self) -> Result<()> {
+    pub(super) fn stop(mut self) -> Result<()> {
         self.stop.store(true, Ordering::Relaxed);
-        self.thread
+        let Some(thread) = self.thread.take() else {
+            return Ok(());
+        };
+        thread
             .join()
             .map_err(|_| anyhow!("the cursor logging thread panicked"))?
+    }
+}
+
+impl Drop for CursorLogger {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
     }
 }
 
@@ -259,6 +273,16 @@ mod tests {
                 y: 20.0
             }]
         );
+    }
+
+    #[test]
+    fn dropping_a_logger_should_tell_its_thread_to_end() {
+        let path = std::env::temp_dir().join(format!("cursor-log-{}.jsonl", std::process::id()));
+        let logger = CursorLogger::start(&path).expect("a temp file can be created");
+        let stop = Arc::clone(&logger.stop);
+        drop(logger);
+        assert!(stop.load(Ordering::Relaxed));
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

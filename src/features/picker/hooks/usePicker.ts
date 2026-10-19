@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import type { Session } from "@/lib/bindings/Session";
 import type { Target } from "@/lib/bindings/Target";
 import { EVENTS } from "@/lib/events";
@@ -12,8 +18,11 @@ import {
 import {
   nextWindowId,
   pickerView,
+  pointerOnDisplay,
+  sameView,
   type PickerView,
 } from "@/features/picker/lib/pickerView";
+import { useOneAtATime } from "@/hooks/useOneAtATime";
 import { usePointerHover } from "@/hooks/usePointerHover";
 import { useTauriEvent } from "@/hooks/useTauriEvent";
 
@@ -26,54 +35,75 @@ type PickerState = {
 /**
  * What this overlay shows. The overlays get no mouse moves of their own, so hover comes from
  * the cursor Rust streams: what's under it gets `data-hovered`, which `hover:` styles match.
+ *
+ * The cursor streams in 60 times a second, so it's kept out of React state: the overlay redraws
+ * only when what it shows changes, like crossing into another window.
  */
 export function usePicker(displayId: number): PickerState {
-  const { session, cursor } = usePickerState();
-  const view = session ? pickerView(session, cursor, displayId) : null;
-  const origin = session?.sources.displays.find(
-    ({ id }) => id === displayId,
-  )?.frame;
-  const originX = origin?.x;
-  const originY = origin?.y;
-  const pointer = useMemo(
-    () =>
-      cursor && originX !== undefined && originY !== undefined
-        ? { x: cursor.x - originX, y: cursor.y - originY }
-        : null,
-    [cursor, originX, originY],
-  );
-  usePickerKeys(session, view);
-  usePointerHover(pointer);
-  return { view, record: (target) => void record(target) };
-}
+  const session = useRef<Session | null>(null);
+  const cursor = useRef<Point | null>(null);
+  const [view, setView] = useState<PickerView | null>(null);
+  const { point } = usePointerHover();
+  // Return and the Record button can land together; the picker records once.
+  const oneAtATime = useOneAtATime();
 
-/** Rust's session, plus the cursor it streams separately because it changes 60 times a second. */
-function usePickerState(): { session: Session | null; cursor: Point | null } {
-  const [session, setSession] = useState<Session | null>(null);
-  const [cursor, setCursor] = useState<Point | null>(null);
+  const follow = useCallback(() => {
+    const next =
+      session.current && pickerView(session.current, cursor.current, displayId);
+    setView((shown) => (sameView(shown, next) ? shown : next));
+    point(pointerOnDisplay(session.current, cursor.current, displayId));
+  }, [displayId, point]);
+
   useEffect(() => {
-    void pickerSetup().then((setup) => {
-      setSession(setup.session);
-      setCursor((current) => current ?? setup.cursor);
-    });
-  }, []);
-  useTauriEvent<Session>(EVENTS.pickerSession, setSession);
-  useTauriEvent<Point>(EVENTS.pickerCursor, setCursor, "window");
-  return { session, cursor };
+    let isMounted = true;
+    pickerSetup()
+      .then((setup) => {
+        if (!isMounted) return;
+        // Events that arrived first are newer than the setup.
+        session.current ??= setup.session;
+        cursor.current ??= setup.cursor;
+        follow();
+      })
+      .catch(console.error);
+    return () => {
+      isMounted = false;
+    };
+  }, [follow]);
+  useTauriEvent<Session>(EVENTS.pickerSession, (next) => {
+    session.current = next;
+    follow();
+  });
+  useTauriEvent<Point>(
+    EVENTS.pickerCursor,
+    (next) => {
+      cursor.current = next;
+      follow();
+    },
+    "window",
+  );
+
+  const recordOnce = (target: Target) =>
+    void oneAtATime(() => record(target)).catch(console.error);
+  usePickerKeys(session, view, recordOnce);
+  return { view, record: recordOnce };
 }
 
-function usePickerKeys(session: Session | null, view: PickerView | null) {
+function usePickerKeys(
+  session: RefObject<Session | null>,
+  view: PickerView | null,
+  recordOnce: (target: Target) => void,
+) {
   useTauriEvent<PickerKey>(
     EVENTS.pickerKey,
     (key) => {
-      if (!session || !view || view.mode === "area") return;
+      if (!session.current || !view || view.mode === "area") return;
       const target = view.highlight?.target;
-      if (key === "Enter" && target) void record(target);
+      if (key === "Enter" && target) recordOnce(target);
       if (key === "Tab" && view.mode === "window") {
         const currentId =
           target?.kind === "window" ? target.windowId : undefined;
-        const nextId = nextWindowId(session.sources.windows, currentId);
-        if (nextId !== undefined) void pinWindow(nextId);
+        const nextId = nextWindowId(session.current.sources.windows, currentId);
+        if (nextId !== undefined) pinWindow(nextId).catch(console.error);
       }
     },
     "window",

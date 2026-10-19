@@ -1,4 +1,4 @@
-import { useRef, useState, type SyntheticEvent } from "react";
+import { useCallback, useRef, useState, type SyntheticEvent } from "react";
 import { useVideoClock } from "@/hooks/useVideoClock";
 import type { Size } from "@/lib/geometry";
 
@@ -10,7 +10,10 @@ export function usePlayback(src: string) {
   const [isMuted, setIsMuted] = useState(false);
   const [durationMs, setDurationMs] = useState(0);
   const [videoSize, setVideoSize] = useState<Size | null>(null);
-  const currentMs = useVideoClock(video, isPlaying, src) * 1000;
+  const clock = useVideoClock(video, isPlaying, src);
+  const setRate = useCallback((rate: number) => {
+    if (video.current) video.current.playbackRate = rate;
+  }, []);
 
   function seek(ms: number) {
     const element = video.current;
@@ -23,11 +26,12 @@ export function usePlayback(src: string) {
     if (!element) return;
     if (!element.paused) return element.pause();
     if (element.ended) element.currentTime = 0;
-    void element.play();
+    element.play().catch(console.error);
   }
 
   return {
-    currentMs,
+    /** The playhead, in seconds. Read it with `useClockValue`, so only what shows it redraws. */
+    clock,
     durationMs,
     videoSize,
     isPlaying,
@@ -41,9 +45,7 @@ export function usePlayback(src: string) {
     toEnd: () => seek(durationMs),
     toggleLoop: () => setIsLooping((isOn) => !isOn),
     toggleMute: () => setIsMuted((isOn) => !isOn),
-    setRate: (rate: number) => {
-      if (video.current) video.current.playbackRate = rate;
-    },
+    setRate,
     /** Spread on the `<video>`. */
     videoProps: {
       ref: video,

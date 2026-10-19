@@ -3,13 +3,10 @@
 
 use super::plan::CapturePlan;
 
-pub(super) fn meta_json(
-    plan: &CapturePlan,
-    first_frame_time: Option<f64>,
-    pauses: &[[f64; 2]],
-) -> String {
+pub(super) fn meta_json(plan: &CapturePlan, first_frame_time: f64, pauses: &[[f64; 2]]) -> String {
     let rect = plan.screen_rect;
-    let first_frame = first_frame_time.map_or_else(|| "null".to_string(), |t| format!("{t:.6}"));
+    let first_frame = format!("{first_frame_time:.6}");
+    // Can't fail: plain numbers always serialize.
     let pauses = serde_json::to_string(pauses).unwrap_or_else(|_| "[]".to_string());
     format!(
         r#"{{

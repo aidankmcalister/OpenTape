@@ -48,7 +48,8 @@ pub(super) struct Sources {
     pub icons: HashMap<u32, String>,
 }
 
-pub(super) fn list() -> Result<Sources> {
+/// `known_icons` are reused by process ID, so only apps new since the last list draw theirs.
+pub(super) fn list(known_icons: &HashMap<u32, String>) -> Result<Sources> {
     let content = capture::shareable_content()?;
     let mut displays = Vec::new();
     let mut scales = HashMap::new();
@@ -85,7 +86,7 @@ pub(super) fn list() -> Result<Sources> {
         })
         .collect();
     sort_front_to_back(&mut windows, &stacking_order());
-    let icons = icons_for(&windows);
+    let icons = icons_for(&windows, known_icons);
     Ok(Sources {
         displays,
         windows,
@@ -93,10 +94,16 @@ pub(super) fn list() -> Result<Sources> {
     })
 }
 
-fn icons_for(windows: &[WindowInfo]) -> HashMap<u32, String> {
+fn icons_for(windows: &[WindowInfo], known: &HashMap<u32, String>) -> HashMap<u32, String> {
     let pids: HashSet<u32> = windows.iter().map(|window| window.pid).collect();
     pids.into_iter()
-        .filter_map(|pid| Some((pid, app_icons::data_url(pid)?)))
+        .filter_map(|pid| {
+            let icon = known
+                .get(&pid)
+                .cloned()
+                .or_else(|| app_icons::data_url(pid))?;
+            Some((pid, icon))
+        })
         .collect()
 }
 
@@ -107,6 +114,7 @@ fn is_pickable(layer: isize, on_screen: bool, frame: Frame) -> bool {
 
 /// Window ids from front to back. ScreenCaptureKit doesn't promise an order, but this does.
 /// Cheap enough to poll: it changes when windows open, close, refocus or a space switches.
+/// Without a list, the windows just stay in ScreenCaptureKit's order.
 pub(super) fn stacking_order() -> Vec<u32> {
     let options = cg::WindowListOpt::ON_SCREEN_ONLY | cg::WindowListOpt::EXCLUDE_DESKTOP_ELEMENTS;
     cg::WindowList::new(options, cg::WINDOW_ID_NULL)

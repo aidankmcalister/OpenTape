@@ -15,6 +15,8 @@ import {
   ZoomIn,
 } from "lucide-react";
 import type { Editor } from "@/features/editor/hooks/useEditor";
+import { useClockValue } from "@/hooks/useVideoClock";
+import type { Clock } from "@/lib/clock";
 import { formatTime } from "@/lib/time";
 import {
   REGIONS,
@@ -105,9 +107,7 @@ function Transport({ editor }: { editor: Editor }) {
           {playback.isMuted ? <VolumeX /> : <Volume2 />}
         </Toggle>
         <Divider />
-        <span className="w-16 pl-1 font-mono text-[13px] leading-5 text-muted-foreground tabular-nums">
-          {formatTime(playback.currentMs)}
-        </span>
+        <PlayTime clock={playback.clock} />
       </div>
     </div>
   );
@@ -117,7 +117,7 @@ function Transport({ editor }: { editor: Editor }) {
 function Tracks({ editor }: { editor: Editor }) {
   const track = useRef<HTMLDivElement>(null);
   const { playback, regions, selectedId, select } = editor;
-  const { durationMs, currentMs } = playback;
+  const { durationMs, clock } = playback;
   const at = (ms: number) => `${durationMs ? (ms / durationMs) * 100 : 0}%`;
 
   function seekTo(event: PointerEvent) {
@@ -158,14 +158,32 @@ function Tracks({ editor }: { editor: Editor }) {
             />
           ))}
         </div>
-        <span
-          className="pointer-events-none absolute top-0 -ml-px h-26 w-0.5 bg-highlight"
-          style={{ left: at(currentMs) }}
-        >
-          <span className="absolute top-0 -left-1.25 size-3 rounded-t-[3px] rounded-b-md bg-highlight" />
-        </span>
+        <Playhead clock={clock} at={at} />
       </div>
     </div>
+  );
+}
+
+/** The playing time. It changes every frame, so it redraws on its own. */
+function PlayTime({ clock }: { clock: Clock }) {
+  const time = useClockValue(clock, (seconds) => formatTime(seconds * 1000));
+  return (
+    <span className="w-16 pl-1 font-mono text-[13px] leading-5 text-muted-foreground tabular-nums">
+      {time}
+    </span>
+  );
+}
+
+/** Moves every frame while playing, so it redraws on its own, not with the tracks. */
+function Playhead({ clock, at }: { clock: Clock; at: (ms: number) => string }) {
+  const left = useClockValue(clock, (seconds) => at(seconds * 1000));
+  return (
+    <span
+      className="pointer-events-none absolute top-0 -ml-px h-26 w-0.5 bg-highlight"
+      style={{ left }}
+    >
+      <span className="absolute top-0 -left-1.25 size-3 rounded-t-[3px] rounded-b-md bg-highlight" />
+    </span>
   );
 }
 

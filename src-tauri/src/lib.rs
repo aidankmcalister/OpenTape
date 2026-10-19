@@ -3,6 +3,7 @@
 
 mod capture;
 mod devices;
+mod error;
 mod export;
 mod geometry;
 mod macos;
@@ -13,7 +14,7 @@ mod windows;
 
 use macos::keys::{self, Key};
 use tauri::{AppHandle, Manager};
-use windows::{bar, editor, follow, preview};
+use windows::{bar, editor, preview};
 
 #[tauri::command]
 fn quit(app: AppHandle) {
@@ -44,7 +45,6 @@ pub fn run() -> tauri::Result<()> {
             bar::setup(bar, app.state::<bar::PillWidth>().inner().clone())?;
             preview::setup(app.handle())?;
             editor::setup(app.handle());
-            follow::start(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

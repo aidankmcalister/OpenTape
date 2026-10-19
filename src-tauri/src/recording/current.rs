@@ -5,6 +5,8 @@ use std::{
     sync::{Mutex, MutexGuard},
 };
 
+use anyhow::{Context, Result};
+
 use crate::util::lock;
 
 /// The recording you've just made. It waits in app storage while the preview and then the editor
@@ -37,15 +39,16 @@ impl CurrentRecording {
     }
 
     /// Deletes the recording's folder in app storage, if there's a recording.
-    pub(crate) fn discard(&self) -> Result<(), String> {
+    pub(crate) fn discard(&self) -> Result<()> {
         let Some(current) = self.slot().take() else {
             return Ok(());
         };
+        // A video path always sits in its recording's folder, so this always has one.
         let Some(folder) = current.video_path.parent() else {
             return Ok(());
         };
         std::fs::remove_dir_all(folder)
-            .map_err(|err| format!("could not delete {}: {err}", folder.display()))
+            .with_context(|| format!("could not delete {}", folder.display()))
     }
 
     pub(super) fn keep(&self, video_path: PathBuf) {

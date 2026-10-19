@@ -174,6 +174,7 @@ struct Hiding {
 impl Hiding {
     fn of(recorded_app: Option<sys::Pid>) -> Self {
         Self {
+            // A macOS process ID always fits. If it didn't, -1 matches no app.
             own_pid: sys::Pid::try_from(std::process::id()).unwrap_or(-1),
             recorded_app,
         }

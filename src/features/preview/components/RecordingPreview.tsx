@@ -11,6 +11,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  useLoopProgress,
   useRecordingPreview,
   type RecordingPreview as Preview,
 } from "@/features/preview/hooks/useRecordingPreview";
@@ -25,7 +26,7 @@ import MorphPill from "@/components/MorphPill";
 export default function RecordingPreview() {
   const preview = useRecordingPreview();
   if (!preview.videoSrc) return null;
-  const { durationMs, progress, isHovered, activity } = preview;
+  const { durationMs, isHovered, activity } = preview;
 
   return (
     <div className="relative h-screen w-screen overflow-hidden rounded-xl border border-glass-border bg-card">
@@ -53,15 +54,23 @@ export default function RecordingPreview() {
           <X />
         </Button>
       </div>
-      <div className="absolute inset-x-3 bottom-2 h-1 overflow-hidden rounded-full bg-white/20">
-        <div
-          className="h-full bg-white"
-          style={{ width: `${progress * 100}%` }}
-        />
-      </div>
+      <LoopProgress preview={preview} />
       <ClipDock
         preview={preview}
         isVisible={isHovered || activity !== "idle"}
+      />
+    </div>
+  );
+}
+
+/** Follows the clip every frame on its own, so the rest of the preview doesn't redraw with it. */
+function LoopProgress({ preview }: { preview: Preview }) {
+  const progress = useLoopProgress(preview);
+  return (
+    <div className="absolute inset-x-3 bottom-2 h-1 overflow-hidden rounded-full bg-white/20">
+      <div
+        className="h-full bg-white"
+        style={{ width: `${progress * 100}%` }}
       />
     </div>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useTauriEvent } from "@/hooks/useTauriEvent";
 import { editorRecording } from "@/features/editor/lib/editor";
@@ -14,10 +14,26 @@ type OpenedRecording = { videoSrc: string; name: string } | null;
  */
 export function useOpenedRecording(): OpenedRecording {
   const [opened, setOpened] = useState<Opened | null>(null);
+  /** Whether an event has arrived, which is newer than what the first ask returns. */
+  const hasEvent = useRef(false);
 
-  useEffect(() => void editorRecording().then(setOpened), []);
-  useTauriEvent<Opened>(EVENTS.editorOpen, setOpened, "window");
-  useTauriEvent(EVENTS.editorClosed, () => setOpened(null), "window");
+  useEffect(() => {
+    let isMounted = true;
+    editorRecording()
+      .then((answer) => {
+        if (isMounted && !hasEvent.current) setOpened(answer);
+      })
+      .catch(console.error);
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+  const follow = (next: Opened | null) => {
+    hasEvent.current = true;
+    setOpened(next);
+  };
+  useTauriEvent<Opened>(EVENTS.editorOpen, follow, "window");
+  useTauriEvent(EVENTS.editorClosed, () => follow(null), "window");
 
   return (
     opened && {

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 /** E, ⌘C and ⌘S, which Rust takes while the pointer is over the preview. */
 export type PreviewKey = "edit" | "copy" | "save";
@@ -12,3 +13,5 @@ export const copyRecording = (name: string) =>
 export const closePreview = (name: string) =>
   invoke<void>("close_preview", { name });
 export const showSavedInFinder = () => invoke<void>("show_saved_in_finder");
+/** Whether the preview is on screen. Closing hides it, unless the alert was cancelled. */
+export const isPreviewShown = () => getCurrentWindow().isVisible();

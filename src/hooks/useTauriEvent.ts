@@ -19,11 +19,20 @@ export function useTauriEvent<T>(
   });
 
   useEffect(() => {
-    const onEvent = ({ payload }: { payload: T }) => latest.current(payload);
+    // Listening is async, so an event can still arrive between unmount and the unlisten
+    // resolving. That includes StrictMode's first mount, which would otherwise hear it twice.
+    let isMounted = true;
+    const onEvent = ({ payload }: { payload: T }) => {
+      if (isMounted) latest.current(payload);
+    };
     const unlisten =
       scope === "window"
         ? getCurrentWebviewWindow().listen<T>(event, onEvent)
         : listen<T>(event, onEvent);
-    return () => void unlisten.then((stop) => stop());
+    unlisten.catch(console.error);
+    return () => {
+      isMounted = false;
+      unlisten.then((stop) => stop()).catch(console.error);
+    };
   }, [event, scope]);
 }

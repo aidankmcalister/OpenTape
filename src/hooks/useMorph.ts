@@ -18,12 +18,21 @@ export function useMorph<Key extends string>(
   onShape?: (size: Size, animation: Animation | null) => void,
 ) {
   const layers = useRef(new Map<Key, HTMLElement>());
-  const hasShaped = useRef(false);
+  /** The size last sent to `onShape`, so an unchanged one isn't sent again. */
+  const shaped = useRef<Size | null>(null);
   const shapeListener = useRef(onShape);
   const [pill, setPill] = useState<Size | null>(null);
   useLayoutEffect(() => {
     shapeListener.current = onShape;
   });
+
+  // A remount, like StrictMode's, shapes afresh, so its first shape still isn't animated.
+  useLayoutEffect(
+    () => () => {
+      shaped.current = null;
+    },
+    [],
+  );
 
   useLayoutEffect(() => {
     const layer = layers.current.get(active);
@@ -33,9 +42,11 @@ export function useMorph<Key extends string>(
         width: layer.offsetWidth + BORDER * 2,
         height: layer.offsetHeight + BORDER * 2,
       };
+      const last = shaped.current;
+      if (last?.width === next.width && last.height === next.height) return;
+      shaped.current = next;
       setPill(next);
-      shapeListener.current?.(next, hasShaped.current ? morph() : null);
-      hasShaped.current = true;
+      shapeListener.current?.(next, last ? morph() : null);
     };
     reshape();
     const observer = new ResizeObserver(reshape);

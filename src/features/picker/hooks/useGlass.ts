@@ -17,14 +17,14 @@ export function useGlass<T extends HTMLElement>() {
     const key = [x, y, width, height].map(Math.round).join();
     if (key === placed.current) return;
     placed.current = key;
-    void placeOverlayGlass({ x, y, width, height });
+    placeOverlayGlass({ x, y, width, height }).catch(console.error);
   });
 
   // Hidden on unmount, and forgotten, so a remount puts it back.
   useEffect(
     () => () => {
       placed.current = "";
-      void placeOverlayGlass(null);
+      placeOverlayGlass(null).catch(console.error);
     },
     [],
   );

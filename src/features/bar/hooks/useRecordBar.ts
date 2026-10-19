@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useOneAtATime } from "@/hooks/useOneAtATime";
 import { useTauriEvent } from "@/hooks/useTauriEvent";
 import { quitApp, shapeBar } from "@/features/bar/lib/bar";
 import type { Animation } from "@/lib/bindings/Animation";
@@ -20,8 +21,8 @@ export type RecordBar = {
   /** The mode whose picker is open. */
   active: Mode | null;
   phase: Phase;
-  /** Recorded time, not counting pauses. */
-  elapsedMs: number;
+  /** Read with `useElapsedMs`, so only the timer redraws as it counts. */
+  timer: Timer;
   error: string | null;
   /** Opens or switches the picker, or closes it with null. */
   choose: (mode: Mode | null) => Promise<void>;
@@ -39,16 +40,16 @@ export type RecordBar = {
 export function useRecordBar(): RecordBar {
   const [active, setActive] = useState<Mode | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const received = useRecordingStatus(setError);
-  const { status } = received;
-  const elapsedMs = useElapsedMs(received);
+  const timer = useRecordingStatus(setError);
+  const { status } = timer;
+  const oneAtATime = useOneAtATime();
 
   useTauriEvent(EVENTS.pickerClosed, () => setActive(null));
 
-  /** Runs `job`, showing its error on the bar if it fails. */
+  /** Runs `job` unless another is still running, showing its error on the bar if it fails. */
   async function attempt(job: () => Promise<unknown>) {
     try {
-      await job();
+      await oneAtATime(job);
     } catch (err) {
       setError(String(err));
     }
@@ -67,15 +68,15 @@ export function useRecordBar(): RecordBar {
   }
 
   async function openSettings(anchor: HTMLElement) {
-    await popupActions(anchor, [
-      { label: "Quit screen-recorder", run: () => void quitApp() },
-    ]);
+    await oneAtATime(() =>
+      popupActions(anchor, [{ label: "Quit screen-recorder", run: quit }]),
+    ).catch(console.error);
   }
 
   return {
     active,
     phase: status.phase,
-    elapsedMs,
+    timer,
     error,
     choose,
     togglePause: () => attempt(() => pauseRecording(status.phase !== "paused")),
@@ -83,23 +84,27 @@ export function useRecordBar(): RecordBar {
     stop: () => attempt(stopRecording),
     dismissError: () => setError(null),
     openSettings,
-    quit: quitApp,
+    quit,
     shape: (size, animation) =>
-      void shapeBar(size.width, size.height, animation),
+      void shapeBar(size.width, size.height, animation).catch(console.error),
   };
 }
 
-/** A status from Rust, and when it arrived, so the timer can count on from it. */
-type Received = { status: RecordingStatus; receivedAt: number };
+const quit = () => quitApp().catch(console.error);
 
-const IDLE: Received = {
+/** A status from Rust, and when it arrived, so the timer can count on from it. */
+type Timer = { status: RecordingStatus; receivedAt: number };
+
+const IDLE: Timer = {
   status: { phase: "idle", error: null, elapsedMs: 0 },
   receivedAt: 0,
 };
 
 /** Follows Rust's recording status, passing any error to `onError`. */
-function useRecordingStatus(onError: (message: string) => void): Received {
+function useRecordingStatus(onError: (message: string) => void): Timer {
   const [received, setReceived] = useState(IDLE);
+  /** Whether an event has arrived, which is newer than what the first ask returns. */
+  const hasEvent = useRef(false);
   const apply = useCallback(
     (status: RecordingStatus) => {
       setReceived({ status, receivedAt: Date.now() });
@@ -107,13 +112,29 @@ function useRecordingStatus(onError: (message: string) => void): Received {
     },
     [onError],
   );
-  useEffect(() => void recordingStatus().then(apply), [apply]);
-  useTauriEvent(EVENTS.recordingStatus, apply);
+  useEffect(() => {
+    let isMounted = true;
+    recordingStatus()
+      .then((status) => {
+        if (isMounted && !hasEvent.current) apply(status);
+      })
+      .catch(console.error);
+    return () => {
+      isMounted = false;
+    };
+  }, [apply]);
+  useTauriEvent(EVENTS.recordingStatus, (status: RecordingStatus) => {
+    hasEvent.current = true;
+    apply(status);
+  });
   return received;
 }
 
-/** Counts on from Rust's recorded time while recording; holds still while paused. */
-function useElapsedMs({ status, receivedAt }: Received): number {
+/**
+ * Counts on from Rust's recorded time while recording; holds still while paused. It ticks ten
+ * times a second, so it belongs in the component that shows it, not the whole bar.
+ */
+export function useElapsedMs({ status, receivedAt }: Timer): number {
   const [now, setNow] = useState(receivedAt);
   const isRecording = status.phase === "recording";
   useEffect(() => {
