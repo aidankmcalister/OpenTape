@@ -39,6 +39,12 @@
   --text-caption: 11px;
   --text-micro: 10px;
 
+  /* The editor's title bar. tauri.conf.json insets the traffic lights 18px from the top and the
+     left; the bar and the padding after the lights leave 18px below and to the right too.
+     src/lib/titleBar.test.ts checks these against tauri.conf.json. */
+  --spacing-title-bar: 50px;
+  --spacing-traffic-lights: 96px;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -181,6 +187,11 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+  /* Every window is a fixed layout: nothing scrolls or rubber-bands. */
+  html,
+  body {
+    @apply overflow-hidden overscroll-none;
   }
   body {
     @apply font-sans text-ui text-foreground antialiased select-none;

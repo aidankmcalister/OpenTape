@@ -13,6 +13,8 @@ import {
   estimateTime,
   formatClock,
   formatTime,
+  seekTarget,
+  seekVideo,
   twoDigits,
 } from "./time";
 
@@ -125,6 +127,7 @@ describe("clock", () => {
     currentTime: 2,
     playbackRate: 1,
     paused: false,
+    seeking: false,
     duration: 10,
   };
   const LAST = { seconds: 2, at: 1000 };
@@ -142,6 +145,20 @@ describe("clock", () => {
     });
     expect(seconds).toBe(2.4);
     expect(sighting).toEqual({ seconds: 2.4, at: 1500 });
+  });
+
+  test("a seek while playing holds still until it lands, then counts from there", () => {
+    const seeking = estimateTime(LAST, 1500, {
+      ...PLAYING,
+      currentTime: 6,
+      seeking: true,
+    });
+    expect(seeking.seconds).toBe(6);
+    const landed = estimateTime(seeking.sighting, 1750, {
+      ...PLAYING,
+      currentTime: 6,
+    });
+    expect(landed.seconds).toBe(6.25);
   });
 
   test.each([
@@ -233,5 +250,42 @@ describe("latestWins", () => {
       ["event", "recording"],
     ]);
     expect(shown).toEqual(["idle", "recording"]);
+  });
+});
+
+describe("seekVideo", () => {
+  /** A video whose seeks land only when the test says so. */
+  class FakeVideo extends EventTarget {
+    seeking = false;
+    started: number[] = [];
+    #seconds = 0;
+    get currentTime() {
+      return this.#seconds;
+    }
+    set currentTime(seconds: number) {
+      this.#seconds = seconds;
+      this.seeking = true;
+      this.started.push(seconds);
+    }
+    land() {
+      this.seeking = false;
+      this.dispatchEvent(new Event("seeked"));
+    }
+  }
+
+  test("seeks while nothing else is seeking, and keeps only the latest while one is", () => {
+    const fake = new FakeVideo();
+    const video = fake as unknown as HTMLVideoElement;
+    seekVideo(video, 1);
+    seekVideo(video, 2);
+    seekVideo(video, 3);
+    expect(fake.started).toEqual([1]);
+    expect(seekTarget(video)).toBe(3);
+
+    fake.land();
+    expect(fake.started).toEqual([1, 3]);
+    fake.land();
+    expect(fake.started).toEqual([1, 3]);
+    expect(seekTarget(video)).toBe(3);
   });
 });

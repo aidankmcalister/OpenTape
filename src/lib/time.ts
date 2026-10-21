@@ -48,21 +48,55 @@ type Sighting = { seconds: number; at: number };
 
 /**
  * A playing video's time at `now`. WebKit moves `currentTime` only a few times a second, so this
- * counts on from the last time it moved.
+ * counts on from the last time it moved. A paused or seeking video isn't moving, so the count
+ * starts again from when it plays on; otherwise a seek while playing runs ahead, then snaps back.
  */
 export function estimateTime(
   last: Sighting,
   now: number,
   video: Pick<
     HTMLVideoElement,
-    "currentTime" | "playbackRate" | "paused" | "duration"
+    "currentTime" | "playbackRate" | "paused" | "seeking" | "duration"
   >,
 ): { sighting: Sighting; seconds: number } {
+  const isStill = video.paused || video.seeking;
   const sighting =
-    video.currentTime === last.seconds
+    !isStill && video.currentTime === last.seconds
       ? last
       : { seconds: video.currentTime, at: now };
   const elapsed = ((now - sighting.at) / 1000) * video.playbackRate;
-  const estimate = video.paused ? sighting.seconds : sighting.seconds + elapsed;
+  const estimate = sighting.seconds + elapsed;
   return { sighting, seconds: Math.min(estimate, video.duration || estimate) };
+}
+
+/** For each video, the seek waiting for the running one to land. */
+const waitingSeeks = new WeakMap<HTMLVideoElement, number>();
+
+/** Where a video is headed, in seconds: the seek waiting to start, or else its current time. */
+export function seekTarget(video: HTMLVideoElement): number {
+  return waitingSeeks.get(video) ?? video.currentTime;
+}
+
+/**
+ * Seeks a video without letting seeks pile up. While one is running, only the latest target
+ * waits, and it starts the moment the running one lands. A slow seek, to a frame far from a
+ * keyframe, can't stack up clicks or held keys that then play out one by one.
+ */
+export function seekVideo(video: HTMLVideoElement, seconds: number) {
+  if (!video.seeking) {
+    video.currentTime = seconds;
+    return;
+  }
+  if (!waitingSeeks.has(video)) {
+    video.addEventListener(
+      "seeked",
+      () => {
+        const next = waitingSeeks.get(video);
+        waitingSeeks.delete(video);
+        if (next !== undefined) seekVideo(video, next);
+      },
+      { once: true },
+    );
+  }
+  waitingSeeks.set(video, seconds);
 }

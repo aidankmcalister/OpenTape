@@ -8,7 +8,8 @@ use tauri::{AppHandle, Manager};
 
 use crate::current_recording::CurrentRecording;
 
-/// The video to open: a path, or `latest` for the newest video in Downloads.
+/// The video to open: a path, or `latest` for the newest recording saved to Downloads (or the
+/// newest video there, if no recording has been saved yet).
 const VIDEO_VAR: &str = "EDIT_VIDEO";
 
 /// Opens the editor if `EDIT_VIDEO` is set, on a copy in app storage: closing the editor deletes
@@ -55,9 +56,15 @@ fn newest_video(folder: &Path) -> Result<PathBuf> {
         if !is_video {
             continue;
         }
-        let modified = path.metadata()?.modified()?;
-        if newest.as_ref().is_none_or(|(time, _)| modified > *time) {
-            newest = Some((modified, path));
+        // A saved recording beats any other video: it's what the editor really gets, with a
+        // keyframe every half second, where a download might have one every eight.
+        let is_recording = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with("Screen Recording"));
+        let rank = (is_recording, path.metadata()?.modified()?);
+        if newest.as_ref().is_none_or(|(best, _)| rank > *best) {
+            newest = Some((rank, path));
         }
     }
     newest
