@@ -53,6 +53,8 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-pressed: var(--primary-pressed);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -109,6 +111,8 @@
   --gray-10: #a1a1aa;
   --gray-12: #ededf0;
   --orange-strong: #d1440d;
+  --orange-strong-hover: #c23f0b;
+  --orange-strong-pressed: #ad3609;
   --orange: #ff7a1a;
   --orange-soft: #ff9a4d;
   --red: #e5484d;
@@ -140,8 +144,10 @@
   --input: var(--gray-6);
   --hairline: rgb(255 255 255 / 0.08);
 
-  /* Brand. Primary buttons are tinted orange rather than filled. */
+  /* Brand. The one main action is filled orange (`primary`); the rest are tinted (`default`). */
   --primary: var(--orange-strong);
+  --primary-hover: var(--orange-strong-hover);
+  --primary-pressed: var(--orange-strong-pressed);
   --primary-foreground: var(--white);
   --primary-tint: rgb(255 122 26 / 0.18);
   --primary-tint-hover: rgb(255 122 26 / 0.28);

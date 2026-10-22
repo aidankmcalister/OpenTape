@@ -4,7 +4,9 @@ import {
   amountAt,
   clampAmount,
   DEFAULT_LOOK,
+  exportLayout,
   fillCss,
+  fillGradient,
   frameAt,
   frameLayout,
   regionKindForKey,
@@ -54,6 +56,32 @@ describe("look", () => {
     );
     expect(frame).toEqual({ width: 0, height: 0 });
     expect(recording).toEqual({ width: 0, height: 0 });
+  });
+
+  test("fillGradient makes a colour a gradient that doesn't change", () => {
+    expect(fillGradient({ kind: "color", preset: 2 }).stops).toEqual([
+      { color: "#3b82f6", at: 0 },
+      { color: "#3b82f6", at: 1 },
+    ]);
+  });
+
+  test("exportLayout keeps the recording at full size, centred in an even frame", () => {
+    const layout = exportLayout(DEFAULT_LOOK, { width: 3840, height: 2278 });
+    expect([layout.width, layout.height]).toEqual([4326, 2566]);
+    expect(layout.recording).toEqual({
+      x: 243,
+      y: 144,
+      width: 3840,
+      height: 2278,
+    });
+    expect(layout.radius).toBeCloseTo((20 * 4326) / 1920);
+  });
+
+  test("exportLayout pads a tall recording by its width, as the stage does", () => {
+    const layout = exportLayout(DEFAULT_LOOK, { width: 1080, height: 1920 });
+    expect([layout.width % 2, layout.height % 2]).toEqual([0, 0]);
+    expect(layout.recording.x).toBe(Math.round((layout.width - 1080) / 2));
+    expect(layout.recording.x).toBeCloseTo((64 * layout.width) / 1920, 0);
   });
 });
 

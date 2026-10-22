@@ -27,6 +27,22 @@ export function PillDivider() {
   );
 }
 
+/** A line of text on a pill, with an icon before it: what's going on, like "Saving…". */
+export function PillMessage({
+  icon,
+  children,
+}: {
+  icon: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <span className="flex h-8 items-center gap-2 px-3 text-ui font-medium [&_svg]:size-4 [&_svg]:shrink-0">
+      {icon}
+      {children}
+    </span>
+  );
+}
+
 /**
  * A pill that morphs between states of different widths. Each state keeps its own GPU layer the
  * whole time, so WebKit never redraws its text mid-animation and snaps it back, which reads as a

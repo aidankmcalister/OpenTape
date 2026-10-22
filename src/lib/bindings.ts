@@ -34,6 +34,47 @@ scale: number,
 safeTop: number, };
 
 /**
+ * A gradient like CSS's `linear-gradient(<angle>deg, <stops>)`.
+ */
+export type ExportGradient = { 
+/**
+ * In degrees, as CSS measures them: 0 points up, 90 points right.
+ */
+angle: number, stops: Array<ExportStop>, };
+
+/**
+ * Everything the export draws, in pixels of the exported video, measured from its top left.
+ */
+export type ExportLayout = { 
+/**
+ * The whole picture. Both are even, as H.264 needs.
+ */
+width: number, height: number, 
+/**
+ * Where the recording sits.
+ */
+recording: PixelRect, 
+/**
+ * The recording's corner radius.
+ */
+radius: number, shadow: ExportShadow, background: ExportGradient, };
+
+/**
+ * A shadow like CSS's `box-shadow: 0 <offsetY> <blur> rgb(0 0 0 / <opacity>)`.
+ */
+export type ExportShadow = { offsetY: number, blur: number, opacity: number, };
+
+export type ExportStop = { 
+/**
+ * Like "#2a9d8f".
+ */
+color: string, 
+/**
+ * From 0 to 1 along the gradient.
+ */
+at: number, };
+
+/**
  * A rectangle in points, as the frontend sends and receives it.
  */
 export type Frame = { x: number, y: number, width: number, height: number, };
@@ -44,7 +85,7 @@ export type Mode = "display" | "window" | "area";
  * Every event Rust sends the pages, named the way the pages hear it, with what it carries. The
  * pages read each event's payload type from this, so the two can't drift apart.
  */
-export type PageEvent = { "event": "picker-session", "payload": Session } | { "event": "picker-cursor", "payload": Point } | { "event": "picker-recording", "payload": Frame | null } | { "event": "picker-key", "payload": PickerKey } | { "event": "picker-closed" } | { "event": "recording-status", "payload": RecordingStatus } | { "event": "current-recording", "payload": ShownRecording | null } | { "event": "bar-pointer", "payload": Point | null } | { "event": "preview-pointer", "payload": Point | null } | { "event": "preview-key", "payload": PreviewKey };
+export type PageEvent = { "event": "picker-session", "payload": Session } | { "event": "picker-cursor", "payload": Point } | { "event": "picker-recording", "payload": Frame | null } | { "event": "picker-key", "payload": PickerKey } | { "event": "picker-closed" } | { "event": "recording-status", "payload": RecordingStatus } | { "event": "current-recording", "payload": ShownRecording | null } | { "event": "bar-pointer", "payload": Point | null } | { "event": "preview-pointer", "payload": Point | null } | { "event": "preview-key", "payload": PreviewKey } | { "event": "export-progress", "payload": number };
 
 export type Phase = "idle" | "starting" | "recording" | "paused" | "stopping";
 
@@ -52,6 +93,8 @@ export type Phase = "idle" | "starting" | "recording" | "paused" | "stopping";
  * Esc, Return and Tab, taken while the picker is open. The overlays hear Return and Tab.
  */
 export type PickerKey = "Enter" | "Tab";
+
+export type PixelRect = { x: number, y: number, width: number, height: number, };
 
 /**
  * A spot in points. The picker's cursor is in global points, top-left origin, like the window

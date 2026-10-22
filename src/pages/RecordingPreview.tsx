@@ -9,7 +9,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { MorphPill, PillDivider } from "@/components/Pill";
+import { MorphPill, PillDivider, PillMessage } from "@/components/Pill";
 import { useClockValue } from "@/hooks/useVideoClock";
 import { formatClock, type Clock } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -100,18 +100,18 @@ export default function RecordingPreview() {
                 </Action>
               </>
             ),
-            saving: <Message icon={<Spinner />}>Saving…</Message>,
-            copying: <Message icon={<Spinner />}>Copying…</Message>,
+            saving: <PillMessage icon={<Spinner />}>Saving…</PillMessage>,
+            copying: <PillMessage icon={<Spinner />}>Copying…</PillMessage>,
             copied: (
-              <Message icon={<Check className="text-highlight" />}>
+              <PillMessage icon={<Check className="text-highlight" />}>
                 Copied to clipboard
-              </Message>
+              </PillMessage>
             ),
             saved: (
               <>
-                <Message icon={<Check className="text-highlight" />}>
+                <PillMessage icon={<Check className="text-highlight" />}>
                   Saved
-                </Message>
+                </PillMessage>
                 <Button
                   variant="secondary"
                   size="pill-sm"
@@ -122,11 +122,11 @@ export default function RecordingPreview() {
               </>
             ),
             failed: (
-              <Message icon={<CircleAlert className="text-destructive" />}>
+              <PillMessage icon={<CircleAlert className="text-destructive" />}>
                 <span className="max-w-64 truncate" title={preview.failure}>
                   {preview.failure}
                 </span>
-              </Message>
+              </PillMessage>
             ),
           }}
         />
@@ -194,14 +194,5 @@ function Action({
         <Kbd>{shortcut}</Kbd>
       </TooltipContent>
     </Tooltip>
-  );
-}
-
-function Message({ icon, children }: { icon: ReactNode; children: ReactNode }) {
-  return (
-    <span className="flex h-8 items-center gap-2 px-3 text-ui font-medium [&_svg]:size-4 [&_svg]:shrink-0">
-      {icon}
-      {children}
-    </span>
   );
 }

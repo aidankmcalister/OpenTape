@@ -15,6 +15,7 @@ use tauri::{AppHandle, Manager, State};
 use ts_rs::TS;
 
 use crate::PageEvent;
+use crate::export::{self, ExportLayout};
 use crate::macos::{self, Alert, Choice};
 use crate::util::{CmdResult, lock, run_blocking};
 use crate::windows::{bar, editor, preview};
@@ -164,6 +165,15 @@ impl CurrentRecording {
         Ok(output)
     }
 
+    /// Exports it in `layout` to Downloads as an `.mp4`, named the way Save names its files, and
+    /// returns where. Blocks until it's done, calling `progress` with 0 to 1 on the way.
+    fn export(&self, layout: &ExportLayout, progress: impl Fn(f32)) -> Result<PathBuf> {
+        let (video, export_name) = self.video()?;
+        let output = free_path(&self.folders.downloads, &export_name, Path::exists);
+        export::export(&video, &output, layout, progress)?;
+        Ok(output)
+    }
+
     /// Exports an `.mp4` for the clipboard, and returns where. Blocks until it's done.
     fn export_copy(&self) -> Result<PathBuf> {
         let (video, export_name) = self.video()?;
@@ -292,6 +302,20 @@ pub(crate) async fn save_recording(app: AppHandle) -> CmdResult<String> {
     Ok(path.display().to_string())
 }
 
+/// Exports the recording in `layout`, the look as the page lays it out, to Downloads as an
+/// `.mp4`, and returns where. The editor hears `export-progress` on the way.
+#[tauri::command]
+pub(crate) async fn export_recording(app: AppHandle, layout: ExportLayout) -> CmdResult<String> {
+    let path = run_blocking(move || {
+        app.state::<CurrentRecording>().export(&layout, |progress| {
+            // A missed update only leaves the progress behind; the export carries on.
+            let _ = PageEvent::ExportProgress(progress).send_to(&app, editor::LABEL);
+        })
+    })
+    .await?;
+    Ok(path.display().to_string())
+}
+
 /// Puts the recording on the clipboard as an `.mp4`.
 #[tauri::command]
 pub(crate) async fn copy_recording(app: AppHandle) -> CmdResult {
@@ -305,20 +329,25 @@ pub(crate) async fn copy_recording(app: AppHandle) -> CmdResult {
 #[tauri::command]
 pub(crate) async fn show_saved_in_finder(current: State<'_, CurrentRecording>) -> CmdResult {
     let saved_to = current.saved_to().context("the recording isn't saved")?;
-    run_blocking(move || {
-        let status = Command::new("/usr/bin/open")
-            .arg("-R")
-            .arg(&saved_to)
-            .status()
-            .context("could not open Finder")?;
-        ensure!(
-            status.success(),
-            "Finder could not show {}",
-            saved_to.display()
-        );
-        Ok(())
-    })
-    .await?;
+    run_blocking(move || reveal(&saved_to)).await?;
+    Ok(())
+}
+
+/// Opens Finder with an export selected, from the path `export_recording` returned.
+#[tauri::command]
+pub(crate) async fn show_export_in_finder(path: String) -> CmdResult {
+    run_blocking(move || reveal(Path::new(&path))).await?;
+    Ok(())
+}
+
+fn reveal(path: &Path) -> Result<()> {
+    ensure!(path.exists(), "{} isn't there any more", path.display());
+    let status = Command::new("/usr/bin/open")
+        .arg("-R")
+        .arg(path)
+        .status()
+        .context("could not open Finder")?;
+    ensure!(status.success(), "Finder could not show {}", path.display());
     Ok(())
 }
 

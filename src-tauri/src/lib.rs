@@ -5,6 +5,7 @@ mod capture;
 mod current_recording;
 #[cfg(debug_assertions)]
 mod dev;
+mod export;
 mod geometry;
 mod macos;
 mod picker;
@@ -42,6 +43,8 @@ pub(crate) enum PageEvent {
     BarPointer(Option<Point>),
     PreviewPointer(Option<Point>),
     PreviewKey(PreviewKey),
+    /// How far an export has got, from 0 to 1, sent to the editor while it exports.
+    ExportProgress(f32),
 }
 
 impl PageEvent {
@@ -146,6 +149,8 @@ pub fn run() -> tauri::Result<()> {
             current_recording::show_saved_in_finder,
             current_recording::edit_recording,
             current_recording::editor_recording,
+            current_recording::export_recording,
+            current_recording::show_export_in_finder,
             quit
         ])
         .run(tauri::generate_context!())

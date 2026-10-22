@@ -11,7 +11,7 @@ export function useOpenedRecording() {
   if (!recording) return null;
   return {
     name: recording.name,
-    // The page can't read files by path; this turns the path into a URL it can play.
+    // The page can't play a file path, so this turns it into a URL it can.
     videoSrc: convertFileSrc(recording.videoPath),
   };
 }

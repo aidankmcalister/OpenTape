@@ -7,9 +7,12 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        /** Tinted orange rather than filled: Record, Stop, Edit, Export. */
+        /** Tinted orange: Record, Stop, Edit. */
         default:
           "bg-primary-tint text-primary-tint-foreground hover:bg-primary-tint-hover",
+        /** Filled orange, for the one main action, like Export. */
+        primary:
+          "bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-pressed",
         outline:
           "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
         secondary:
@@ -40,7 +43,7 @@ const buttonVariants = cva(
         "icon-lg": "size-9",
         /** The rounded controls on the app's pills. */
         pill: "h-10 gap-2 rounded-full px-4 text-ui",
-        "pill-sm": "h-8 gap-2 rounded-full px-3 text-ui",
+        "pill-sm": "h-8 gap-2 rounded-full px-4 text-ui",
         "icon-pill": "size-10 rounded-full",
         "icon-round": "size-8 rounded-full",
       },

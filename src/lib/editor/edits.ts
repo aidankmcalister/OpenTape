@@ -1,4 +1,5 @@
 import { clamp, fitInside, type Point, type Size } from "@/lib/geometry";
+import type { ExportGradient, ExportLayout } from "@/lib/bindings";
 import { twoDigits } from "@/lib/time";
 
 export type Fill = { kind: "gradient" | "color" | "image"; preset: number };
@@ -54,10 +55,32 @@ export const DEFAULT_LOOK: Look = {
   borderWidth: 0,
 };
 
+/** A fill as a gradient: corner to corner, with the middle colour a little past halfway. A colour is a gradient that doesn't change. */
+export function fillGradient(fill: Fill): ExportGradient {
+  if (fill.kind === "color") {
+    const color = COLORS[fill.preset];
+    return {
+      angle: 135,
+      stops: [
+        { color, at: 0 },
+        { color, at: 1 },
+      ],
+    };
+  }
+  const [from, middle, to] = GRADIENTS[fill.preset];
+  const stops = [
+    { color: from, at: 0 },
+    { color: middle, at: 0.55 },
+    { color: to, at: 1 },
+  ];
+  return { angle: 135, stops };
+}
+
 export function fillCss(fill: Fill): string {
   if (fill.kind === "color") return COLORS[fill.preset];
-  const [from, middle, to] = GRADIENTS[fill.preset];
-  return `linear-gradient(135deg, ${from} 0%, ${middle} 55%, ${to} 100%)`;
+  const { angle, stops } = fillGradient(fill);
+  const css = stops.map(({ color, at }) => `${color} ${Math.round(at * 100)}%`);
+  return `linear-gradient(${angle}deg, ${css.join(", ")})`;
 }
 
 export function clampAmount(amount: Amount, value: number): number {
@@ -101,6 +124,42 @@ export function frameLayout(look: Look, canvas: Size, ratio: number) {
       height: recording.height + inset * 2,
     },
   };
+}
+
+/**
+ * The export of a `video` in `look`: the recording at its full size, centred in a frame sized so the
+ * padding, corners and shadow come out as they look on the stage. In pixels, and even, as H.264
+ * needs.
+ */
+export function exportLayout(look: Look, video: Size): ExportLayout {
+  const ratio = video.width / video.height;
+  // Padding is measured on a 1920-wide frame, so it grows with the frame. This is the frame whose
+  // padding leaves the recording exactly its own size, the way frameLayout pads the stage.
+  const paddingShare = ((2 * look.padding) / 1920) * Math.max(1, ratio);
+  const width = even(video.width / (1 - paddingShare));
+  const height = even(width / ratio);
+  const scale = width / 1920;
+  return {
+    width,
+    height,
+    recording: {
+      x: Math.round((width - video.width) / 2),
+      y: Math.round((height - video.height) / 2),
+      width: video.width,
+      height: video.height,
+    },
+    radius: look.radius * scale,
+    shadow: {
+      offsetY: look.shadowOffsetY * scale,
+      blur: look.shadowBlur * scale,
+      opacity: look.shadowOpacity / 100,
+    },
+    background: fillGradient(look.fill),
+  };
+}
+
+function even(value: number): number {
+  return Math.round(value / 2) * 2;
 }
 
 export type RegionKind = "zoom" | "speed";

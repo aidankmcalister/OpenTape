@@ -6,7 +6,7 @@ import type { Clock } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import Island from "./Island";
 
-/** The strip under the transport: a ruler across the whole recording, with the playhead. Press or drag on it to seek. */
+/** A ruler across the whole recording, with the playhead. Press or drag on it to seek. */
 export default function Timeline({
   clock,
   durationMs,
@@ -31,7 +31,6 @@ export default function Timeline({
   );
 }
 
-/** A mark every half step and a label every step, at a step that fits about ten labels. */
 function Ruler({ durationMs }: { durationMs: number }) {
   return (
     <>
@@ -53,7 +52,7 @@ function Ruler({ durationMs }: { durationMs: number }) {
   );
 }
 
-/** The line at the current time. It reads the clock itself, so only it moves every frame. */
+/** Reads the clock itself, so only the playhead redraws while the video plays. */
 function Playhead({ clock, durationMs }: { clock: Clock; durationMs: number }) {
   const left = useClockValue(clock, (seconds) =>
     percentAt(seconds * 1000, durationMs),

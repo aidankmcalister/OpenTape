@@ -5,3 +5,5 @@ bun.lock
 src/components/ui
 # Generated from the Rust types by ts-rs.
 src/lib/bindings.ts
+# Tutorials and notes: Prettier would reformat the code inside them.
+temp
