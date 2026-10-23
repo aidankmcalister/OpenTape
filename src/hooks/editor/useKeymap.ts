@@ -5,7 +5,6 @@ export function useKeymap(actions: Record<EditorAction, () => void>) {
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
     const action = actionFor(event);
     if (!action) return;
-    // Otherwise a focused button also gets the key, and Space toggles it straight back.
     event.preventDefault();
     actions[action]();
   });

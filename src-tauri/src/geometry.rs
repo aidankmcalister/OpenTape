@@ -1,5 +1,3 @@
-//! Pages, ScreenCaptureKit and the cursor measure from the top-left; AppKit from the bottom-left.
-
 use cidre::cg;
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use serde::{Deserialize, Serialize};

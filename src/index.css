@@ -4,7 +4,6 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Non-key windows get no mouse moves on macOS, so Rust reports the pointer and the app sets data-hovered. */
 @custom-variant hover {
   @media (hover: hover) {
     &:hover {
@@ -20,11 +19,11 @@
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
+  --text-heading: 16px;
   --text-ui: 13px;
   --text-caption: 11px;
   --text-micro: 10px;
 
-  /* src/lib/titleBar.test.ts checks these against tauri.conf.json's trafficLightPosition. */
   --spacing-title-bar: 50px;
   --spacing-traffic-lights: 96px;
 
@@ -140,7 +139,6 @@
   --destructive: var(--red);
   --record: var(--red);
 
-  /* Translucent so the native blur behind it shows through. */
   --glass: rgb(30 30 33 / 0.6);
   --glass-border: rgb(255 255 255 / 0.14);
 
@@ -157,6 +155,18 @@
   --speed-foreground: var(--blue-soft);
 
   --radius: 0.625rem;
+}
+
+@utility dot-grid {
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+  background-size: 20px 20px;
+  background-position: center;
+}
+
+@utility swatch-ring {
+  box-shadow:
+    inset 0 0 0 2px var(--highlight),
+    inset 0 0 0 4px var(--card);
 }
 
 @layer base {

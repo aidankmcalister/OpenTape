@@ -1,5 +1,3 @@
-//! Polls the cursor, because an event tap would need Input Monitoring permission.
-
 use std::{
     fs::File,
     io::{BufWriter, Write},

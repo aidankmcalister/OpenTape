@@ -80,7 +80,6 @@ describe("area", () => {
     expect(fitRatio(nearEdge, 1, DISPLAY)).toEqual(rect(80, 0, 480, 480));
   });
 
-  // Same cases as Rust's CaptureSize::of test.
   test.each([
     [920.5, 2, 1840],
     [333, 1.5, 498],

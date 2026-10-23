@@ -1,5 +1,3 @@
-//! Written frame by frame: an AVAssetExportSession shrinks output bigger than the recording.
-
 use std::path::Path;
 use std::ptr::{NonNull, null_mut};
 use std::sync::mpsc;
@@ -17,14 +15,20 @@ use objc2_av_foundation::{
     AVVideoCompressionPropertiesKey, AVVideoHeightKey, AVVideoMaxKeyFrameIntervalDurationKey,
     AVVideoWidthKey,
 };
-use objc2_core_foundation::{CFRetained, CGAffineTransform, CGPoint, CGRect, CGSize};
+use objc2_core_foundation::{
+    CFDictionary, CFNumber, CFRetained, CFString, CFURL, CGAffineTransform, CGPoint, CGRect, CGSize,
+};
 use objc2_core_graphics::{
     CGBitmapContextCreate, CGBitmapContextCreateImage, CGBlendMode, CGColor, CGColorSpace,
     CGContext, CGGradient, CGGradientDrawingOptions, CGImageAlphaInfo, CGPath, kCGColorSpaceSRGB,
 };
-use objc2_core_image::CIImage;
-use objc2_core_media::kCMTimeZero;
+use objc2_core_image::{CIContext, CIImage};
+use objc2_core_media::{CMTime, kCMTimeZero};
 use objc2_foundation::{NSArray, NSDictionary, NSError, NSNumber, NSString, NSURL};
+use objc2_image_io::{
+    CGImageDestination, kCGImagePropertyGIFDelayTime, kCGImagePropertyGIFDictionary,
+    kCGImagePropertyGIFLoopCount,
+};
 use serde::Deserialize;
 use ts_rs::TS;
 
@@ -32,15 +36,40 @@ use ts_rs::TS;
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "bindings.ts")]
 pub(crate) struct ExportLayout {
-    /// Even, as H.264 needs.
     width: u32,
     height: u32,
     recording: PixelRect,
     radius: f64,
     shadow: ExportShadow,
     background: ExportGradient,
-    /// The zoom at each 60th of a second from the start, about the recording's middle; 1 is none.
     zoom: Vec<f64>,
+}
+
+#[derive(Debug, Clone, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "bindings.ts")]
+pub(crate) struct ExportOptions {
+    format: ExportFormat,
+    frame_rate: u32,
+    bits_per_pixel: f64,
+    pub(crate) to_clipboard: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "bindings.ts")]
+pub(crate) enum ExportFormat {
+    Mp4,
+    Gif,
+}
+
+impl ExportOptions {
+    pub(crate) fn extension(&self) -> &'static str {
+        match self.format {
+            ExportFormat::Mp4 => "mp4",
+            ExportFormat::Gif => "gif",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, TS)]
@@ -79,12 +108,12 @@ pub(crate) fn export(
     video: &Path,
     output: &Path,
     layout: &ExportLayout,
+    options: &ExportOptions,
     progress: impl Fn(f32),
 ) -> Result<()> {
     let cutout = cutout(layout)?;
     let asset = unsafe { AVURLAsset::URLAssetWithURL_options(&file_url(video), None) };
     let video_type = unsafe { AVMediaTypeVideo }.context("AVFoundation has no video type")?;
-    // The non-deprecated form is callback-only; for a file on disk this is just as quick.
     #[allow(deprecated)]
     let track = unsafe { asset.tracksWithMediaType(video_type) }
         .firstObject()
@@ -110,7 +139,6 @@ pub(crate) fn export(
             }
         },
     );
-    // The non-deprecated form only reports the composition through a callback.
     #[allow(deprecated)]
     let composition = unsafe {
         AVMutableVideoComposition::videoCompositionWithAsset_applyingCIFiltersWithHandler(
@@ -118,7 +146,11 @@ pub(crate) fn export(
             &draw_frame,
         )
     };
-    unsafe { composition.setRenderSize(picture.size) };
+    unsafe {
+        composition.setRenderSize(picture.size);
+        composition.setSourceTrackIDForFrameTiming(0);
+        composition.setFrameDuration(CMTime::new(1, options.frame_rate as i32));
+    }
 
     let reader = unsafe { AVAssetReader::assetReaderWithAsset_error(&asset) }.map_err(|error| {
         anyhow::anyhow!("could not read the recording: {}", reason(Some(error)))
@@ -132,13 +164,47 @@ pub(crate) fn export(
         reader.addOutput(&frames);
     }
 
+    ensure!(
+        unsafe { reader.startReading() },
+        "could not read the recording: {}",
+        reason(unsafe { reader.error() })
+    );
+    let duration = unsafe { asset.duration().seconds() };
+    let reported = std::cell::Cell::new(0.0);
+    let progress_at = |time: CMTime| {
+        let done = unsafe { time.seconds() } / duration;
+        if duration > 0.0 && done - reported.get() >= 0.01 {
+            reported.set(done);
+            progress(done as f32);
+        }
+    };
+    match options.format {
+        ExportFormat::Mp4 => write_mp4(&frames, output, layout, options, progress_at)?,
+        ExportFormat::Gif => write_gif(&frames, output, options.frame_rate, duration, progress_at)?,
+    }
+    ensure!(
+        unsafe { reader.status() } == AVAssetReaderStatus::Completed,
+        "could not read the recording to the end: {}",
+        reason(unsafe { reader.error() })
+    );
+    Ok(())
+}
+
+fn write_mp4(
+    frames: &AVAssetReaderVideoCompositionOutput,
+    output: &Path,
+    layout: &ExportLayout,
+    options: &ExportOptions,
+    progress_at: impl Fn(CMTime),
+) -> Result<()> {
+    let video_type = unsafe { AVMediaTypeVideo }.context("AVFoundation has no video type")?;
     let mp4 = unsafe { AVFileTypeMPEG4 }.context("AVFoundation has no MP4 type")?;
     let writer =
         unsafe { AVAssetWriter::assetWriterWithURL_fileType_error(&file_url(output), mp4) }
             .map_err(|error| {
                 anyhow::anyhow!("could not start the file: {}", reason(Some(error)))
             })?;
-    let settings = h264(layout.width, layout.height)?;
+    let settings = h264(layout.width, layout.height, options.bits_per_pixel)?;
     let input = unsafe {
         AVAssetWriterInput::assetWriterInputWithMediaType_outputSettings(
             video_type,
@@ -149,20 +215,12 @@ pub(crate) fn export(
         input.setExpectsMediaDataInRealTime(false);
         writer.addInput(&input);
     }
-
-    ensure!(
-        unsafe { reader.startReading() },
-        "could not read the recording: {}",
-        reason(unsafe { reader.error() })
-    );
     ensure!(
         unsafe { writer.startWriting() },
         "could not start the file: {}",
         reason(unsafe { writer.error() })
     );
     unsafe { writer.startSessionAtSourceTime(kCMTimeZero) };
-    let duration = unsafe { asset.duration().seconds() };
-    let mut reported = 0.0;
     while let Some(frame) = unsafe { frames.copyNextSampleBuffer() } {
         while !unsafe { input.isReadyForMoreMediaData() } {
             std::thread::sleep(Duration::from_millis(2));
@@ -172,18 +230,8 @@ pub(crate) fn export(
             "could not write a frame: {}",
             reason(unsafe { writer.error() })
         );
-        let done = unsafe { frame.presentation_time_stamp().seconds() } / duration;
-        if duration > 0.0 && done - reported >= 0.01 {
-            reported = done;
-            progress(done as f32);
-        }
+        progress_at(unsafe { frame.presentation_time_stamp() });
     }
-    ensure!(
-        unsafe { reader.status() } == AVAssetReaderStatus::Completed,
-        "could not read the recording to the end: {}",
-        reason(unsafe { reader.error() })
-    );
-
     unsafe { input.markAsFinished() };
     let (finished, wait) = mpsc::channel();
     let on_finish = RcBlock::new(move || {
@@ -199,10 +247,69 @@ pub(crate) fn export(
     Ok(())
 }
 
-fn h264(width: u32, height: u32) -> Result<Retained<NSDictionary<NSString, AnyObject>>> {
+fn write_gif(
+    frames: &AVAssetReaderVideoCompositionOutput,
+    output: &Path,
+    frame_rate: u32,
+    duration: f64,
+    progress_at: impl Fn(CMTime),
+) -> Result<()> {
+    let url = CFURL::from_file_path(output).context("the GIF's path isn't a file URL")?;
+    let count = (duration * f64::from(frame_rate)).ceil() as usize + 1;
+    let gif = unsafe {
+        CGImageDestination::with_url(
+            &url,
+            &CFString::from_static_str("com.compuserve.gif"),
+            count,
+            None,
+        )
+    }
+    .context("could not start the GIF")?;
+    let gif_entry = |key: &CFString, value: &CFNumber| {
+        let inner = CFDictionary::<CFString, CFNumber>::from_slices(&[key], &[value]);
+        CFDictionary::<CFString, CFDictionary>::from_slices(
+            &[unsafe { kCGImagePropertyGIFDictionary }],
+            &[inner.as_ref()],
+        )
+    };
+    let forever = gif_entry(
+        unsafe { kCGImagePropertyGIFLoopCount },
+        &CFNumber::new_i32(0),
+    );
+    unsafe { gif.set_properties(Some(forever.as_ref())) };
+    let context = unsafe { CIContext::context() };
+    let mut shown_until = 0;
+    while let Some(frame) = unsafe { frames.copyNextSampleBuffer() } {
+        let start = unsafe { frame.presentation_time_stamp().seconds() };
+        let ends = hundredths(start + 1.0 / f64::from(frame_rate));
+        let delay = gif_entry(
+            unsafe { kCGImagePropertyGIFDelayTime },
+            &CFNumber::new_f64(f64::from(ends - shown_until) / 100.0),
+        );
+        shown_until = ends;
+        let pixels = unsafe { frame.image_buffer() }.context("a frame had no picture")?;
+        let image = unsafe { CIImage::imageWithCVImageBuffer(&pixels) };
+        let picture = unsafe { context.createCGImage_fromRect(&image, image.extent()) }
+            .context("could not draw a frame of the GIF")?;
+        unsafe { gif.add_image(&picture, Some(delay.as_ref())) };
+        progress_at(unsafe { frame.presentation_time_stamp() });
+    }
+    ensure!(unsafe { gif.finalize() }, "could not finish the GIF");
+    Ok(())
+}
+
+fn hundredths(seconds: f64) -> i32 {
+    (seconds * 100.0).round() as i32
+}
+
+fn h264(
+    width: u32,
+    height: u32,
+    bits_per_pixel: f64,
+) -> Result<Retained<NSDictionary<NSString, AnyObject>>> {
     let key =
         |key: Option<&'static NSString>| key.context("AVFoundation is missing a video setting");
-    let bitrate = NSNumber::new_u64(u64::from(width) * u64::from(height) * 8);
+    let bitrate = NSNumber::new_f64(f64::from(width) * f64::from(height) * bits_per_pixel);
     let keyframe_every = NSNumber::new_f64(1.0);
     let compression = NSDictionary::<NSString, NSNumber>::from_slices(
         &[
@@ -262,7 +369,6 @@ fn cutout(layout: &ExportLayout) -> Result<Retained<CIImage>> {
     CGContext::draw_linear_gradient(context, Some(&gradient), start, end, extend);
 
     let hole = rounded_rect(&layout.recording, layout.radius, layout.height);
-    // Filling the hole casts the shadow; the clear below removes the fill.
     CGContext::save_g_state(context);
     let shadow = CGColor::new_srgb(0.0, 0.0, 0.0, layout.shadow.opacity);
     let offset = CGSize::new(0.0, -layout.shadow.offset_y);
@@ -411,6 +517,18 @@ mod tests {
     }
 
     #[test]
+    fn gif_delays_add_up_to_the_real_length() {
+        let ends: Vec<i32> = (0..30)
+            .map(|frame| hundredths(f64::from(frame + 1) / 30.0))
+            .collect();
+        let delays: Vec<i32> = std::iter::once(ends[0])
+            .chain(ends.windows(2).map(|pair| pair[1] - pair[0]))
+            .collect();
+        assert_eq!(delays.iter().sum::<i32>(), 100);
+        assert!(delays.iter().all(|delay| (3..=4).contains(delay)));
+    }
+
+    #[test]
     fn colours_read_from_hex_and_bad_ones_say_why() {
         assert_eq!(rgb("#ff0000").unwrap(), [1.0, 0.0, 0.0]);
         assert!(rgb("2a9d8f").is_err());
@@ -470,7 +588,25 @@ mod tests {
                 .map(|step| if (60..120).contains(&step) { 1.5 } else { 1.0 })
                 .collect(),
         };
-        export(Path::new(&video), Path::new(&output), &layout, |_| {}).unwrap();
+        let var = |name: &str, or: &str| std::env::var(name).unwrap_or(or.into());
+        let options = ExportOptions {
+            format: if var("EXPORT_TEST_FORMAT", "mp4") == "gif" {
+                ExportFormat::Gif
+            } else {
+                ExportFormat::Mp4
+            },
+            frame_rate: var("EXPORT_TEST_FPS", "60").parse().unwrap(),
+            bits_per_pixel: var("EXPORT_TEST_BITS", "8").parse().unwrap(),
+            to_clipboard: false,
+        };
+        export(
+            Path::new(&video),
+            Path::new(&output),
+            &layout,
+            &options,
+            |_| {},
+        )
+        .unwrap();
         assert!(Path::new(&output).exists());
     }
 }

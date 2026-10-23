@@ -10,17 +10,13 @@ export type Devices = { cameras: Array<Device>, microphones: Array<Device>, };
 
 export type DisplayInfo = { id: number, name: string, frame: Frame, size: CaptureSize, scale: number, safeTop: number, };
 
+export type ExportFormat = "mp4" | "gif";
+
 export type ExportGradient = { angle: number, stops: Array<ExportStop>, };
 
-export type ExportLayout = { 
-/**
- * Even, as H.264 needs.
- */
-width: number, height: number, recording: PixelRect, radius: number, shadow: ExportShadow, background: ExportGradient, 
-/**
- * The zoom at each 60th of a second from the start, about the recording's middle; 1 is none.
- */
-zoom: Array<number>, };
+export type ExportLayout = { width: number, height: number, recording: PixelRect, radius: number, shadow: ExportShadow, background: ExportGradient, zoom: Array<number>, };
+
+export type ExportOptions = { format: ExportFormat, frameRate: number, bitsPerPixel: number, toClipboard: boolean, };
 
 export type ExportShadow = { offsetY: number, blur: number, opacity: number, };
 

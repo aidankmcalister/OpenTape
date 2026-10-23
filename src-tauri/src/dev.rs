@@ -31,7 +31,6 @@ fn open_editor(app: &AppHandle, choice: &str) -> Result<()> {
     let name = source
         .file_name()
         .context("the video path has no file name")?;
-    // A copy, because closing the editor deletes the recording's folder.
     let copy = folder.join(name);
     std::fs::copy(&source, &copy)
         .with_context(|| format!("could not copy {}", source.display()))?;

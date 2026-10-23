@@ -41,7 +41,6 @@ export default function Picker({ displayId }: { displayId: number }) {
   );
 }
 
-// Plain boxes and a clip path, because WebKit redraws SVG masks slowly at display size.
 const Highlight = memo(
   function Highlight({
     highlight,
@@ -52,7 +51,6 @@ const Highlight = memo(
   }) {
     const { rect, covered, barRect, title, icon, size, target } = highlight;
     const isDisplay = target.kind === "display";
-    // About a macOS window's corner radius.
     const corner = isDisplay ? 0 : 10;
     const visible = [
       roundedRectPath(rect, corner),

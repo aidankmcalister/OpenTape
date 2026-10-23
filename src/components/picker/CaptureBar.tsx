@@ -55,7 +55,6 @@ export function CaptureTile({
   );
 }
 
-// Plain rectangles, because a huge box-shadow doesn't render in the overlay.
 export function DimOutside({ rect }: { rect: Rect }) {
   const right = rect.x + rect.width;
   const bottom = rect.y + rect.height;

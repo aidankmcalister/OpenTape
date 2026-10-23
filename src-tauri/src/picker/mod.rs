@@ -38,7 +38,6 @@ pub(crate) async fn open_picker(
     apply_safe_tops(&mut sources.displays, &safe_tops);
     let displays = sources.displays.clone();
     let session = Session::new(mode, sources, cursor_position());
-    // One lock for the check and the replace, so two quick opens can't both show the overlays.
     let already_open = lock(&state.0).replace(session).is_some();
     if already_open {
         announce_session(&app);
@@ -47,7 +46,6 @@ pub(crate) async fn open_picker(
     for display in &displays {
         show_overlay(&app, display)?;
     }
-    // Overlays reloaded while hidden asked for the session and found none, so hand it to them.
     announce_session(&app);
     watch_screen(app.clone());
     if let Err(err) = PickerKey::take(&app) {
@@ -88,7 +86,6 @@ pub(crate) fn record(app: AppHandle, state: State<'_, PickerState>, target: Targ
         .as_ref()
         .map(|session| framing(session, &target))
     else {
-        // A second Record click: closing again would take down the frame the first one kept.
         return Ok(());
     };
     let frame_overlay = framing
@@ -99,7 +96,6 @@ pub(crate) fn record(app: AppHandle, state: State<'_, PickerState>, target: Targ
         let framed = overlay.set_ignore_cursor_events(true).and_then(|()| {
             PageEvent::PickerRecording(framing.window).send_to(&app, overlay.label())
         });
-        // Better no frame than one that blocks clicks on the whole display.
         if framed.is_err() {
             put_away(&overlay);
         }
@@ -158,7 +154,6 @@ impl KeySet for PickerKey {
             }
             return;
         }
-        // A recording's frame is an overlay too, and must not hear keys once the picker is closed.
         if lock(&app.state::<PickerState>().0).is_none() {
             return;
         }
@@ -201,7 +196,6 @@ fn cursor_position() -> Option<Point> {
     })
 }
 
-/// Unfocused macOS windows get no hover events, so Rust reports the cursor to the overlays.
 fn watch_screen(app: AppHandle) {
     let mut last_cursor = None;
     let mut last_window_list = sources::stacking_order();
@@ -212,7 +206,6 @@ fn watch_screen(app: AppHandle) {
         {
             last_cursor = Some(point);
             let _ = PageEvent::PickerCursor(point).send_to_each(&app, is_overlay);
-            // The overlays never become key, so macOS never resets the cursor over them.
             let _ = app.run_on_main_thread(|| NSCursor::arrowCursor().set());
             let is_pinned = lock(&app.state::<PickerState>().0)
                 .as_ref()

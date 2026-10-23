@@ -25,7 +25,6 @@ export function useAreaBox(
   const drag = useRef<{ handle: Handle; from: Point; initial: Rect } | null>(
     null,
   );
-  // Return and the Record button can land together; the box records once.
   const oneAtATime = useOneAtATime();
 
   const [hadBox, setHadBox] = useState(hasBox);

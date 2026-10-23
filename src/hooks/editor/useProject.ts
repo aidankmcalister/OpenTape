@@ -46,6 +46,8 @@ export function useProject(clock: Clock, durationMs: number) {
     },
     undo: () => setHistory(undo),
     redo: () => setHistory(redo),
+    canUndo: history.past.length > 0,
+    canRedo: history.future.length > 0,
   };
 }
 

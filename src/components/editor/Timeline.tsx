@@ -12,7 +12,6 @@ import {
 import { percentAt } from "@/lib/editor/timeline";
 import type { Clock } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import Island from "./Island";
 
 export default function Timeline({
   clock,
@@ -28,7 +27,7 @@ export default function Timeline({
   const scrubProps = useScrub(durationMs, onSeek);
   const dragProps = useRegionDrag(edits, durationMs);
   return (
-    <Island className="h-20 shrink-0 px-4">
+    <div className="h-20 px-4">
       <div
         data-track
         className="relative h-full select-none"
@@ -54,7 +53,7 @@ export default function Timeline({
           </>
         ) : null}
       </div>
-    </Island>
+    </div>
   );
 }
 
@@ -141,6 +140,8 @@ function Playhead({ clock, durationMs }: { clock: Clock; durationMs: number }) {
     <div
       className="pointer-events-none absolute inset-y-0 -ml-px w-0.5 bg-highlight"
       style={{ left: `${left}%` }}
-    />
+    >
+      <div className="absolute top-0 -left-1 size-2.5 rounded-full bg-highlight" />
+    </div>
   );
 }

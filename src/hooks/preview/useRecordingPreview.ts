@@ -38,7 +38,6 @@ export function useRecordingPreview() {
     return () => clearTimeout(timeout);
   }, [activity]);
 
-  // Rust hides the preview between recordings, so its loop would play on out of sight.
   useEffect(() => {
     const followVisibility = () => {
       const element = video.current;
@@ -105,7 +104,6 @@ export function useRecordingPreview() {
       onPause: () => setIsPlaying(false),
     },
     ...actions,
-    // Rust confirms first unless it's saved; cancelling keeps the preview shown.
     close: () =>
       oneAtATime(() => invoke("close_recording")).catch(console.error),
     showInFinder: () => invoke("show_saved_in_finder").catch(console.error),

@@ -60,7 +60,6 @@ export function useRecordBar() {
     },
     togglePause: () =>
       attempt(() => invoke("pause_recording", { paused: phase !== "paused" })),
-    // Rust confirms first.
     restart: () => attempt(() => invoke("restart_recording")),
     stop: () => attempt(() => invoke("stop_recording")),
     dismissError: () => setError(null),
@@ -145,7 +144,6 @@ function quit() {
   return invoke("quit").catch(console.error);
 }
 
-// Native menus, because the bar window is too short to hold a web dropdown.
 async function popupBelow(
   anchor: HTMLElement,
   items: (MenuItem | CheckMenuItem)[],

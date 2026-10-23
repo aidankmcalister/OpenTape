@@ -39,7 +39,6 @@ export function createClock(): Clock & { set: (seconds: number) => void } {
 
 type Sighting = { seconds: number; at: number };
 
-// WebKit moves currentTime only a few times a second, so this counts on from its last move.
 export function estimateTime(
   last: Sighting,
   now: number,
@@ -64,7 +63,6 @@ export function seekTarget(video: HTMLVideoElement): number {
   return waitingSeeks.get(video) ?? video.currentTime;
 }
 
-// Seeks set mid-seek play out one by one, so only the latest target waits for the running one.
 export function seekVideo(video: HTMLVideoElement, seconds: number) {
   if (!video.seeking) {
     video.currentTime = seconds;

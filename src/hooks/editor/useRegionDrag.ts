@@ -16,7 +16,6 @@ export function useRegionDrag(edits: Edits, durationMs: number) {
     },
     onPointerMove: (event: PointerEvent<HTMLElement>) => {
       const current = drag.current;
-      // A grip's moves bubble up to its region too; only the element that took the pointer drags.
       if (!current || !event.currentTarget.hasPointerCapture(event.pointerId))
         return;
       const deltaMs =

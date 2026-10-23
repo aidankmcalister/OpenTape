@@ -48,7 +48,6 @@ impl OutputImpl for Recorder {
             return;
         }
         let state = self.inner_mut();
-        // ScreenCaptureKit also sends "nothing changed" frames with no image; skip those.
         let Some(image) = sample_buf.image_buf() else {
             return;
         };
@@ -58,7 +57,6 @@ impl OutputImpl for Recorder {
         };
         let pts = cm::Time::with_secs(video_time, captured.scale);
         if state.first_frame_time.is_none() {
-            // Starting a session on a failed writer would throw; stopping reports the failure.
             if state.writer.status() != Status::Writing {
                 return;
             }
@@ -80,9 +78,7 @@ pub(super) fn create_recorder(
     let url = ns::Url::with_fs_path_str(&path.display().to_string(), false);
     let mut writer = av::AssetWriter::with_url_and_file_type(&url, av::FileType::qt())
         .map_err(|err| anyhow!("could not create {}: {err:?}", path.display()))?;
-    // Fragments every 2 seconds, so a crash loses at most that.
     writer.set_movie_fragment_interval(cm::Time::new(2, 1));
-    // cidre has no AVVideoAverageBitRateKey constant; "AverageBitRate" is its value.
     let bitrate = (size.width * size.height * 8) as i64;
     let compression = ns::Dictionary::with_keys_values(
         &[ns::str!(c"AverageBitRate")],
@@ -129,7 +125,6 @@ pub(super) fn create_recorder(
 enum Ending {
     Finish(f64),
     Empty,
-    /// Finishing a failed writer would throw.
     Failed,
 }
 

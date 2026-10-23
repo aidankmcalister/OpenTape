@@ -14,7 +14,6 @@ pub(crate) fn setup(app: &AppHandle) {
         if let WindowEvent::CloseRequested { api, .. } = event {
             api.prevent_close();
             let app = app.clone();
-            // Off the main thread: closing waits for an alert's answer.
             tauri::async_runtime::spawn_blocking(move || {
                 if let Err(err) = app.state::<CurrentRecording>().close(&app) {
                     eprintln!("{err:#}");

@@ -1,5 +1,3 @@
-//! Times are host-clock seconds, the clock ScreenCaptureKit stamps frames with.
-
 use cidre::cm;
 
 pub(super) fn host_time_now() -> f64 {

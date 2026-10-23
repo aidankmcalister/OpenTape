@@ -56,7 +56,6 @@ export function pickerView(
 
   const { windows, icons } = session.sources;
   const pinned = windows.find(({ id }) => id === session.pinnedWindowId);
-  // Windows are ordered front to back, so the first under the cursor is the visible one.
   const window =
     pinned ??
     (cursor ? windows.find(({ frame }) => contains(frame, cursor)) : undefined);

@@ -41,7 +41,6 @@ export function PillMessage({
   );
 }
 
-// Each state keeps its own GPU layer the whole time, or WebKit redraws its text mid-animation and it shakes.
 export function MorphPill<Key extends string>({
   active,
   layers,

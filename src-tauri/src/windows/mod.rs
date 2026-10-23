@@ -9,7 +9,6 @@ use tauri::{WebviewWindow, WindowEvent};
 
 use crate::geometry;
 
-/// Closing a panel crashes the app, so panels are hidden, never closed.
 pub(crate) fn never_close(window: &WebviewWindow) {
     window.on_window_event(|event| {
         if let WindowEvent::CloseRequested { api, .. } = event {
@@ -39,7 +38,6 @@ pub(crate) fn safe_tops(main_thread: MainThreadMarker) -> Vec<SafeTop> {
             (frame.origin.y + frame.size.height) - (visible.origin.y + visible.size.height);
         tops.push(SafeTop {
             x: frame.origin.x,
-            // NSScreen measures from the primary screen's bottom-left.
             y: geometry::flip(frame, primary_height).origin.y,
             inset: menu_bar.max(screen.safeAreaInsets().top),
         });

@@ -10,10 +10,8 @@ export function msAtX(x: number, width: number, durationMs: number): number {
   return clamp(x / width, 0, 1) * durationMs;
 }
 
-// Capture sends at most 60 a second (`src-tauri/src/capture/plan.rs`).
 export const FRAME_MS = 1000 / 60;
 
-// Lands mid-frame so the video shows that frame rather than the one before it.
 export function frameStep(
   ms: number,
   frames: number,

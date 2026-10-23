@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import conf from "../../src-tauri/tauri.conf.json";
 
-// Measured from macOS 26 window captures: 14pt circles, 23pt apart, tops 9pt above `y`.
 const CIRCLE = 14;
 const LIGHTS_WIDTH = 23 * 2 + CIRCLE;
 const TOP_ABOVE_Y = 9;

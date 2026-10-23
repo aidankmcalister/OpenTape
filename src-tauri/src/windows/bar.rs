@@ -87,7 +87,6 @@ pub(crate) fn shape_bar(
 ) -> CmdResult {
     PILL_WIDTH.store(width.to_bits(), Ordering::Relaxed);
     macos::with_ns_window(&window, move |ns_window| {
-        // Never narrows: clicks pass through the sides, so the pill animates without a resize.
         let frame = ns_window.frame();
         if width > frame.size.width {
             let size = NSSize::new(width, frame.size.height);

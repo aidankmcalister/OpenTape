@@ -98,7 +98,6 @@ export function captureBarPosition(
   };
 }
 
-// Rounded down to even for H.264, matching Rust's CaptureSize::of.
 export function pixelSize(points: Size, scale: number): Size {
   const even = (value: number) => Math.floor((value * scale) / 2) * 2;
   return { width: even(points.width), height: even(points.height) };

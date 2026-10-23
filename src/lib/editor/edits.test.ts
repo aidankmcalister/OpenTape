@@ -1,14 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import {
+  aboutMegabytes,
   addRegion,
   amountAt,
-  amountFromShare,
   changeLook,
   dragRegion,
   clampAmount,
+  DEFAULT_EXPORT,
   DEFAULT_LOOK,
   editRegions,
   exportLayout,
+  exportOptions,
   fillCss,
   fillGradient,
   frameAt,
@@ -18,6 +20,7 @@ import {
   removeRegion,
   removeRegionAt,
   rulerLabel,
+  scaleLayout,
   outputAt,
   rulerMarks,
   sourceAt,
@@ -27,12 +30,6 @@ import {
 } from "./edits";
 
 describe("look", () => {
-  test("amountFromShare turns how far along a field you are into a whole amount", () => {
-    expect(amountFromShare("padding", 0.5)).toBe(80);
-    expect(amountFromShare("shadowOpacity", 1.2)).toBe(100);
-    expect(amountFromShare("radius", -1)).toBe(0);
-  });
-
   test("changeLook and editRegions keep the same project when nothing changes", () => {
     expect(changeLook(NEW_PROJECT, { padding: 64 })).toBe(NEW_PROJECT);
     expect(changeLook(NEW_PROJECT, { padding: 80 }).look.padding).toBe(80);
@@ -100,6 +97,37 @@ describe("look", () => {
       height: 2278,
     });
     expect(layout.radius).toBeCloseTo((20 * 4326) / 1920);
+  });
+
+  test("scaleLayout shrinks the whole export to a height, keeping its shape", () => {
+    const full = exportLayout(DEFAULT_LOOK, { width: 3840, height: 2278 }, []);
+    const small = scaleLayout(full, 1080);
+    expect([small.width, small.height]).toEqual([1820, 1080]);
+    expect(small.recording.width).toBeCloseTo((3840 * 1080) / 2566, 5);
+    expect(small.radius).toBeCloseTo((full.radius * 1080) / 2566, 5);
+  });
+
+  test("aboutMegabytes estimates from the size, length and settings, to a tenth", () => {
+    const full = exportLayout(DEFAULT_LOOK, { width: 1920, height: 1080 }, []);
+    const hd = { ...full, width: 1920, height: 1080 };
+    expect(aboutMegabytes(hd, 10_000, DEFAULT_EXPORT)).toBe(20.7);
+    expect(
+      aboutMegabytes(hd, 10_000, { ...DEFAULT_EXPORT, quality: "small" }),
+    ).toBe(10.4);
+    expect(
+      aboutMegabytes(hd, 10_000, { ...DEFAULT_EXPORT, format: "gif" }),
+    ).toBeNull();
+  });
+
+  test("exportOptions turns the settings into what Rust needs", () => {
+    expect(
+      exportOptions({ ...DEFAULT_EXPORT, format: "gif", to: "clipboard" }),
+    ).toEqual({
+      format: "gif",
+      frameRate: 60,
+      bitsPerPixel: 8,
+      toClipboard: true,
+    });
   });
 
   test("exportLayout pads a tall recording by its width, as the stage does", () => {

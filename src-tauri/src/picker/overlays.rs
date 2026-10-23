@@ -1,5 +1,3 @@
-//! Overlays are made once, then hidden and shown again, because closing a panel crashes.
-
 use anyhow::Result;
 use objc2::MainThreadOnly;
 use objc2_app_kit::NSStatusWindowLevel;
@@ -28,7 +26,6 @@ pub(super) fn overlay_label(display_id: u32) -> String {
     format!("{LABEL_PREFIX}{display_id}")
 }
 
-/// For `emit_filter`. Emitting by label would also run a script in every other overlay.
 pub(super) fn is_overlay(target: &EventTarget) -> bool {
     match target {
         EventTarget::AnyLabel { label }

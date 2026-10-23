@@ -1,5 +1,3 @@
-//! Each recording runs on its own thread: Apple's capture objects can't move between threads.
-
 mod cursor_log;
 mod plan;
 mod timeline;
@@ -141,7 +139,6 @@ impl ActiveCapture {
         let cursor = CursorLogger::start(&folder.join("events.jsonl"))?;
         pollster::block_on(stream.start())
             .map_err(|err| anyhow!("could not start capture: {err:?}"))?;
-        // Restarts the clock now that capture runs, so the timer matches the file.
         *lock(&timeline) = Timeline::new(host_time_now());
         Ok(Self {
             stream,
@@ -158,9 +155,7 @@ impl ActiveCapture {
         if let Err(err) = pollster::block_on(self.stream.stop()) {
             eprintln!("capture had already stopped, keeping what it recorded: {err:?}");
         }
-        // Waits for frames still being appended on `queue`.
         self.queue.sync(|| {});
-        // The video is finished before a cursor log error is reported, so it's never left open.
         let cursor = self.cursor.stop();
         let first_frame_time = finish_writing(&mut self.recorder)?;
         cursor?;

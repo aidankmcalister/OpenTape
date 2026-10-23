@@ -11,7 +11,7 @@ const toggleVariants = cva(
         outline: "border border-input bg-transparent hover:bg-muted",
         /** A segmented control's options: the chosen one is raised, not orange. */
         segment:
-          "aria-pressed:bg-raised-hover aria-pressed:text-foreground aria-pressed:shadow-pressed",
+          "transition-colors aria-pressed:bg-raised-hover aria-pressed:text-foreground aria-pressed:shadow-pressed",
       },
       size: {
         default:

@@ -43,7 +43,6 @@ enum Action {
     Stop,
 }
 
-/// Pause while paused and resume while recording are allowed, so restart can always pause.
 fn next_phase(phase: Phase, action: Action) -> Result<Phase> {
     use Phase::{Idle, Paused, Recording, Starting, Stopping};
     match (phase, action) {
@@ -59,11 +58,9 @@ fn next_phase(phase: Phase, action: Action) -> Result<Phase> {
     }
 }
 
-/// One lock, so a click never sees the phase change without the recording, or the reverse.
 #[derive(Default)]
 pub(crate) struct RecordingState(Mutex<Inner>);
 
-/// `running` is set exactly while recording or paused.
 #[derive(Default)]
 struct Inner {
     phase: Phase,
@@ -100,7 +97,6 @@ impl RecordingState {
         Ok(before)
     }
 
-    /// `recording_number` stops a late restart confirm from restarting a newer recording.
     fn take_running(
         &self,
         action: Action,
@@ -165,7 +161,6 @@ pub(crate) fn pause_recording(app: AppHandle, paused: bool) -> CmdResult {
     Ok(())
 }
 
-/// Pauses while asking, so the alert never ends up in the recording.
 #[tauri::command]
 pub(crate) async fn restart_recording(
     app: AppHandle,

@@ -45,7 +45,6 @@ pub(crate) struct CaptureSize {
 }
 
 impl CaptureSize {
-    /// Even sides, for H.264. `pixelSize` in `src/picker/area.ts` must match this rule.
     pub(crate) fn of(rect: cg::Rect, scale: f64) -> Self {
         Self {
             width: (rect.size.width * scale) as usize / 2 * 2,
@@ -54,7 +53,6 @@ impl CaptureSize {
     }
 }
 
-/// Blocks until ScreenCaptureKit answers, so call it off the main thread.
 pub(crate) fn shareable_content() -> Result<arc::R<sc::ShareableContent>> {
     pollster::block_on(sc::ShareableContent::current())
         .map_err(|err| anyhow!("could not read the screen (is Screen Recording allowed?): {err:?}"))
@@ -152,7 +150,6 @@ fn plan(
     }
 }
 
-/// Leaves out the app, not just its windows, so windows it opens later stay out too.
 fn without_this_app(
     content: &sc::ShareableContent,
     display: &sc::Display,

@@ -16,7 +16,6 @@ export function useMorph<Key extends string>(
     shapeListener.current = onShape;
   });
 
-  // A remount, like StrictMode's, starts over so its first shape isn't animated.
   useLayoutEffect(
     () => () => {
       shaped.current = null;
@@ -28,7 +27,6 @@ export function useMorph<Key extends string>(
     const layer = layers.current.get(active);
     if (!layer) return;
     const reshape = () => {
-      // The pill's 1px border sits outside the measured layer.
       const next = {
         width: layer.offsetWidth + 2,
         height: layer.offsetHeight + 2,
@@ -50,7 +48,6 @@ export function useMorph<Key extends string>(
     pillStyle: pillSize
       ? {
           ...pillSize,
-          // Opacity here, not on a wrapper: fading a wrapper cuts the backdrop blur off until the fade ends.
           transition: `width ${durationMs}ms cubic-bezier(${ease.join(",")}), opacity 200ms ease-out`,
         }
       : undefined,

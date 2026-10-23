@@ -1,5 +1,3 @@
-//! A page can only blur its own content, so the glass behind a pill is a native view.
-
 use objc2::{MainThreadMarker, MainThreadOnly, rc::Retained};
 use objc2_app_kit::{
     NSAnimatablePropertyContainer, NSAnimationContext, NSVisualEffectBlendingMode,
@@ -71,7 +69,6 @@ pub(crate) fn place(ns_window: &NSWindow, main_thread: MainThreadMarker, pill: O
     };
     round_ends(&glass, pill.size.height);
     let height = content.bounds().size.height;
-    // macOS measures views from the bottom-left, unless the view is flipped.
     glass.setFrame(if content.isFlipped() {
         pill
     } else {

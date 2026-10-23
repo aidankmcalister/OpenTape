@@ -1,10 +1,11 @@
-import type { PointerEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { Edits } from "@/hooks/editor/useProject";
 import {
   AMOUNTS,
-  amountFromShare,
   changeLook,
   COLORS,
   DEFAULT_LOOK,
@@ -13,7 +14,6 @@ import {
   type Amount,
   type Fill,
 } from "@/lib/editor/edits";
-import { cn } from "@/lib/utils";
 import Island from "./Island";
 
 const SECTIONS: { title: string; amounts: Amount[] }[] = [
@@ -35,31 +35,34 @@ export default function LookPanel({ edits }: { edits: Edits }) {
         Background
       </h2>
       <Section title="Fill">
-        <ToggleGroup
-          value={[look.fill.kind]}
-          onValueChange={([kind]) =>
-            kind && changeFill({ ...look.fill, kind: kind as Fill["kind"] })
+        <Tabs
+          value={look.fill.kind}
+          onValueChange={(kind: Fill["kind"]) =>
+            changeFill({ ...look.fill, kind })
           }
         >
-          <ToggleGroupItem value="gradient">Gradient</ToggleGroupItem>
-          <ToggleGroupItem value="color">Color</ToggleGroupItem>
-        </ToggleGroup>
-        <div className="flex gap-2">
+          <TabsList className="w-full">
+            <TabsTrigger value="gradient">Gradient</TabsTrigger>
+            <TabsTrigger value="color">Color</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <ToggleGroup
+          className="w-full justify-between"
+          value={[String(look.fill.preset)]}
+          onValueChange={([preset]) =>
+            preset && changeFill({ ...look.fill, preset: Number(preset) })
+          }
+        >
           {presets.map((_, preset) => (
-            <button
+            <ToggleGroupItem
               key={preset}
-              type="button"
+              value={String(preset)}
               aria-label={`Preset ${preset + 1}`}
-              className={cn(
-                "size-6 rounded-full",
-                preset === look.fill.preset &&
-                  "ring-2 ring-highlight ring-offset-2 ring-offset-card",
-              )}
+              className="size-7 min-w-7 rounded-full p-0 aria-pressed:ring-2 aria-pressed:ring-highlight aria-pressed:ring-offset-2 aria-pressed:ring-offset-card"
               style={{ background: fillCss({ ...look.fill, preset }) }}
-              onClick={() => changeFill({ ...look.fill, preset })}
             />
           ))}
-        </div>
+        </ToggleGroup>
       </Section>
       {SECTIONS.map(({ title, amounts }) => (
         <Section key={title} title={title}>
@@ -115,40 +118,18 @@ function ValueField({
   onCommit: () => void;
 }) {
   const { label, max, unit } = AMOUNTS[amount];
-  const percent = (value / max) * 100;
-  const valueAt = (event: PointerEvent<HTMLElement>) => {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    return amountFromShare(
-      amount,
-      (event.clientX - bounds.left) / bounds.width,
-    );
-  };
   return (
-    <div
-      className="relative flex h-8 cursor-ew-resize items-center justify-between overflow-hidden rounded-md border border-hairline bg-secondary px-3 text-caption select-none"
-      onPointerDown={(event) => {
-        event.currentTarget.setPointerCapture(event.pointerId);
-        onChange(valueAt(event));
-      }}
-      onPointerMove={(event) => {
-        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-          onChange(valueAt(event));
-        }
-      }}
-      onPointerUp={onCommit}
+    <Slider
+      variant="field"
+      max={max}
+      value={[value]}
+      onValueChange={(next) => onChange(Number(next))}
+      onValueCommitted={onCommit}
     >
-      <div
-        className="absolute inset-y-0 left-0 bg-highlight/20"
-        style={{ width: `${percent}%` }}
-      />
-      <div
-        className="absolute inset-y-0 w-px bg-highlight"
-        style={{ left: `${percent}%` }}
-      />
-      <span className="relative">{label}</span>
-      <span className="relative font-mono">
+      <span>{label}</span>
+      <span className="font-mono">
         {value} {unit}
       </span>
-    </div>
+    </Slider>
   );
 }

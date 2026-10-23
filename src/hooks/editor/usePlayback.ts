@@ -73,7 +73,6 @@ function sizeOf(video: HTMLVideoElement): Size {
   return { width: video.videoWidth, height: video.videoHeight };
 }
 
-// WebKit draws nothing until the video moves, so a tiny step shows its first frame.
 function showFirstFrame(event: SyntheticEvent<HTMLVideoElement>) {
   event.currentTarget.currentTime = 0.001;
 }

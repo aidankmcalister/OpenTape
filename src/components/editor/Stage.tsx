@@ -26,7 +26,7 @@ export default function Stage({
   const { ref, size } = useElementSize<HTMLDivElement>();
   const { frame, recording, radius, shadow } = frameLayout(look, size, ratio);
   return (
-    <Island className="min-h-0 flex-1 bg-canvas">
+    <Island className="min-h-0 flex-1 bg-canvas dot-grid">
       <div ref={ref} className="grid size-full place-items-center">
         <div
           className="grid place-items-center rounded-lg shadow-stage"

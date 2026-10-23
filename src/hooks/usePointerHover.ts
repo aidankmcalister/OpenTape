@@ -3,7 +3,6 @@ import type { Point } from "@/lib/geometry";
 
 const TARGET = "button, a, [role^='menuitem'], [data-hover]";
 
-// Some windows get no mouse moves, so CSS :hover never fires; Rust reports the pointer and the element under it gets data-hovered (see index.css).
 export function usePointerHover() {
   const pointer = useRef<Point | null>(null);
   const marked = useRef<HTMLElement | null>(null);
@@ -24,7 +23,6 @@ export function usePointerHover() {
     );
   }
 
-  // A redraw can put something new under a pointer that hasn't moved.
   useLayoutEffect(mark);
   useLayoutEffect(
     () => () => {

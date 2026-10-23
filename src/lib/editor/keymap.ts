@@ -36,7 +36,6 @@ export const KEYMAP: Binding[] = [
   { action: "redo", key: "z", meta: true, shift: true },
 ];
 
-// ⌘ must match exactly, so ⌘C and the rest stay with the app's menus.
 export function actionFor(
   press: Pick<
     KeyboardEvent,

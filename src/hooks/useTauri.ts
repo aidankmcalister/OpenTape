@@ -19,7 +19,6 @@ export function useTauriEvent<E extends EventName>(
   });
 
   useEffect(() => {
-    // Listening is async, so an event can arrive after unmount, including StrictMode's first mount.
     let isMounted = true;
     const onEvent = ({ payload }: { payload: Payload<E> }) => {
       if (isMounted) latest.current(payload);
@@ -71,7 +70,6 @@ export function useRustValue<E extends EventName>(
   useTauriEvent(event, (next) => order.event(next, onValue), scope);
 }
 
-// The first answer can arrive after a newer event, so then it's dropped.
 export function latestWins() {
   let hasEvent = false;
   return {

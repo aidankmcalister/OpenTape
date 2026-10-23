@@ -29,13 +29,16 @@ The names this project uses for its own things. Code, docs and reviews use them.
 - **Clip dock** (`ClipDock`): the morph pill at the bottom of the preview. It holds Save, Copy and Edit, then morphs to Saving, Copied, Saved with Show in Finder, or an error.
 - **Current recording** (`current_recording.rs`): the recording you've just made, named for when it started ("2026-10-16 07.41.28"). It waits in app storage while the preview and then the editor show it. It keeps, saves, copies, edits and closes itself, and each step decides which window shows: the bar, then the preview, then the editor. Save exports an `.mp4` to Downloads. Closing deletes the copy in app storage either way.
 - **Close (the preview or editor):** one flow for both. It asks first with a native alert centered on the screen, unless the recording is saved, then brings the bar back and deletes the copy in app storage. The alert's choices depend on the window: the editor can't save yet.
-- **Editor** (`src/pages/Editor.tsx`, `windows/editor.rs`): where Edit in the preview takes the recording. Empty for now (a black box); it's being rebuilt one piece at a time. `bun run dev:editor` opens it on your newest download. It can't export, so closing an unsaved recording asks, then deletes it.
+- **Editor** (`src/pages/Editor.tsx`, `windows/editor.rs`): where Edit in the preview takes the recording. It's being rebuilt one piece at a time: the stage, the timeline with zoom and speed regions, the Background panel and Export. `bun run dev:editor` opens it on your newest download. Closing an unsaved recording asks, then deletes it.
 - **Stage:** the editor's big view of the recording, framed the way it will export.
-- **Look:** how the editor frames the recording: background, padding, corners, inset, shadow and border. Sizes are measured on a 1920-wide frame, so a look matches at any size. Nothing edits it yet; the stage uses the default.
+- **Look:** how the editor frames the recording: background, padding, corners, inset, shadow and border. Sizes are measured on a 1920-wide frame, so a look matches at any size. The Background panel edits it, and the stage and export both draw it.
 - **Timeline:** the editor's strip under the stage: play and pause (Space), the time, the ruler and the playhead. Effect tracks slot in under the ruler.
-- **Region:** a stretch of the timeline that zooms in or changes speed. A zoom can have a centre; without one it zooms on the middle. The logic is in `edits.ts`, but the editor doesn't show or add regions yet; they come back with the effect system.
-- **Frame at time t** (`frameAt` in `edits.ts`): everything needed to draw the edited video at one moment: the layout, corners, shadow, border, the eased zoom and which moment of the recording shows. The stage and export will both draw from it.
+- **Region:** a stretch of the timeline that zooms in or changes speed. A zoom can have a centre; without one it zooms on the middle. Z and S add one at the playhead; the timeline selects, moves, resizes and deletes them.
+- **Frame at time t** (`frameAt` in `edits.ts`): everything needed to draw the edited video at one moment: the layout, corners, shadow, border, the eased zoom and which moment of the recording shows. The stage draws from it; export gets the same numbers through `exportLayout` and the zoom track.
 - **Island:** one of the editor's rounded areas, such as the stage and the timeline.
+- **Rail:** the column of icons at the left of the side island. Its top tabs switch the panel (Background, Cursor, Zoom, Audio, Captions); its bottom tabs are app-wide (shortcuts, Help, GitHub, Settings).
+- **Panel:** what the rail shows beside it: one effect's settings, in sections of field rows.
+- **Export settings** (`ExportSettings`): format, frame rate, resolution, quality and where the export goes. The Export button's chevron opens them; the button itself exports with them.
 
 ## Shared pieces
 

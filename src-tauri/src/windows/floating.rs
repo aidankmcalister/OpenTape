@@ -26,7 +26,6 @@ pub(crate) struct Behaviour {
     pub hover: Option<Hover>,
 }
 
-/// Pages in a non-key window get no mouse moves, so Rust reports the pointer.
 pub(crate) struct Hover {
     pub event: fn(Option<Point>) -> PageEvent,
     pub on_enter_or_leave: fn(&AppHandle, bool),
@@ -97,7 +96,6 @@ impl Floating {
             let _ = window.hide();
         }
         let app_handle = app.clone();
-        // Queued behind any in-flight look, so the page always hears it left and gives keys back.
         let _ = app.run_on_main_thread(move || self.report_pointer(&app_handle, None));
     }
 
@@ -120,7 +118,6 @@ impl Floating {
                 } else {
                     None
                 };
-                // Never key, so macOS never resets the cursor over it.
                 if on_page.is_some() && !ns_window.ignoresMouseEvents() {
                     NSCursor::arrowCursor().set();
                 }
@@ -212,7 +209,6 @@ struct PointerWatch {
 }
 
 impl PointerWatch {
-    // These NSEvent class methods are fine off the main thread.
     fn look(&mut self) -> PointerChange {
         let at = Point::from(NSEvent::mouseLocation());
         let is_down = NSEvent::pressedMouseButtons() & 1 != 0;

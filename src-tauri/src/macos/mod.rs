@@ -17,12 +17,10 @@ use tauri_plugin_dialog::{
     DialogExt, MessageDialogButtons, MessageDialogKind, MessageDialogResult,
 };
 
-/// AppKit throws Objective-C exceptions, which abort the app unless caught here.
 pub(crate) fn catch<R>(job: impl FnOnce() -> R) -> Result<R> {
     exception::catch(AssertUnwindSafe(job)).map_err(|thrown| anyhow!("macOS refused: {thrown:?}"))
 }
 
-/// On the main thread it runs `job` directly, since queueing and waiting there would deadlock.
 pub(crate) fn run_on_main_thread<R: Send + 'static>(
     app: &AppHandle,
     job: impl FnOnce(MainThreadMarker) -> R + Send + 'static,
@@ -51,7 +49,6 @@ pub(crate) fn with_ns_window(
         let Ok(raw_ns_window) = target.ns_window() else {
             return;
         };
-        // SAFETY: windows are destroyed on the main thread, so this NSWindow outlives the borrow.
         let Some(ns_window) = (unsafe { raw_ns_window.cast::<NSWindow>().as_ref() }) else {
             return;
         };
@@ -61,16 +58,13 @@ pub(crate) fn with_ns_window(
     })
 }
 
-/// Only for windows that live as long as the app: closing a panel crashes.
 pub(crate) fn float_panel(ns_window: &NSWindow, level: NSWindowLevel) {
-    // Swaps the class in place for a non-activating panel, as tauri-nspanel does.
     let panel_class: &AnyClass = FloatingPanel::class();
     let object: &AnyObject = ns_window.as_ref();
     if panel_class.instance_size() > object.class().instance_size() {
         eprintln!("the window can't become a panel, so it won't show over full-screen apps");
     } else {
         let window: *const AnyObject = object;
-        // SAFETY: no added state, fits (checked above), and Tao's `focusable` ivar goes unread.
         unsafe { ffi::object_setClass(window.cast_mut(), panel_class) };
         ns_window.setStyleMask(ns_window.styleMask() | NSWindowStyleMask::NonactivatingPanel);
     }
@@ -85,14 +79,12 @@ pub(crate) fn float_panel(ns_window: &NSWindow, level: NSWindowLevel) {
 }
 
 define_class!(
-    // SAFETY: no instance variables and no `Drop`, so `float_panel` can swap it onto a window.
     #[unsafe(super(NSPanel, NSWindow, NSResponder, NSObject))]
     #[thread_kind = MainThreadOnly]
     #[name = "ScreenRecorderPanel"]
     struct FloatingPanel;
 
     impl FloatingPanel {
-        /// Borderless panels refuse keyboard focus by default, but the Area fields need it.
         #[unsafe(method(canBecomeKeyWindow))]
         fn can_become_key_window(&self) -> bool {
             true
@@ -134,13 +126,11 @@ pub(crate) async fn ask_in_background(app: &AppHandle, alert: Alert) -> Result<C
     Ok(choice)
 }
 
-/// On the main thread it answers Cancel, since the alert needs that thread to show.
 pub(crate) fn ask(app: &AppHandle, alert: Alert) -> Choice {
     if MainThreadMarker::new().is_some() {
         eprintln!("an alert was asked on the main thread, so it was cancelled");
         return Choice::Cancel;
     }
-    // An inactive app's alert opens behind other apps, and the bar never activates the app.
     let activate = run_on_main_thread(app, |main_thread| {
         NSApplication::sharedApplication(main_thread).activate();
     });

@@ -1,5 +1,3 @@
-//! Frames are in global points with a top-left origin, the same space as the cursor.
-
 use std::{
     collections::{HashMap, HashSet},
     sync::{LazyLock, Mutex},
@@ -138,7 +136,6 @@ pub(super) fn list() -> Result<Sources> {
     })
 }
 
-/// Window ids front to back, since ScreenCaptureKit's list has no set order.
 pub(super) fn stacking_order() -> Vec<u32> {
     let options = cg::WindowListOpt::ON_SCREEN_ONLY | cg::WindowListOpt::EXCLUDE_DESKTOP_ELEMENTS;
     cg::WindowList::new(options, cg::WINDOW_ID_NULL)
@@ -214,7 +211,6 @@ fn pickable_window(
     if is_own_window || !is_pickable(window.window_layer(), window.is_on_screen(), frame) {
         return None;
     }
-    // The capture picks its display by the window's corner, not its center.
     let capture_display = capture::display_of(content, window).ok()?.display_id().0;
     let scale = displays
         .iter()
@@ -244,14 +240,12 @@ fn sort_front_to_back(windows: &mut [WindowInfo], order: &[u32]) {
 }
 
 fn icon_data_url(pid: u32) -> Option<String> {
-    // Fine off the main thread: Apple documents these icon calls as thread safe.
     let png = macos::catch(|| -> Option<Vec<u8>> {
         let pid = pid.try_into().ok()?;
         let icon = NSRunningApplication::runningApplicationWithProcessIdentifier(pid)?.icon()?;
         let mut rect = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(64.0, 64.0));
         let image = unsafe { icon.CGImageForProposedRect_context_hints(&mut rect, None, None) }?;
         let bitmap = NSBitmapImageRep::initWithCGImage(NSBitmapImageRep::alloc(), &image);
-        // SAFETY: an empty properties dictionary has no untyped values.
         let data = unsafe {
             bitmap.representationUsingType_properties(
                 NSBitmapImageFileType::PNG,

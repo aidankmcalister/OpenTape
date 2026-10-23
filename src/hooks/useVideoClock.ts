@@ -38,7 +38,6 @@ export function useVideoClock(
     let frame = requestAnimationFrame(function track(now) {
       const estimate = estimateTime(sighting, now, element);
       sighting = estimate.sighting;
-      // While a seek is running the video isn't moving, so the playhead stays where it was sent.
       clock.set(element.seeking ? seekTarget(element) : estimate.seconds);
       frame = requestAnimationFrame(track);
     });

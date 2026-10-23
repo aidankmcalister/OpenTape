@@ -10,7 +10,7 @@ use tauri::{AppHandle, Manager, State};
 use ts_rs::TS;
 
 use crate::PageEvent;
-use crate::export::{self, ExportLayout};
+use crate::export::{self, ExportLayout, ExportOptions};
 use crate::macos::{self, Alert, Choice};
 use crate::util::{CmdResult, lock, run_blocking};
 use crate::windows::{bar, editor, preview};
@@ -33,7 +33,6 @@ pub(crate) struct ShownRecording {
 }
 
 pub(crate) trait Shell {
-    /// Blocks for the answer, so never call it on the main thread.
     fn ask(&self, alert: Alert) -> Choice;
     fn switch(&self, from: Window, to: Window, recording: Option<&ShownRecording>) -> Result<()>;
 }
@@ -130,7 +129,7 @@ impl CurrentRecording {
             return Ok(saved_to);
         }
         let (video, export_name) = self.video()?;
-        let output = free_path(&self.folders.downloads, &export_name, Path::exists);
+        let output = free_path(&self.folders.downloads, &export_name, "mp4", Path::exists);
         to_mp4(&video, &output)?;
         if let Some(kept) = lock(&self.kept).as_mut() {
             kept.saved_to = Some(output.clone());
@@ -138,22 +137,37 @@ impl CurrentRecording {
         Ok(output)
     }
 
-    fn export(&self, layout: &ExportLayout, progress: impl Fn(f32)) -> Result<PathBuf> {
+    fn export(
+        &self,
+        layout: &ExportLayout,
+        options: &ExportOptions,
+        progress: impl Fn(f32),
+    ) -> Result<PathBuf> {
         let (video, export_name) = self.video()?;
-        let output = free_path(&self.folders.downloads, &export_name, Path::exists);
-        export::export(&video, &output, layout, progress)?;
+        let extension = options.extension();
+        let output = if options.to_clipboard {
+            std::fs::create_dir_all(&self.folders.copies)?;
+            self.folders.copies.join(file_name(&export_name, extension))
+        } else {
+            free_path(
+                &self.folders.downloads,
+                &export_name,
+                extension,
+                Path::exists,
+            )
+        };
+        export::export(&video, &output, layout, options, progress)?;
         Ok(output)
     }
 
     fn export_copy(&self) -> Result<PathBuf> {
         let (video, export_name) = self.video()?;
         std::fs::create_dir_all(&self.folders.copies)?;
-        let output = self.folders.copies.join(mp4_name(&export_name));
+        let output = self.folders.copies.join(file_name(&export_name, "mp4"));
         to_mp4(&video, &output)?;
         Ok(output)
     }
 
-    /// Never call on the main thread: it may wait on an alert.
     pub(crate) fn close(&self, shell: &impl Shell) -> Result<()> {
         let Some(window) = lock(&self.kept).as_ref().map(|kept| kept.window) else {
             return Ok(());
@@ -161,7 +175,6 @@ impl CurrentRecording {
         if self.saved_to().is_none() {
             match shell.ask(close_alert(window)) {
                 Choice::Cancel => return Ok(()),
-                // In the editor, First is "Delete and close".
                 Choice::First if window == Window::Preview => {
                     self.save()?;
                 }
@@ -211,15 +224,20 @@ fn to_mp4(video: &Path, output: &Path) -> Result<()> {
     Ok(())
 }
 
-fn mp4_name(name: &str) -> String {
-    format!("{}.mp4", name.replace(['/', ':'], "-"))
+fn file_name(name: &str, extension: &str) -> String {
+    format!("{}.{extension}", name.replace(['/', ':'], "-"))
 }
 
-fn free_path(folder: &Path, name: &str, is_taken: impl Fn(&Path) -> bool) -> PathBuf {
-    let mut path = folder.join(mp4_name(name));
+fn free_path(
+    folder: &Path,
+    name: &str,
+    extension: &str,
+    is_taken: impl Fn(&Path) -> bool,
+) -> PathBuf {
+    let mut path = folder.join(file_name(name, extension));
     let mut copy_number = 2;
     while is_taken(&path) {
-        path = folder.join(mp4_name(&format!("{name} {copy_number}")));
+        path = folder.join(file_name(&format!("{name} {copy_number}"), extension));
         copy_number += 1;
     }
     path
@@ -262,13 +280,24 @@ pub(crate) async fn save_recording(app: AppHandle) -> CmdResult<String> {
 }
 
 #[tauri::command]
-pub(crate) async fn export_recording(app: AppHandle, layout: ExportLayout) -> CmdResult<String> {
+pub(crate) async fn export_recording(
+    app: AppHandle,
+    layout: ExportLayout,
+    options: ExportOptions,
+) -> CmdResult<String> {
+    let handle = app.clone();
+    let to_clipboard = options.to_clipboard;
     let path = run_blocking(move || {
-        app.state::<CurrentRecording>().export(&layout, |progress| {
-            let _ = PageEvent::ExportProgress(progress).send_to(&app, editor::LABEL);
-        })
+        handle
+            .state::<CurrentRecording>()
+            .export(&layout, &options, |progress| {
+                let _ = PageEvent::ExportProgress(progress).send_to(&handle, editor::LABEL);
+            })
     })
     .await?;
+    if to_clipboard {
+        macos::put_file_on_clipboard(&app, path.clone())?;
+    }
     Ok(path.display().to_string())
 }
 
@@ -468,12 +497,17 @@ mod tests {
     }
 
     #[test]
-    fn mp4_names_should_be_safe_and_numbered_like_finder_when_taken() {
-        assert_eq!(mp4_name("a/b: c"), "a-b- c.mp4");
+    fn file_names_should_be_safe_and_numbered_like_finder_when_taken() {
+        assert_eq!(file_name("a/b: c", "gif"), "a-b- c.gif");
         let folder = Path::new("/Downloads");
         let taken = [folder.join("Clip.mp4"), folder.join("Clip 2.mp4")];
-        let path = free_path(folder, "Clip", |path| taken.iter().any(|t| t == path));
+        let path = free_path(folder, "Clip", "mp4", |path| {
+            taken.iter().any(|t| t == path)
+        });
         assert_eq!(path, folder.join("Clip 3.mp4"));
-        assert_eq!(free_path(folder, "New", |_| false), folder.join("New.mp4"));
+        assert_eq!(
+            free_path(folder, "New", "mp4", |_| false),
+            folder.join("New.mp4")
+        );
     }
 }

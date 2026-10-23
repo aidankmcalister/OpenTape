@@ -18,7 +18,6 @@ import {
   type PickerView,
 } from "@/lib/picker/view";
 
-// The cursor streams in 60 times a second, so it lives in a ref and only a change in what's shown redraws.
 export function usePicker(displayId: number) {
   const session = useRef<Session | null>(null);
   const cursor = useRef<Point | null>(null);
@@ -28,7 +27,6 @@ export function usePicker(displayId: number) {
     windowRect: Rect | null;
   }>({ isFraming: false, windowRect: null });
   const { setPointer } = usePointerHover();
-  // Return and the Record button can land together; the picker records once.
   const oneAtATime = useOneAtATime();
 
   function refreshView() {
@@ -40,7 +38,6 @@ export function usePicker(displayId: number) {
 
   useInvokeOnMount<Setup | null>("picker_setup", (setup) => {
     if (!setup) return;
-    // Events that arrived first are newer than the setup.
     session.current ??= setup.session;
     cursor.current ??= setup.cursor;
     refreshView();
@@ -66,7 +63,6 @@ export function usePicker(displayId: number) {
   const recordOnce = (target: Target) =>
     void oneAtATime(() => record(target)).catch(console.error);
 
-  // Every overlay hears the key; only the one under the cursor acts. The Area box handles its own.
   useTauriEvent(
     "picker-key",
     (key) => {
@@ -91,7 +87,6 @@ export function usePicker(displayId: number) {
   return { view, framing, record: recordOnce };
 }
 
-// A page can only blur its own content, so Rust's native glass blurs the apps behind the pill.
 export function useGlass<T extends HTMLElement>() {
   const ref = useRef<T>(null);
   const placed = useRef("");
@@ -108,7 +103,6 @@ export function useGlass<T extends HTMLElement>() {
     );
   });
 
-  // Forgotten so a remount puts the glass back.
   useEffect(
     () => () => {
       placed.current = "";

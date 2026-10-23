@@ -1,5 +1,10 @@
 import { clamp, fitInside, type Point, type Size } from "@/lib/geometry";
-import type { ExportGradient, ExportLayout } from "@/lib/bindings";
+import type {
+  ExportFormat,
+  ExportGradient,
+  ExportLayout,
+  ExportOptions,
+} from "@/lib/bindings";
 import { twoDigits } from "@/lib/time";
 import { FRAME_MS } from "./timeline";
 
@@ -86,10 +91,6 @@ export function clampAmount(amount: Amount, value: number): number {
   return Math.round(clamp(value, 0, AMOUNTS[amount].max));
 }
 
-export function amountFromShare(amount: Amount, share: number): number {
-  return clampAmount(amount, share * AMOUNTS[amount].max);
-}
-
 export function frameLayout(look: Look, canvas: Size, ratio: number) {
   const shrink = ({ width, height }: Size, by: number) => ({
     width: Math.max(width - by * 2, 0),
@@ -128,7 +129,6 @@ export function exportLayout(
   zoom: number[],
 ): ExportLayout {
   const ratio = video.width / video.height;
-  // The frame whose 1920-relative padding leaves the recording exactly its own size, as frameLayout does.
   const paddingShare = ((2 * look.padding) / 1920) * Math.max(1, ratio);
   const width = even(video.width / (1 - paddingShare));
   const height = even(width / ratio);
@@ -151,6 +151,90 @@ export function exportLayout(
     background: fillGradient(look.fill),
     zoom,
   };
+}
+
+export const RESOLUTIONS = { "720p": 720, "1080p": 1080, "4K": 2160 };
+
+export type Resolution = keyof typeof RESOLUTIONS;
+
+export function scaleLayout(
+  layout: ExportLayout,
+  height: number,
+): ExportLayout {
+  const scale = height / layout.height;
+  const { recording, shadow } = layout;
+  return {
+    ...layout,
+    width: even(layout.width * scale),
+    height: even(height),
+    recording: {
+      x: recording.x * scale,
+      y: recording.y * scale,
+      width: recording.width * scale,
+      height: recording.height * scale,
+    },
+    radius: layout.radius * scale,
+    shadow: {
+      ...shadow,
+      offsetY: shadow.offsetY * scale,
+      blur: shadow.blur * scale,
+    },
+  };
+}
+
+export const QUALITIES = {
+  best: {
+    label: "Best",
+    bitsPerPixel: 12,
+    hint: "Largest file, closest to the original.",
+  },
+  balanced: {
+    label: "Balanced",
+    bitsPerPixel: 8,
+    hint: "Good for sharing. A little smaller than the original.",
+  },
+  small: {
+    label: "Small",
+    bitsPerPixel: 4,
+    hint: "Smallest file, for messages and chat.",
+  },
+};
+
+export type ExportSettings = {
+  format: ExportFormat;
+  frameRate: 30 | 60;
+  resolution: Resolution;
+  quality: keyof typeof QUALITIES;
+  to: "file" | "clipboard";
+};
+
+export const DEFAULT_EXPORT: ExportSettings = {
+  format: "mp4",
+  frameRate: 60,
+  resolution: "1080p",
+  quality: "balanced",
+  to: "file",
+};
+
+export function exportOptions(settings: ExportSettings): ExportOptions {
+  return {
+    format: settings.format,
+    frameRate: settings.frameRate,
+    bitsPerPixel: QUALITIES[settings.quality].bitsPerPixel,
+    toClipboard: settings.to === "clipboard",
+  };
+}
+
+export function aboutMegabytes(
+  layout: ExportLayout,
+  durationMs: number,
+  settings: ExportSettings,
+): number | null {
+  if (settings.format === "gif") return null;
+  const { bitsPerPixel } = QUALITIES[settings.quality];
+  const bits =
+    (layout.width * layout.height * bitsPerPixel * durationMs) / 1000;
+  return Math.round(bits / 8e5) / 10;
 }
 
 function even(value: number): number {

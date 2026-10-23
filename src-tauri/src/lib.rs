@@ -62,7 +62,6 @@ impl PageEvent {
     }
 }
 
-/// Global shortcuts, because the floating windows never take focus.
 pub(crate) trait KeySet: Copy + Send + Sync + 'static {
     const KEYS: [Self; 3];
     fn shortcut(self) -> Shortcut;
