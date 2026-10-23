@@ -3,12 +3,8 @@ import { useClockValue } from "@/hooks/useVideoClock";
 import { useRegionDrag } from "@/hooks/editor/useRegionDrag";
 import type { Edits } from "@/hooks/editor/useProject";
 import { useScrub } from "@/hooks/editor/useScrub";
-import {
-  rulerLabel,
-  rulerMarks,
-  type Region,
-  type RegionDrag,
-} from "@/lib/editor/edits";
+import { rulerLabel, rulerMarks } from "@/lib/editor/timeline";
+import type { Region, RegionDrag } from "@/lib/editor/regions";
 import { percentAt } from "@/lib/editor/timeline";
 import type { Clock } from "@/lib/time";
 import { cn } from "@/lib/utils";

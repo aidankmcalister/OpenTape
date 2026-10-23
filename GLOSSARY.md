@@ -34,7 +34,7 @@ The names this project uses for its own things. Code, docs and reviews use them.
 - **Appearance** (`Appearance`): how the editor frames the recording: background, padding, corners, inset, shadow and border. Sizes are measured on a 1920-wide frame, so an appearance matches at any size. The Background panel edits it, and the stage and export both draw it.
 - **Timeline:** the editor's strip under the stage: play and pause (Space), the time, the ruler and the playhead. Effect tracks slot in under the ruler.
 - **Region:** a stretch of the timeline that zooms in or changes speed. A zoom can have a center; without one it zooms on the middle. Z and S add one at the playhead; the timeline selects, moves, resizes and deletes them.
-- **Frame at time t** (`frameAt` in `edits.ts`): everything needed to draw the edited video at one moment: the layout, corners, shadow, border, the eased zoom and which moment of the recording shows. The stage draws from it; export gets the same numbers through `exportLayout` and the zoom track.
+- **Frame at time t** (`frameAt` in `lib/editor/project.ts`): everything needed to draw the edited video at one moment: the layout, corners, shadow, border, the eased zoom and which moment of the recording shows. The stage draws from it; export gets the same numbers through `exportLayout` and the zoom track.
 - **Island:** one of the editor's rounded areas, such as the stage and the timeline.
 - **Rail:** the column of icons at the left of the side island. Its top tabs switch the panel (Background, Cursor, Zoom, Audio, Captions); its bottom tabs are app-wide (shortcuts, Help, GitHub, Settings).
 - **Panel:** what the rail shows beside it: one effect's settings, in sections of field rows.

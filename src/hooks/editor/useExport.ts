@@ -9,11 +9,11 @@ import {
   exportOptions,
   RESOLUTIONS,
   scaleLayout,
-  zoomTrack,
-  type Appearance,
-  type Region,
   type ExportSettings,
-} from "@/lib/editor/edits";
+} from "@/lib/editor/export";
+import { zoomTrack } from "@/lib/editor/zoom";
+import type { Appearance } from "@/lib/editor/appearance";
+import type { Region } from "@/lib/editor/regions";
 import type { Size } from "@/lib/geometry";
 import type { Playback } from "./usePlayback";
 

@@ -1,13 +1,9 @@
 import type { ComponentProps, ReactNode } from "react";
 import { useElementSize } from "@/hooks/useElementSize";
 import { useClockValue } from "@/hooks/useVideoClock";
-import {
-  fillCss,
-  frameLayout,
-  zoomAt,
-  type Appearance,
-  type Region,
-} from "@/lib/editor/edits";
+import { fillCss, frameLayout, type Appearance } from "@/lib/editor/appearance";
+import { zoomAt } from "@/lib/editor/zoom";
+import type { Region } from "@/lib/editor/regions";
 import type { Clock } from "@/lib/time";
 import Island from "./Island";
 

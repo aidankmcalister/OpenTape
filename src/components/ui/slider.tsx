@@ -15,6 +15,13 @@ const PARTS = {
     indicator: "bg-highlight/20",
     thumb: "h-8 w-0.5 bg-highlight focus-visible:ring-2 focus-visible:ring-ring",
   },
+  hue: {
+    track:
+      "h-4 w-full rounded-full bg-[linear-gradient(to_right,#ff0000,#ffff00,#00ff00,#00ffff,#0000ff,#ff00ff,#ff0000)]",
+    indicator: "bg-transparent",
+    thumb:
+      "size-4 rounded-full border-2 border-primary-foreground shadow-md focus-visible:ring-2 focus-visible:ring-ring",
+  },
 }
 
 function Slider({

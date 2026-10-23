@@ -8,7 +8,10 @@ import {
 } from "@/components/ui/popover";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Exporting } from "@/hooks/editor/useExport";
-import { QUALITIES, type ExportSettings as Settings } from "@/lib/editor/edits";
+import {
+  QUALITIES,
+  type ExportSettings as Settings,
+} from "@/lib/editor/export";
 
 export default function ExportSettings({
   exporting,

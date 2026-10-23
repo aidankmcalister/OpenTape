@@ -1,5 +1,6 @@
 import { useRef, type PointerEvent } from "react";
-import { dragRegion, editRegions, type RegionDrag } from "@/lib/editor/edits";
+import { dragRegion, type RegionDrag } from "@/lib/editor/regions";
+import { editRegions } from "@/lib/editor/project";
 import type { Edits } from "./useProject";
 
 export function useRegionDrag(edits: Edits, durationMs: number) {

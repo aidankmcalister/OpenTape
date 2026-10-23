@@ -1,0 +1,137 @@
+import { type Size, clamp, fitInside } from "@/lib/geometry";
+import type { ExportGradient } from "@/lib/bindings";
+
+export type Fill = { kind: "gradient" | "color" | "image"; preset: number };
+
+export type Appearance = {
+  fill: Fill;
+  padding: number;
+  radius: number;
+  inset: number;
+  shadowOpacity: number;
+  shadowBlur: number;
+  shadowOffsetY: number;
+  borderWidth: number;
+  borderColor: BorderColor;
+};
+
+export type Amount = Exclude<keyof Appearance, "fill" | "borderColor">;
+
+export const BORDER_COLORS = {
+  none: { label: "None", tint: null },
+  light: { label: "Light", tint: { color: "#ffffff", opacity: 0.35 } },
+  dark: { label: "Dark", tint: { color: "#000000", opacity: 0.35 } },
+};
+
+export type BorderColor = keyof typeof BORDER_COLORS;
+
+export const GRADIENTS: [string, string, string][] = [
+  ["#0f4c5c", "#2a9d8f", "#e9c46a"],
+  ["#ff9a4d", "#e8680a", "#7a2e0b"],
+  ["#1e3a8a", "#3b82f6", "#bfdbfe"],
+  ["#27272a", "#52525b", "#a1a1aa"],
+  ["#14532d", "#16a34a", "#bbf7d0"],
+  ["#7f1d1d", "#dc2626", "#fca5a5"],
+  ["#e7e5e4", "#d6d3d1", "#a8a29e"],
+  ["#0a0a0b", "#18181b", "#3f3f46"],
+];
+
+export const COLORS = GRADIENTS.map(([, middle]) => middle);
+
+export const AMOUNTS: Record<
+  Amount,
+  { label: string; max: number; unit: "px" | "%" }
+> = {
+  padding: { label: "Padding", max: 160, unit: "px" },
+  radius: { label: "Rounded corners", max: 40, unit: "px" },
+  inset: { label: "Inset", max: 40, unit: "px" },
+  shadowOpacity: { label: "Opacity", max: 100, unit: "%" },
+  shadowBlur: { label: "Blur", max: 100, unit: "px" },
+  shadowOffsetY: { label: "Offset Y", max: 64, unit: "px" },
+  borderWidth: { label: "Width", max: 8, unit: "px" },
+};
+
+export const DEFAULT_APPEARANCE: Appearance = {
+  fill: { kind: "gradient", preset: 0 },
+  padding: 64,
+  radius: 20,
+  inset: 0,
+  shadowOpacity: 40,
+  shadowBlur: 48,
+  shadowOffsetY: 16,
+  borderWidth: 0,
+  borderColor: "none",
+};
+
+export function fillGradient(fill: Fill): ExportGradient {
+  if (fill.kind === "color") {
+    const color = COLORS[fill.preset];
+    return {
+      angle: 135,
+      stops: [
+        { color, at: 0 },
+        { color, at: 1 },
+      ],
+    };
+  }
+  const [from, middle, to] = GRADIENTS[fill.preset];
+  const stops = [
+    { color: from, at: 0 },
+    { color: middle, at: 0.55 },
+    { color: to, at: 1 },
+  ];
+  return { angle: 135, stops };
+}
+
+export function fillCss(fill: Fill): string {
+  if (fill.kind === "color") return COLORS[fill.preset];
+  const { angle, stops } = fillGradient(fill);
+  const css = stops.map(({ color, at }) => `${color} ${Math.round(at * 100)}%`);
+  return `linear-gradient(${angle}deg, ${css.join(", ")})`;
+}
+
+export function clampAmount(amount: Amount, value: number): number {
+  return Math.round(clamp(value, 0, AMOUNTS[amount].max));
+}
+
+export function frameLayout(
+  appearance: Appearance,
+  canvas: Size,
+  ratio: number,
+) {
+  const shrink = ({ width, height }: Size, by: number) => ({
+    width: Math.max(width - by * 2, 0),
+    height: Math.max(height - by * 2, 0),
+  });
+  const frame = fitInside(shrink(canvas, 48), ratio);
+  const scale = frame.width / 1920;
+  const recording = fitInside(shrink(frame, appearance.padding * scale), ratio);
+  const inset = appearance.inset * scale;
+  return {
+    frame,
+    recording,
+    scale,
+    radius: appearance.radius * scale,
+    shadow: {
+      offsetY: appearance.shadowOffsetY * scale,
+      blur: appearance.shadowBlur * scale,
+      color: `rgb(0 0 0 / ${appearance.shadowOpacity / 100})`,
+    },
+    border: {
+      width: appearance.borderWidth * scale,
+      color: borderCss(appearance),
+    },
+    video: {
+      x: -inset,
+      y: -inset,
+      width: recording.width + inset * 2,
+      height: recording.height + inset * 2,
+    },
+  };
+}
+
+function borderCss(appearance: Appearance): string | null {
+  const { tint } = BORDER_COLORS[appearance.borderColor];
+  if (!tint || appearance.borderWidth === 0) return null;
+  return `color-mix(in srgb, ${tint.color} ${tint.opacity * 100}%, transparent)`;
+}

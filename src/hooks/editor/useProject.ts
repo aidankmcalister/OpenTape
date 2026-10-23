@@ -1,13 +1,11 @@
 import { useState } from "react";
 import {
   addRegion,
-  editRegions,
-  NEW_PROJECT,
   removeRegion,
   removeRegionAt,
-  type Project,
   type Region,
-} from "@/lib/editor/edits";
+} from "@/lib/editor/regions";
+import { editRegions, NEW_PROJECT, type Project } from "@/lib/editor/project";
 import { historyOf, record, redo, undo } from "@/lib/editor/history";
 import type { Clock } from "@/lib/time";
 

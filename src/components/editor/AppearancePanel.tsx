@@ -14,16 +14,15 @@ import type { Edits } from "@/hooks/editor/useProject";
 import {
   AMOUNTS,
   BORDER_COLORS,
-  changeAppearance,
   COLORS,
   DEFAULT_APPEARANCE,
   fillCss,
   GRADIENTS,
-  NEW_PROJECT,
   type Amount,
   type BorderColor,
   type Fill,
-} from "@/lib/editor/edits";
+} from "@/lib/editor/appearance";
+import { changeAppearance, NEW_PROJECT } from "@/lib/editor/project";
 import { PanelHeader, Section } from "./Panel";
 
 const SECTIONS: { title: string; amounts: Amount[] }[] = [

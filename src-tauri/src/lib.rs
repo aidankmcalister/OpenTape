@@ -129,14 +129,14 @@ pub fn run() -> tauri::Result<()> {
             picker::place_overlay_glass,
             bar::list_devices,
             bar::shape_bar,
-            current_recording::save_recording,
-            current_recording::copy_recording,
-            current_recording::close_recording,
-            current_recording::show_saved_in_finder,
-            current_recording::edit_recording,
-            current_recording::editor_recording,
-            current_recording::export_recording,
-            current_recording::show_export_in_finder,
+            current_recording::commands::save_recording,
+            current_recording::commands::copy_recording,
+            current_recording::commands::close_recording,
+            current_recording::commands::show_saved_in_finder,
+            current_recording::commands::edit_recording,
+            current_recording::commands::editor_recording,
+            current_recording::commands::export_recording,
+            current_recording::commands::show_export_in_finder,
             quit
         ])
         .run(tauri::generate_context!())

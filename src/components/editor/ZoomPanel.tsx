@@ -4,16 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Slider } from "@/components/ui/slider";
 import type { Edits } from "@/hooks/editor/useProject";
-import {
-  changeRegion,
-  editRegions,
-  focusAt,
-  focusBox,
-  MIDDLE,
-  REGIONS,
-  ZOOM_AMOUNTS,
-  type Region,
-} from "@/lib/editor/edits";
+import { changeRegion, REGIONS, type Region } from "@/lib/editor/regions";
+import { editRegions } from "@/lib/editor/project";
+import { focusAt, focusBox, MIDDLE, ZOOM_AMOUNTS } from "@/lib/editor/zoom";
 import { PanelHeader, Section } from "./Panel";
 
 export default function ZoomPanel({ edits }: { edits: Edits }) {

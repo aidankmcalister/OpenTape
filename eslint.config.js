@@ -3,7 +3,7 @@ import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
-/** Raw colours and sizes in class names, which belong in the design tokens (src/index.css). */
+/** Raw colors and sizes in class names, which belong in the design tokens (src/index.css). */
 const RAW_STYLE =
   /#[0-9a-fA-F]{3,8}\b|rgba?\(|(bg|text|border|ring|fill|stroke|from|to|via|shadow)-(white|black)\b|text-\[\d+px\]|shadow-\[/;
 
@@ -25,12 +25,12 @@ export default tseslint.config(
         "error",
         {
           selector: `Literal[value=${RAW_STYLE}], TemplateElement[value.raw=${RAW_STYLE}]`,
-          message: "Use a design token from src/index.css instead of a raw colour or size.",
+          message: "Use a design token from src/index.css instead of a raw color or size.",
         },
       ],
     },
   },
-  // The one place cn is configured, and the editor's look presets, which are user-facing colours.
+  // The one place cn is configured, and the editor's appearance presets and color maths, which are user-facing colors.
   { files: ["src/lib/utils.ts"], rules: { "no-restricted-imports": "off" } },
-  { files: ["src/lib/editor/edits.ts", "src/lib/editor/*.test.ts"], rules: { "no-restricted-syntax": "off" } },
+  { files: ["src/lib/editor/appearance.ts", "src/lib/editor/color.ts", "src/lib/editor/*.test.ts"], rules: { "no-restricted-syntax": "off" } },
 );
