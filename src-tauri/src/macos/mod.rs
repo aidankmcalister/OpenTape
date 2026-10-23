@@ -128,7 +128,7 @@ pub(crate) async fn ask_in_background(app: &AppHandle, alert: Alert) -> Result<C
 
 pub(crate) fn ask(app: &AppHandle, alert: Alert) -> Choice {
     if MainThreadMarker::new().is_some() {
-        eprintln!("an alert was asked on the main thread, so it was cancelled");
+        eprintln!("an alert was asked on the main thread, so it was canceled");
         return Choice::Cancel;
     }
     let activate = run_on_main_thread(app, |main_thread| {

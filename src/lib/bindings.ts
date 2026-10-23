@@ -10,17 +10,21 @@ export type Devices = { cameras: Array<Device>, microphones: Array<Device>, };
 
 export type DisplayInfo = { id: number, name: string, frame: Frame, size: CaptureSize, scale: number, safeTop: number, };
 
+export type ExportBorder = { width: number, color: string, opacity: number, };
+
 export type ExportFormat = "mp4" | "gif";
 
 export type ExportGradient = { angle: number, stops: Array<ExportStop>, };
 
-export type ExportLayout = { width: number, height: number, recording: PixelRect, radius: number, shadow: ExportShadow, background: ExportGradient, zoom: Array<number>, };
+export type ExportLayout = { width: number, height: number, recording: PixelRect, video: PixelRect, radius: number, shadow: ExportShadow, border: ExportBorder | null, background: ExportGradient, zoom: Array<ExportZoom>, };
 
 export type ExportOptions = { format: ExportFormat, frameRate: number, bitsPerPixel: number, toClipboard: boolean, };
 
 export type ExportShadow = { offsetY: number, blur: number, opacity: number, };
 
 export type ExportStop = { color: string, at: number, };
+
+export type ExportZoom = { scale: number, x: number, y: number, };
 
 export type Frame = { x: number, y: number, width: number, height: number, };
 

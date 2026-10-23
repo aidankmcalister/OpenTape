@@ -55,7 +55,7 @@ src/                     the frontend (React, TypeScript, Tailwind)
   hooks/                 state: shared hooks at the top (Tauri events, pointer hover, morph, video clock)
     bar/ picker/ …       hooks that belong to one window
   lib/                   logic: shared at the top (geometry, time) and bindings.ts, generated from Rust
-    bar/ picker/ …       logic that belongs to one window, with its tests; editor/edits.ts is the look and region maths
+    bar/ picker/ …       logic that belongs to one window, with its tests; editor/edits.ts is the appearance and region maths
 
 src-tauri/src/           the Rust side
   lib.rs                 entry point: state, window setup, page events, system-wide keys, the command list

@@ -426,7 +426,7 @@ mod tests {
     fn closing_unsaved_should_ask_and_cancel_should_keep_it() {
         let shell = FakeShell::answering(Choice::Cancel);
         let (current, folder) = keeping_one("cancel", &shell);
-        current.close(&shell).expect("cancelling is fine");
+        current.close(&shell).expect("canceling is fine");
         assert_eq!(*shell.asked.borrow(), [SAVE_OR_DELETE]);
         assert_eq!(shell.last_switch(), (Window::Bar, Window::Preview));
         assert!(folder.exists());

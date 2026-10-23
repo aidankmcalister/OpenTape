@@ -6,7 +6,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Exporting } from "@/hooks/editor/useExport";
 import { QUALITIES, type ExportSettings as Settings } from "@/lib/editor/edits";
 
@@ -29,14 +29,10 @@ export default function ExportSettings({
       >
         <ChevronDown />
       </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        sideOffset={8}
-        className="w-85 gap-0 overflow-hidden rounded-xl border border-glass-border bg-glass p-0 ring-0 backdrop-blur-xl"
-      >
-        <div className="flex flex-col gap-4 p-4">
+      <PopoverContent align="end" sideOffset={8} className="w-85 gap-0 p-0">
+        <div className="flex flex-col gap-3 p-3">
           <h3 className="text-ui font-semibold">Export settings</h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3">
             <Choice<Settings["format"]>
               label="Format"
               value={settings.format}
@@ -57,13 +53,7 @@ export default function ExportSettings({
             value={settings.resolution}
             options={{ "720p": "720p", "1080p": "1080p", "4K": "4K" }}
             onChange={(resolution) => change({ resolution })}
-            note={
-              output ? (
-                <span className="font-mono">
-                  {output.width} × {output.height}
-                </span>
-              ) : null
-            }
+            aside={output ? `${output.width} × ${output.height}` : null}
           />
           <Choice<Settings["quality"]>
             label="Quality"
@@ -93,7 +83,7 @@ export default function ExportSettings({
             onChange={(to) => change({ to })}
           />
         </div>
-        <div className="flex justify-between border-t border-hairline bg-background/40 px-4 py-3 text-caption text-muted-foreground">
+        <div className="flex justify-end border-t border-hairline p-3 text-caption text-muted-foreground">
           {output ? (
             <span className="font-mono">
               {output.megabytes === null
@@ -112,6 +102,7 @@ function Choice<Value extends string>({
   value,
   options,
   onChange,
+  aside,
   note,
   disabled,
 }: {
@@ -119,28 +110,27 @@ function Choice<Value extends string>({
   value: Value;
   options: Record<Value, ReactNode>;
   onChange: (value: Value) => void;
+  aside?: ReactNode;
   note?: ReactNode;
   disabled?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-caption text-muted-foreground">{label}</span>
-      <ToggleGroup
-        variant="segment"
-        disabled={disabled}
-        value={[value]}
-        onValueChange={([next]) => next && onChange(next as Value)}
-      >
-        {(Object.keys(options) as Value[]).map((option) => (
-          <ToggleGroupItem
-            key={option}
-            value={option}
-            className="border border-transparent bg-secondary px-3 aria-pressed:border-glass-border aria-pressed:bg-accent"
-          >
-            {options[option]}
-          </ToggleGroupItem>
-        ))}
-      </ToggleGroup>
+      <div className="flex h-6 items-center justify-between">
+        <span className="text-ui text-muted-foreground">{label}</span>
+        <span className="font-mono text-caption text-muted-foreground">
+          {aside}
+        </span>
+      </div>
+      <Tabs value={value} onValueChange={(next: Value) => onChange(next)}>
+        <TabsList className="w-full">
+          {(Object.keys(options) as Value[]).map((option) => (
+            <TabsTrigger key={option} value={option} disabled={disabled}>
+              {options[option]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
       {note ? (
         <span className="text-caption text-muted-foreground">{note}</span>
       ) : null}

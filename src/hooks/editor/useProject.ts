@@ -20,8 +20,11 @@ export function useProject(clock: Clock, durationMs: number) {
     setHistory((current) => record(current, edit(current.present)));
   const changeRegions = (edit: (regions: Region[]) => Region[]) =>
     change((project) => editRegions(project, edit));
+  const project = draft ?? history.present;
   return {
-    project: draft ?? history.present,
+    project,
+    selected:
+      project.regions.find((region) => region.id === selectedId) ?? null,
     selectedId,
     select: setSelectedId,
     change,

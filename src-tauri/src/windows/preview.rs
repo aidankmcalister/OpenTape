@@ -3,12 +3,12 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 use ts_rs::TS;
 
-use super::floating::{Anchor, Behaviour, Floating, Hover};
+use super::floating::{Anchor, Behavior, Floating, Hover};
 use crate::{KeySet, PageEvent};
 
 pub(crate) const LABEL: &str = "preview";
 
-pub(crate) static WINDOW: Floating = Floating::new(Behaviour {
+pub(crate) static WINDOW: Floating = Floating::new(Behavior {
     label: LABEL,
     anchor: Anchor::BottomLeft,
     keeps_its_spot: false,

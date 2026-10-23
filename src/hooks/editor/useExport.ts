@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTauriEvent } from "@/hooks/useTauri";
+import type { ExportZoom } from "@/lib/bindings";
 import {
   aboutMegabytes,
   DEFAULT_EXPORT,
@@ -9,7 +10,7 @@ import {
   RESOLUTIONS,
   scaleLayout,
   zoomTrack,
-  type Look,
+  type Appearance,
   type Region,
   type ExportSettings,
 } from "@/lib/editor/edits";
@@ -25,15 +26,15 @@ export type ExportState =
 const SHOWS_FOR_MS = { done: 4000, failed: 5000 };
 
 export function useExport(
-  look: Look,
+  appearance: Appearance,
   regions: Region[],
   { videoSize, durationMs }: Pick<Playback, "videoSize" | "durationMs">,
 ) {
   const [state, setState] = useState<ExportState>({ stage: "idle" });
   const [settings, setSettings] = useState(DEFAULT_EXPORT);
-  const layoutAt = (size: Size, zoom: number[]) =>
+  const layoutAt = (size: Size, zoom: ExportZoom[]) =>
     scaleLayout(
-      exportLayout(look, size, zoom),
+      exportLayout(appearance, size, zoom),
       RESOLUTIONS[settings.resolution],
     );
 

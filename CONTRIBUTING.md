@@ -22,7 +22,7 @@ It must pass. It runs the type checks, linting, formatting and every test in Typ
 [README.md](README.md#how-its-organized) has the tree, and [GLOSSARY.md](GLOSSARY.md) names things. Use those names in code, issues and pull requests. A few rules keep the code easy to change:
 
 - **Logic, state and looks live in separate files:** `name.ts` is plain logic, `useName.ts` holds React state, and `Name.tsx` decides how it looks. Components never call Rust directly.
-- **Colours and sizes come only from the design tokens** in `src/index.css`. ESLint rejects raw colours and pixel font sizes in class names.
+- **Colors and sizes come only from the design tokens** in `src/index.css`. ESLint rejects raw colors and pixel font sizes in class names.
 - **Rust stays small.** It does what only the OS can: capture, windows and files. Logic that doesn't need the OS goes in TypeScript.
 - **Shared types are generated.** After changing a Rust type the frontend uses, run `bun run bindings` and commit `src/lib/bindings.ts`.
 

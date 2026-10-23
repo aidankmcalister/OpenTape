@@ -38,7 +38,7 @@ export default function ExportButton({
             </Button>
             <Separator
               orientation="vertical"
-              className="h-4 bg-primary-foreground/30 data-vertical:self-center"
+              className="mx-1 h-4 bg-primary-foreground/30 data-vertical:self-center"
             />
             {settings}
           </div>

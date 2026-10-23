@@ -39,10 +39,34 @@ pub(crate) struct ExportLayout {
     width: u32,
     height: u32,
     recording: PixelRect,
+    video: PixelRect,
     radius: f64,
     shadow: ExportShadow,
+    border: Option<ExportBorder>,
     background: ExportGradient,
-    zoom: Vec<f64>,
+    zoom: Vec<ExportZoom>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, TS)]
+#[ts(export, export_to = "bindings.ts")]
+pub(crate) struct ExportZoom {
+    scale: f64,
+    x: f64,
+    y: f64,
+}
+
+const NO_ZOOM: ExportZoom = ExportZoom {
+    scale: 1.0,
+    x: 0.5,
+    y: 0.5,
+};
+
+#[derive(Debug, Clone, Deserialize, TS)]
+#[ts(export, export_to = "bindings.ts")]
+pub(crate) struct ExportBorder {
+    width: f64,
+    color: String,
+    opacity: f64,
 }
 
 #[derive(Debug, Clone, Deserialize, TS)]
@@ -119,7 +143,12 @@ pub(crate) fn export(
         .firstObject()
         .context("the recording has no video")?;
     let natural = unsafe { track.naturalSize() };
-    let (recording, height, zoom) = (layout.recording.clone(), layout.height, layout.zoom.clone());
+    let (recording, video_rect, height, zoom) = (
+        layout.recording.clone(),
+        layout.video.clone(),
+        layout.height,
+        layout.zoom.clone(),
+    );
     let picture = CGRect::new(
         CGPoint::new(0.0, 0.0),
         CGSize::new(layout.width.into(), layout.height.into()),
@@ -129,8 +158,8 @@ pub(crate) fn export(
         move |request: NonNull<AVAsynchronousCIImageFilteringRequest>| {
             let request = unsafe { request.as_ref() };
             unsafe {
-                let scale = zoom_at(&zoom, request.compositionTime().seconds());
-                let place = placement(&zoomed(&recording, scale), height, natural);
+                let zoom = zoom_at(&zoom, request.compositionTime().seconds());
+                let place = placement(&zoomed(&video_rect, &recording, zoom), height, natural);
                 let frame = request.sourceImage().imageByApplyingTransform(place);
                 let image = cutout
                     .imageByCompositingOverImage(&frame)
@@ -347,7 +376,7 @@ fn reason(error: Option<Retained<NSError>>) -> String {
 fn cutout(layout: &ExportLayout) -> Result<Retained<CIImage>> {
     let (width, height) = (layout.width as usize, layout.height as usize);
     let srgb = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB }))
-        .context("macOS has no sRGB colour space")?;
+        .context("macOS has no sRGB color space")?;
     let context = unsafe {
         CGBitmapContextCreate(
             null_mut(),
@@ -359,7 +388,7 @@ fn cutout(layout: &ExportLayout) -> Result<Retained<CIImage>> {
             CGImageAlphaInfo::PremultipliedLast.0,
         )
     }
-    .context("could not make a picture to draw the look in")?;
+    .context("could not make a picture to draw the appearance in")?;
     let context = Some(&*context);
 
     let gradient = gradient(&srgb, &layout.background)?;
@@ -381,7 +410,19 @@ fn cutout(layout: &ExportLayout) -> Result<Retained<CIImage>> {
     CGContext::add_path(context, Some(&hole));
     CGContext::fill_path(context);
 
-    let image = CGBitmapContextCreateImage(context).context("could not finish the look")?;
+    if let Some(border) = &layout.border {
+        let [red, green, blue] = rgb(&border.color)?;
+        let color = CGColor::new_srgb(red, green, blue, border.opacity);
+        CGContext::set_blend_mode(context, CGBlendMode::Normal);
+        CGContext::add_path(context, Some(&hole));
+        CGContext::clip(context);
+        CGContext::set_stroke_color_with_color(context, Some(&color));
+        CGContext::set_line_width(context, border.width * 2.0);
+        CGContext::add_path(context, Some(&hole));
+        CGContext::stroke_path(context);
+    }
+
+    let image = CGBitmapContextCreateImage(context).context("could not finish the appearance")?;
     Ok(unsafe { CIImage::imageWithCGImage(&image) })
 }
 
@@ -428,19 +469,20 @@ fn placement(rect: &PixelRect, height: u32, natural: CGSize) -> CGAffineTransfor
     }
 }
 
-fn zoomed(rect: &PixelRect, scale: f64) -> PixelRect {
-    let (width, height) = (rect.width * scale, rect.height * scale);
+fn zoomed(rect: &PixelRect, frame: &PixelRect, zoom: ExportZoom) -> PixelRect {
+    let focus_x = frame.x + frame.width * zoom.x;
+    let focus_y = frame.y + frame.height * zoom.y;
     PixelRect {
-        x: rect.x - (width - rect.width) / 2.0,
-        y: rect.y - (height - rect.height) / 2.0,
-        width,
-        height,
+        x: focus_x - (focus_x - rect.x) * zoom.scale,
+        y: focus_y - (focus_y - rect.y) * zoom.scale,
+        width: rect.width * zoom.scale,
+        height: rect.height * zoom.scale,
     }
 }
 
-fn zoom_at(zoom: &[f64], seconds: f64) -> f64 {
+fn zoom_at(zoom: &[ExportZoom], seconds: f64) -> ExportZoom {
     let step = (seconds * 60.0).round().max(0.0) as usize;
-    zoom.get(step).or(zoom.last()).copied().unwrap_or(1.0)
+    zoom.get(step).or(zoom.last()).copied().unwrap_or(NO_ZOOM)
 }
 
 fn rounded_rect(rect: &PixelRect, radius: f64, height: u32) -> CFRetained<CGPath> {
@@ -453,7 +495,7 @@ fn rounded_rect(rect: &PixelRect, radius: f64, height: u32) -> CFRetained<CGPath
 
 fn rgb(hex: &str) -> Result<[f64; 3]> {
     let digits = hex.strip_prefix('#').filter(|digits| digits.len() == 6);
-    let digits = digits.with_context(|| format!("{hex:?} isn't a colour like #2a9d8f"))?;
+    let digits = digits.with_context(|| format!("{hex:?} isn't a color like #2a9d8f"))?;
     let channel = |at: usize| -> Result<f64> {
         Ok(f64::from(u8::from_str_radix(&digits[at..at + 2], 16)?) / 255.0)
     };
@@ -496,24 +538,42 @@ mod tests {
     }
 
     #[test]
-    fn zooming_grows_the_recording_about_its_middle() {
+    fn zooming_grows_the_recording_about_its_focus() {
         let rect = PixelRect {
             x: 100.0,
             y: 50.0,
             width: 200.0,
             height: 100.0,
         };
-        let grown = zoomed(&rect, 1.5);
-        assert_eq!((grown.x, grown.y), (50.0, 25.0));
-        assert_eq!((grown.width, grown.height), (300.0, 150.0));
+        let middle = zoomed(
+            &rect,
+            &rect,
+            ExportZoom {
+                scale: 1.5,
+                ..NO_ZOOM
+            },
+        );
+        assert_eq!((middle.x, middle.y), (50.0, 25.0));
+        assert_eq!((middle.width, middle.height), (300.0, 150.0));
+        let corner = zoomed(
+            &rect,
+            &rect,
+            ExportZoom {
+                scale: 2.0,
+                x: 0.0,
+                y: 1.0,
+            },
+        );
+        assert_eq!((corner.x, corner.y), (100.0, -50.0));
     }
 
     #[test]
     fn the_zoom_is_read_at_the_nearest_step_and_holds_past_the_end() {
-        let zoom = [1.0, 1.2, 1.5];
-        assert_eq!(zoom_at(&zoom, 0.02), 1.2);
-        assert_eq!(zoom_at(&zoom, 10.0), 1.5);
-        assert_eq!(zoom_at(&[], 1.0), 1.0);
+        let step = |scale| ExportZoom { scale, ..NO_ZOOM };
+        let zoom = [step(1.0), step(1.2), step(1.5)];
+        assert_eq!(zoom_at(&zoom, 0.02), step(1.2));
+        assert_eq!(zoom_at(&zoom, 10.0), step(1.5));
+        assert_eq!(zoom_at(&[], 1.0), NO_ZOOM);
     }
 
     #[test]
@@ -529,7 +589,7 @@ mod tests {
     }
 
     #[test]
-    fn colours_read_from_hex_and_bad_ones_say_why() {
+    fn colors_read_from_hex_and_bad_ones_say_why() {
         assert_eq!(rgb("#ff0000").unwrap(), [1.0, 0.0, 0.0]);
         assert!(rgb("2a9d8f").is_err());
         assert!(rgb("#2a9d8").is_err());
@@ -537,7 +597,7 @@ mod tests {
 
     #[test]
     #[ignore = "needs a real video"]
-    fn exports_a_recording_in_the_default_look() {
+    fn exports_a_recording_in_the_default_appearance() {
         let video = std::env::var("EXPORT_TEST_VIDEO").expect("EXPORT_TEST_VIDEO");
         let output = std::env::var("EXPORT_TEST_OUTPUT").expect("EXPORT_TEST_OUTPUT");
         let (video_width, video_height): (f64, f64) = (
@@ -561,6 +621,23 @@ mod tests {
                 width: video_width,
                 height: video_height,
             },
+            video: {
+                let inset: f64 =
+                    std::env::var("EXPORT_TEST_INSET").map_or(0.0, |inset| inset.parse().unwrap());
+                PixelRect {
+                    x: ((f64::from(width) - video_width) / 2.0).round() - inset,
+                    y: ((f64::from(height) - video_height) / 2.0).round() - inset,
+                    width: video_width + inset * 2.0,
+                    height: video_height + inset * 2.0,
+                }
+            },
+            border: std::env::var("EXPORT_TEST_BORDER")
+                .ok()
+                .map(|width| ExportBorder {
+                    width: width.parse().unwrap(),
+                    color: "#ffffff".into(),
+                    opacity: 0.35,
+                }),
             radius: 20.0 * scale,
             shadow: ExportShadow {
                 offset_y: 16.0 * scale,
@@ -585,7 +662,10 @@ mod tests {
                 ],
             },
             zoom: (0..180)
-                .map(|step| if (60..120).contains(&step) { 1.5 } else { 1.0 })
+                .map(|step| ExportZoom {
+                    scale: if (60..120).contains(&step) { 1.5 } else { 1.0 },
+                    ..NO_ZOOM
+                })
                 .collect(),
         };
         let var = |name: &str, or: &str| std::env::var(name).unwrap_or(or.into());

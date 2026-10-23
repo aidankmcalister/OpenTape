@@ -18,7 +18,7 @@ pub(crate) enum Anchor {
     BottomLeft,
 }
 
-pub(crate) struct Behaviour {
+pub(crate) struct Behavior {
     pub label: &'static str,
     pub anchor: Anchor,
     pub keeps_its_spot: bool,
@@ -32,7 +32,7 @@ pub(crate) struct Hover {
 }
 
 pub(crate) struct Floating {
-    window: Behaviour,
+    window: Behavior,
     pointer_loop: Poller,
     reported: Mutex<Option<Point>>,
 }
@@ -46,7 +46,7 @@ enum PointerNews {
 }
 
 impl Floating {
-    pub(crate) const fn new(window: Behaviour) -> Self {
+    pub(crate) const fn new(window: Behavior) -> Self {
         Self {
             window,
             pointer_loop: Poller::new(),
@@ -258,7 +258,7 @@ mod tests {
         assert!(watch.update(Point { x: 2.0, y: 0.0 }, true).is_still());
     }
 
-    static HOVERING: Floating = Floating::new(Behaviour {
+    static HOVERING: Floating = Floating::new(Behavior {
         label: "test",
         anchor: Anchor::BottomLeft,
         keeps_its_spot: false,

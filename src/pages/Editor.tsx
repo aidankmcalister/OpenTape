@@ -1,4 +1,4 @@
-import { Redo2, Undo2 } from "lucide-react";
+import { Redo, Undo } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useOpenedRecording } from "@/hooks/editor/useOpenedRecording";
 import Header from "@/components/editor/Header";
@@ -10,7 +10,7 @@ import { useKeymap } from "@/hooks/editor/useKeymap";
 import Timeline from "@/components/editor/Timeline";
 import ExportButton from "@/components/editor/ExportButton";
 import ExportSettings from "@/components/editor/ExportSettings";
-import LookPanel from "@/components/editor/LookPanel";
+import Sidebar from "@/components/editor/Sidebar";
 import { useExport } from "@/hooks/editor/useExport";
 import { useProject } from "@/hooks/editor/useProject";
 
@@ -30,8 +30,8 @@ export default function Editor() {
 function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
   const playback = usePlayback(videoSrc);
   const edits = useProject(playback.clock, playback.durationMs);
-  const { look, regions } = edits.project;
-  const exporting = useExport(look, regions, playback);
+  const { appearance, regions } = edits.project;
+  const exporting = useExport(appearance, regions, playback);
   useKeymap({
     togglePlay: playback.togglePlay,
     stepBack: () => playback.step(-1),
@@ -57,7 +57,7 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
             disabled={!edits.canUndo}
             onClick={edits.undo}
           >
-            <Undo2 />
+            <Undo />
           </Button>
           <Button
             variant="ghost"
@@ -66,7 +66,7 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
             disabled={!edits.canRedo}
             onClick={edits.redo}
           >
-            <Redo2 />
+            <Redo />
           </Button>
           <ExportButton
             state={exporting.state}
@@ -77,11 +77,11 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
         </div>
       </Header>
       <main className="flex min-h-0 flex-1 gap-2 px-2 pb-2">
-        <LookPanel edits={edits} />
+        <Sidebar edits={edits} />
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <Stage
             src={videoSrc}
-            look={look}
+            appearance={appearance}
             ratio={playback.ratio}
             clock={playback.clock}
             regions={regions}

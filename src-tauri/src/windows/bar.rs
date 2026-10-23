@@ -8,7 +8,7 @@ use serde::Serialize;
 use tauri::{Manager, WebviewWindow};
 use ts_rs::TS;
 
-use super::floating::{Anchor, Behaviour, Floating, Hover};
+use super::floating::{Anchor, Behavior, Floating, Hover};
 use crate::PageEvent;
 use crate::geometry;
 use crate::macos::{
@@ -19,7 +19,7 @@ use crate::util::CmdResult;
 
 pub(crate) const LABEL: &str = "bar";
 
-pub(crate) static WINDOW: Floating = Floating::new(Behaviour {
+pub(crate) static WINDOW: Floating = Floating::new(Behavior {
     label: LABEL,
     anchor: Anchor::BottomCenter,
     keeps_its_spot: true,

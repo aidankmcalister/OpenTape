@@ -3,16 +3,19 @@ import {
   aboutMegabytes,
   addRegion,
   amountAt,
-  changeLook,
+  changeAppearance,
+  changeRegion,
   dragRegion,
   clampAmount,
   DEFAULT_EXPORT,
-  DEFAULT_LOOK,
+  DEFAULT_APPEARANCE,
   editRegions,
   exportLayout,
   exportOptions,
   fillCss,
   fillGradient,
+  focusAt,
+  focusBox,
   frameAt,
   frameLayout,
   NEW_PROJECT,
@@ -29,10 +32,12 @@ import {
   type RegionDrag,
 } from "./edits";
 
-describe("look", () => {
-  test("changeLook and editRegions keep the same project when nothing changes", () => {
-    expect(changeLook(NEW_PROJECT, { padding: 64 })).toBe(NEW_PROJECT);
-    expect(changeLook(NEW_PROJECT, { padding: 80 }).look.padding).toBe(80);
+describe("appearance", () => {
+  test("changeAppearance and editRegions keep the same project when nothing changes", () => {
+    expect(changeAppearance(NEW_PROJECT, { padding: 64 })).toBe(NEW_PROJECT);
+    expect(
+      changeAppearance(NEW_PROJECT, { padding: 80 }).appearance.padding,
+    ).toBe(80);
     expect(editRegions(NEW_PROJECT, (regions) => regions)).toBe(NEW_PROJECT);
   });
 
@@ -56,7 +61,7 @@ describe("look", () => {
 
   test("frameLayout fits the frame inside the margin and scales the padding", () => {
     const { frame, recording, scale } = frameLayout(
-      { ...DEFAULT_LOOK, padding: 192 },
+      { ...DEFAULT_APPEARANCE, padding: 192 },
       { width: 1056, height: 1000 },
       16 / 9,
     );
@@ -68,7 +73,7 @@ describe("look", () => {
 
   test("frameLayout collapses to nothing on a canvas smaller than its margin", () => {
     const { frame, recording } = frameLayout(
-      DEFAULT_LOOK,
+      DEFAULT_APPEARANCE,
       { width: 40, height: 40 },
       1,
     );
@@ -76,16 +81,16 @@ describe("look", () => {
     expect(recording).toEqual({ width: 0, height: 0 });
   });
 
-  test("fillGradient makes a colour a gradient that doesn't change", () => {
+  test("fillGradient makes a color a gradient that doesn't change", () => {
     expect(fillGradient({ kind: "color", preset: 2 }).stops).toEqual([
       { color: "#3b82f6", at: 0 },
       { color: "#3b82f6", at: 1 },
     ]);
   });
 
-  test("exportLayout keeps the recording at full size, centred in an even frame", () => {
+  test("exportLayout keeps the recording at full size, centered in an even frame", () => {
     const layout = exportLayout(
-      DEFAULT_LOOK,
+      DEFAULT_APPEARANCE,
       { width: 3840, height: 2278 },
       [],
     );
@@ -100,7 +105,11 @@ describe("look", () => {
   });
 
   test("scaleLayout shrinks the whole export to a height, keeping its shape", () => {
-    const full = exportLayout(DEFAULT_LOOK, { width: 3840, height: 2278 }, []);
+    const full = exportLayout(
+      DEFAULT_APPEARANCE,
+      { width: 3840, height: 2278 },
+      [],
+    );
     const small = scaleLayout(full, 1080);
     expect([small.width, small.height]).toEqual([1820, 1080]);
     expect(small.recording.width).toBeCloseTo((3840 * 1080) / 2566, 5);
@@ -108,7 +117,11 @@ describe("look", () => {
   });
 
   test("aboutMegabytes estimates from the size, length and settings, to a tenth", () => {
-    const full = exportLayout(DEFAULT_LOOK, { width: 1920, height: 1080 }, []);
+    const full = exportLayout(
+      DEFAULT_APPEARANCE,
+      { width: 1920, height: 1080 },
+      [],
+    );
     const hd = { ...full, width: 1920, height: 1080 };
     expect(aboutMegabytes(hd, 10_000, DEFAULT_EXPORT)).toBe(20.7);
     expect(
@@ -132,13 +145,32 @@ describe("look", () => {
 
   test("exportLayout pads a tall recording by its width, as the stage does", () => {
     const layout = exportLayout(
-      DEFAULT_LOOK,
+      DEFAULT_APPEARANCE,
       { width: 1080, height: 1920 },
       [],
     );
     expect([layout.width % 2, layout.height % 2]).toEqual([0, 0]);
     expect(layout.recording.x).toBe(Math.round((layout.width - 1080) / 2));
     expect(layout.recording.x).toBeCloseTo((64 * layout.width) / 1920, 0);
+  });
+});
+
+test("exportLayout grows the video by the inset, and draws a border only with a color", () => {
+  const appearance = { ...DEFAULT_APPEARANCE, inset: 10, borderWidth: 4 };
+  const plain = exportLayout(appearance, { width: 1920, height: 1080 }, []);
+  const scale = plain.width / 1920;
+  expect(plain.video.x).toBeCloseTo(plain.recording.x - 10 * scale, 5);
+  expect(plain.video.width).toBeCloseTo(1920 + 20 * scale, 5);
+  expect(plain.border).toBeNull();
+  const light = exportLayout(
+    { ...appearance, borderColor: "light" },
+    { width: 1920, height: 1080 },
+    [],
+  );
+  expect(light.border).toEqual({
+    color: "#ffffff",
+    opacity: 0.35,
+    width: 4 * scale,
   });
 });
 
@@ -256,20 +288,20 @@ describe("regions", () => {
     expect(regionKindForKey(key)).toBe(kind);
   });
 
-  const labelled = (durationMs: number) =>
+  const labeled = (durationMs: number) =>
     rulerMarks(durationMs)
       .filter((mark) => mark.isMajor)
       .map((mark) => mark.ms);
 
   test("rulerMarks labels every two seconds of a 15 second clip, with a short mark between", () => {
-    expect(labelled(15_000)).toEqual([
+    expect(labeled(15_000)).toEqual([
       0, 2000, 4000, 6000, 8000, 10_000, 12_000, 14_000,
     ]);
     expect(rulerMarks(15_000)[1]).toEqual({ ms: 1000, isMajor: false });
   });
 
   test("rulerMarks labels every second of a ten second clip, end included", () => {
-    expect(labelled(10_000)).toHaveLength(11);
+    expect(labeled(10_000)).toHaveLength(11);
     const marks = rulerMarks(10_000);
     expect(marks[marks.length - 1]).toEqual({ ms: 10_000, isMajor: true });
   });
@@ -279,7 +311,7 @@ describe("regions", () => {
   });
 
   test("rulerMarks falls back to ten-minute labels for very long clips", () => {
-    const [first, second] = labelled(3 * 60 * 60 * 1000);
+    const [first, second] = labeled(3 * 60 * 60 * 1000);
     expect(second - first).toBe(600_000);
   });
 
@@ -294,10 +326,15 @@ describe("regions", () => {
 });
 
 describe("frameAt", () => {
-  const LOOK = { ...DEFAULT_LOOK, inset: 10, borderWidth: 4 };
+  const APPEARANCE = { ...DEFAULT_APPEARANCE, inset: 10, borderWidth: 4 };
   const at = (regions: Region[], outputMs: number, width = 1920 + 96) =>
     frameAt(
-      { look: LOOK, regions, canvas: { width, height: 2000 }, ratio: 16 / 9 },
+      {
+        appearance: APPEARANCE,
+        regions,
+        canvas: { width, height: 2000 },
+        ratio: 16 / 9,
+      },
       outputMs,
     );
   const region = (
@@ -308,7 +345,7 @@ describe("frameAt", () => {
   ) => ({ id: startMs, kind, startMs, endMs, amount }) satisfies Region;
   const zoomAt = (regions: Region[], ms: number) => at(regions, ms).zoom.scale;
 
-  test("draws the look at its own sizes on a 1920 frame, and at half on a 960 one", () => {
+  test("draws the appearance at its own sizes on a 1920 frame, and at half on a 960 one", () => {
     const full = at([], 0);
     expect(full.frame.width).toBe(1920);
     expect(full).toMatchObject({
@@ -370,18 +407,18 @@ describe("frameAt", () => {
   test("zoomTrack gives the zoom at every 60th of a second, end included", () => {
     const track = zoomTrack([region("zoom", 1000, 3000, 1.5)], 4000);
     expect(track).toHaveLength(241);
-    expect(track[0]).toBe(1);
-    expect(track[120]).toBe(1.5);
-    expect(track[240]).toBe(1);
+    expect(track[0]).toEqual({ scale: 1, x: 0.5, y: 0.5 });
+    expect(track[120]).toEqual({ scale: 1.5, x: 0.5, y: 0.5 });
+    expect(track[240]).toEqual({ scale: 1, x: 0.5, y: 0.5 });
   });
 
-  test("zooms on the middle unless the region has a centre, and keeps it zooming out", () => {
-    expect(at([], 0).zoom.centre).toEqual({ x: 0.5, y: 0.5 });
-    const centre = { x: 0.2, y: 0.7 };
-    const zoom = [{ ...region("zoom", 1000, 2000, 1.5), centre }];
-    expect(at(zoom, 500).zoom.centre).toEqual({ x: 0.5, y: 0.5 });
-    expect(at(zoom, 1500).zoom.centre).toEqual(centre);
-    expect(at(zoom, 2300).zoom.centre).toEqual(centre);
+  test("zooms on the middle unless the region has a center, and keeps it zooming out", () => {
+    expect(at([], 0).zoom.center).toEqual({ x: 0.5, y: 0.5 });
+    const center = { x: 0.2, y: 0.7 };
+    const zoom = [{ ...region("zoom", 1000, 2000, 1.5), center }];
+    expect(at(zoom, 500).zoom.center).toEqual({ x: 0.5, y: 0.5 });
+    expect(at(zoom, 1500).zoom.center).toEqual(center);
+    expect(at(zoom, 2300).zoom.center).toEqual(center);
   });
 
   test.each([
@@ -404,4 +441,30 @@ describe("frameAt", () => {
       );
     },
   );
+});
+
+test("changeRegion changes one region, and nothing when nothing changes", () => {
+  const regions: Region[] = [
+    { id: 1, kind: "zoom", startMs: 0, endMs: 1000, amount: 1.5 },
+    { id: 2, kind: "zoom", startMs: 2000, endMs: 3000, amount: 1.5 },
+  ];
+  const changed = changeRegion(regions, 2, { amount: 2 });
+  expect(changed[1].amount).toBe(2);
+  expect(changed[0]).toBe(regions[0]);
+  expect(changeRegion(regions, 2, { amount: 1.5 })).toBe(regions);
+  expect(changeRegion(regions, 9, { amount: 2 })).toBe(regions);
+});
+
+test("the focus box is the zoomed area, and dragging it back gives the focus", () => {
+  const zoom: Region = {
+    id: 1,
+    kind: "zoom",
+    startMs: 0,
+    endMs: 1000,
+    amount: 2,
+    center: { x: 1, y: 0.25 },
+  };
+  expect(focusBox(zoom)).toEqual({ x: 0.5, y: 0.125, size: 0.5 });
+  expect(focusAt({ x: 0.5, y: 0.125 }, 2)).toEqual({ x: 1, y: 0.25 });
+  expect(focusAt({ x: -0.2, y: 0.9 }, 2)).toEqual({ x: 0, y: 1 });
 });

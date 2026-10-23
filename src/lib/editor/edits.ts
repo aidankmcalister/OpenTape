@@ -4,13 +4,15 @@ import type {
   ExportGradient,
   ExportLayout,
   ExportOptions,
+  ExportZoom,
+  PixelRect,
 } from "@/lib/bindings";
 import { twoDigits } from "@/lib/time";
 import { FRAME_MS } from "./timeline";
 
 export type Fill = { kind: "gradient" | "color" | "image"; preset: number };
 
-export type Look = {
+export type Appearance = {
   fill: Fill;
   padding: number;
   radius: number;
@@ -19,9 +21,18 @@ export type Look = {
   shadowBlur: number;
   shadowOffsetY: number;
   borderWidth: number;
+  borderColor: BorderColor;
 };
 
-export type Amount = Exclude<keyof Look, "fill">;
+export type Amount = Exclude<keyof Appearance, "fill" | "borderColor">;
+
+export const BORDER_COLORS = {
+  none: { label: "None", tint: null },
+  light: { label: "Light", tint: { color: "#ffffff", opacity: 0.35 } },
+  dark: { label: "Dark", tint: { color: "#000000", opacity: 0.35 } },
+};
+
+export type BorderColor = keyof typeof BORDER_COLORS;
 
 export const GRADIENTS: [string, string, string][] = [
   ["#0f4c5c", "#2a9d8f", "#e9c46a"],
@@ -49,7 +60,7 @@ export const AMOUNTS: Record<
   borderWidth: { label: "Width", max: 8, unit: "px" },
 };
 
-export const DEFAULT_LOOK: Look = {
+export const DEFAULT_APPEARANCE: Appearance = {
   fill: { kind: "gradient", preset: 0 },
   padding: 64,
   radius: 20,
@@ -58,6 +69,7 @@ export const DEFAULT_LOOK: Look = {
   shadowBlur: 48,
   shadowOffsetY: 16,
   borderWidth: 0,
+  borderColor: "none",
 };
 
 export function fillGradient(fill: Fill): ExportGradient {
@@ -91,28 +103,32 @@ export function clampAmount(amount: Amount, value: number): number {
   return Math.round(clamp(value, 0, AMOUNTS[amount].max));
 }
 
-export function frameLayout(look: Look, canvas: Size, ratio: number) {
+export function frameLayout(
+  appearance: Appearance,
+  canvas: Size,
+  ratio: number,
+) {
   const shrink = ({ width, height }: Size, by: number) => ({
     width: Math.max(width - by * 2, 0),
     height: Math.max(height - by * 2, 0),
   });
   const frame = fitInside(shrink(canvas, 48), ratio);
   const scale = frame.width / 1920;
-  const recording = fitInside(shrink(frame, look.padding * scale), ratio);
-  const inset = look.inset * scale;
+  const recording = fitInside(shrink(frame, appearance.padding * scale), ratio);
+  const inset = appearance.inset * scale;
   return {
     frame,
     recording,
     scale,
-    radius: look.radius * scale,
+    radius: appearance.radius * scale,
     shadow: {
-      offsetY: look.shadowOffsetY * scale,
-      blur: look.shadowBlur * scale,
-      color: `rgb(0 0 0 / ${look.shadowOpacity / 100})`,
+      offsetY: appearance.shadowOffsetY * scale,
+      blur: appearance.shadowBlur * scale,
+      color: `rgb(0 0 0 / ${appearance.shadowOpacity / 100})`,
     },
     border: {
-      width: look.borderWidth * scale,
-      color: "rgb(255 255 255 / 0.35)",
+      width: appearance.borderWidth * scale,
+      color: borderCss(appearance),
     },
     video: {
       x: -inset,
@@ -123,32 +139,51 @@ export function frameLayout(look: Look, canvas: Size, ratio: number) {
   };
 }
 
+function borderCss(appearance: Appearance): string | null {
+  const { tint } = BORDER_COLORS[appearance.borderColor];
+  if (!tint || appearance.borderWidth === 0) return null;
+  return `color-mix(in srgb, ${tint.color} ${tint.opacity * 100}%, transparent)`;
+}
+
 export function exportLayout(
-  look: Look,
+  appearance: Appearance,
   video: Size,
-  zoom: number[],
+  zoom: ExportZoom[],
 ): ExportLayout {
   const ratio = video.width / video.height;
-  const paddingShare = ((2 * look.padding) / 1920) * Math.max(1, ratio);
+  const paddingShare = ((2 * appearance.padding) / 1920) * Math.max(1, ratio);
   const width = even(video.width / (1 - paddingShare));
   const height = even(width / ratio);
   const scale = width / 1920;
+  const recording = {
+    x: Math.round((width - video.width) / 2),
+    y: Math.round((height - video.height) / 2),
+    width: video.width,
+    height: video.height,
+  };
+  const inset = appearance.inset * scale;
+  const { tint } = BORDER_COLORS[appearance.borderColor];
   return {
     width,
     height,
-    recording: {
-      x: Math.round((width - video.width) / 2),
-      y: Math.round((height - video.height) / 2),
-      width: video.width,
-      height: video.height,
+    recording,
+    video: {
+      x: recording.x - inset,
+      y: recording.y - inset,
+      width: recording.width + inset * 2,
+      height: recording.height + inset * 2,
     },
-    radius: look.radius * scale,
+    border:
+      tint && appearance.borderWidth > 0
+        ? { ...tint, width: appearance.borderWidth * scale }
+        : null,
+    radius: appearance.radius * scale,
     shadow: {
-      offsetY: look.shadowOffsetY * scale,
-      blur: look.shadowBlur * scale,
-      opacity: look.shadowOpacity / 100,
+      offsetY: appearance.shadowOffsetY * scale,
+      blur: appearance.shadowBlur * scale,
+      opacity: appearance.shadowOpacity / 100,
     },
-    background: fillGradient(look.fill),
+    background: fillGradient(appearance.fill),
     zoom,
   };
 }
@@ -162,17 +197,20 @@ export function scaleLayout(
   height: number,
 ): ExportLayout {
   const scale = height / layout.height;
-  const { recording, shadow } = layout;
+  const { shadow, border } = layout;
+  const scaled = (rect: PixelRect) => ({
+    x: rect.x * scale,
+    y: rect.y * scale,
+    width: rect.width * scale,
+    height: rect.height * scale,
+  });
   return {
     ...layout,
     width: even(layout.width * scale),
     height: even(height),
-    recording: {
-      x: recording.x * scale,
-      y: recording.y * scale,
-      width: recording.width * scale,
-      height: recording.height * scale,
-    },
+    recording: scaled(layout.recording),
+    video: scaled(layout.video),
+    border: border && { ...border, width: border.width * scale },
     radius: layout.radius * scale,
     shadow: {
       ...shadow,
@@ -249,7 +287,7 @@ export type Region = {
   startMs: number;
   endMs: number;
   amount: number;
-  centre?: Point;
+  center?: Point;
 };
 
 export const REGIONS: Record<
@@ -264,9 +302,12 @@ const MIN_REGION_MS = 250;
 
 export type RegionDrag = "move" | "start" | "end";
 
-export type Project = { look: Look; regions: Region[] };
+export type Project = { appearance: Appearance; regions: Region[] };
 
-export const NEW_PROJECT: Project = { look: DEFAULT_LOOK, regions: [] };
+export const NEW_PROJECT: Project = {
+  appearance: DEFAULT_APPEARANCE,
+  regions: [],
+};
 
 export function editRegions(
   project: Project,
@@ -276,11 +317,14 @@ export function editRegions(
   return regions === project.regions ? project : { ...project, regions };
 }
 
-export function changeLook(project: Project, change: Partial<Look>): Project {
-  const look = { ...project.look, ...change };
-  return JSON.stringify(look) === JSON.stringify(project.look)
+export function changeAppearance(
+  project: Project,
+  change: Partial<Appearance>,
+): Project {
+  const appearance = { ...project.appearance, ...change };
+  return JSON.stringify(appearance) === JSON.stringify(project.appearance)
     ? project
-    : { ...project, look };
+    : { ...project, appearance };
 }
 
 export function addRegion(
@@ -347,6 +391,19 @@ export function dragRegion(
   );
 }
 
+export function changeRegion(
+  regions: Region[],
+  id: number,
+  change: Partial<Pick<Region, "amount" | "center">>,
+): Region[] {
+  const region = regions.find((region) => region.id === id);
+  if (!region) return regions;
+  const changed = { ...region, ...change };
+  return JSON.stringify(changed) === JSON.stringify(region)
+    ? regions
+    : regions.map((other) => (other === region ? changed : other));
+}
+
 export function removeRegion(regions: Region[], id: number): Region[] {
   return regions.some((region) => region.id === id)
     ? regions.filter((region) => region.id !== id)
@@ -375,11 +432,16 @@ export function regionKindForKey(key: string): RegionKind | undefined {
 }
 
 export function frameAt(
-  scene: { look: Look; regions: Region[]; canvas: Size; ratio: number },
+  scene: {
+    appearance: Appearance;
+    regions: Region[];
+    canvas: Size;
+    ratio: number;
+  },
   outputMs: number,
 ) {
   return {
-    ...frameLayout(scene.look, scene.canvas, scene.ratio),
+    ...frameLayout(scene.appearance, scene.canvas, scene.ratio),
     zoom: zoomAt(scene.regions, outputMs),
     sourceMs: sourceAt(scene.regions, outputMs),
   };
@@ -387,13 +449,13 @@ export function frameAt(
 
 export const ZOOM_EASE = { ms: 600, curve: [0.32, 0.72, 0, 1] } as const;
 
-const MIDDLE = { x: 0.5, y: 0.5 };
+export const MIDDLE = { x: 0.5, y: 0.5 };
 
 export function zoomAt(regions: Region[], outputMs: number) {
   let from = 1;
   let target = 1;
   let since = -Infinity;
-  let centre: Point = MIDDLE;
+  let center: Point = MIDDLE;
   const scaleAt = (ms: number) =>
     from + (target - from) * ease((ms - since) / ZOOM_EASE.ms);
   for (const region of regions.filter(({ kind }) => kind === "zoom")) {
@@ -402,22 +464,35 @@ export function zoomAt(regions: Region[], outputMs: number) {
       [region.endMs, 1],
     ]) {
       const ms = outputAt(regions, edgeMs);
-      if (ms > outputMs) return { scale: scaleAt(outputMs), target, centre };
+      if (ms > outputMs) return { scale: scaleAt(outputMs), target, center };
       from = scaleAt(ms);
       target = scale;
       since = ms;
-      centre = region.centre ?? MIDDLE;
+      center = region.center ?? MIDDLE;
     }
   }
-  return { scale: scaleAt(outputMs), target, centre };
+  return { scale: scaleAt(outputMs), target, center };
 }
 
-export function zoomTrack(regions: Region[], durationMs: number): number[] {
+export const ZOOM_AMOUNTS = { min: 1.1, max: 3, step: 0.1 };
+
+export function focusBox(zoom: Region) {
+  const size = 1 / zoom.amount;
+  const { x, y } = zoom.center ?? MIDDLE;
+  return { x: x * (1 - size), y: y * (1 - size), size };
+}
+
+export function focusAt(box: Point, amount: number): Point {
+  const room = 1 - 1 / amount;
+  return { x: clamp(box.x / room, 0, 1), y: clamp(box.y / room, 0, 1) };
+}
+
+export function zoomTrack(regions: Region[], durationMs: number): ExportZoom[] {
   const frames = Math.ceil(durationMs / FRAME_MS) + 1;
-  return Array.from(
-    { length: frames },
-    (_, frame) => zoomAt(regions, frame * FRAME_MS).scale,
-  );
+  return Array.from({ length: frames }, (_, frame) => {
+    const { scale, center } = zoomAt(regions, frame * FRAME_MS);
+    return { scale, ...center };
+  });
 }
 
 export function outputAt(regions: Region[], sourceMs: number): number {
