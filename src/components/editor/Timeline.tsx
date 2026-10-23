@@ -1,13 +1,36 @@
-import { ZoomIn } from "lucide-react";
+import { FastForward, ZoomIn } from "lucide-react";
 import { useClockValue } from "@/hooks/useVideoClock";
 import { useRegionDrag } from "@/hooks/editor/useRegionDrag";
 import type { Edits } from "@/hooks/editor/useProject";
 import { useScrub } from "@/hooks/editor/useScrub";
 import { rulerLabel, rulerMarks } from "@/lib/editor/timeline";
-import type { Region, RegionDrag } from "@/lib/editor/regions";
+import {
+  REGIONS,
+  type Region,
+  type RegionDrag,
+  type RegionKind,
+} from "@/lib/editor/regions";
 import { percentAt } from "@/lib/editor/timeline";
 import type { Clock } from "@/lib/time";
 import { cn } from "@/lib/utils";
+
+export const REGION_LOOKS: Record<
+  RegionKind,
+  { Icon: typeof ZoomIn; tone: string; selected: string; badge: string }
+> = {
+  zoom: {
+    Icon: ZoomIn,
+    tone: "bg-highlight/16 text-highlight-foreground",
+    selected: "data-[selected=true]:border-highlight",
+    badge: "bg-highlight/30",
+  },
+  speed: {
+    Icon: FastForward,
+    tone: "bg-speed/16 text-speed-foreground",
+    selected: "data-[selected=true]:border-speed",
+    badge: "bg-speed/30",
+  },
+};
 
 export default function Timeline({
   clock,
@@ -85,19 +108,32 @@ function RegionItem({
   isSelected: boolean;
   dragProps: ReturnType<typeof useRegionDrag>;
 }) {
+  const { Icon, tone, selected, badge } = REGION_LOOKS[region.kind];
+
   return (
     <div
       data-selected={isSelected}
-      className="group absolute bottom-2 flex h-8 cursor-grab items-center gap-2 overflow-hidden rounded-sm border border-transparent bg-highlight/16 px-3 text-highlight-foreground active:cursor-grabbing data-[selected=true]:border-highlight"
+      className={cn(
+        "group absolute bottom-2 flex h-8 cursor-grab items-center gap-2 overflow-hidden rounded-sm border border-transparent px-3 active:cursor-grabbing",
+        tone,
+        selected,
+      )}
       style={{
         left: `${percentAt(region.startMs, durationMs)}%`,
         width: `${percentAt(region.endMs - region.startMs, durationMs)}%`,
       }}
       {...dragProps(region.id, "move")}
     >
-      <ZoomIn className="size-4 shrink-0" />
-      <span className="text-caption font-semibold">Zoom</span>
-      <span className="ml-auto rounded-full bg-highlight/30 px-2 font-mono text-caption leading-5">
+      <Icon className="size-4 shrink-0" />
+      <span className="text-caption font-semibold">
+        {REGIONS[region.kind].label}
+      </span>
+      <span
+        className={cn(
+          "ml-auto rounded-full px-2 font-mono text-caption leading-5",
+          badge,
+        )}
+      >
         {region.amount}×
       </span>
       <Grip edge="start" id={region.id} dragProps={dragProps} />
@@ -123,7 +159,7 @@ function Grip({
       )}
       {...dragProps(id, edge)}
     >
-      <div className="h-3 w-0.5 rounded-full bg-highlight-foreground opacity-40 group-data-[selected=true]:opacity-80" />
+      <div className="h-3 w-0.5 rounded-full bg-current opacity-40 group-data-[selected=true]:opacity-80" />
     </div>
   );
 }

@@ -45,3 +45,39 @@ export function Section({
     </section>
   );
 }
+
+export function ValueInput({
+  label,
+  value,
+  unit,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  unit: string;
+  onChange: (value: number) => void;
+}) {
+  const shown = String(Math.round(value * 100) / 100);
+  return (
+    <span className="flex items-baseline gap-1 font-mono font-medium">
+      <input
+        key={shown}
+        aria-label={label}
+        inputMode="decimal"
+        defaultValue={shown}
+        className="w-[5ch] rounded-sm bg-transparent text-right outline-none hover:bg-accent focus:bg-accent focus:text-highlight-foreground"
+        onBlur={(event) => {
+          const next = Number.parseFloat(event.currentTarget.value);
+          if (Number.isFinite(next)) onChange(next);
+          else event.currentTarget.value = shown;
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") event.currentTarget.value = shown;
+          if (event.key === "Enter" || event.key === "Escape")
+            event.currentTarget.blur();
+        }}
+      />
+      {unit}
+    </span>
+  );
+}

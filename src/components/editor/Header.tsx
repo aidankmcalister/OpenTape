@@ -10,7 +10,7 @@ export default function Header({
   return (
     <header
       data-tauri-drag-region
-      className="flex h-title-bar shrink-0 items-center justify-between pr-4.5 pl-traffic-lights text-muted-foreground"
+      className="flex h-title-bar shrink-0 items-center justify-between pr-2 pl-traffic-lights text-muted-foreground"
     >
       {name}
       {children}

@@ -3,6 +3,7 @@
 @import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
+@custom-variant expanding (&:is([data-variant="expand"] *));
 
 @custom-variant hover {
   @media (hover: hover) {
@@ -19,8 +20,11 @@
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
+  --ease-morph: cubic-bezier(0.32, 0.72, 0, 1);
+
   --text-heading: 16px;
   --text-ui: 13px;
+  --text-label: 12px;
   --text-caption: 11px;
   --text-micro: 10px;
 
@@ -160,6 +164,51 @@
   background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
   background-size: 20px 20px;
   background-position: center;
+}
+
+@utility tab-morph {
+  transition:
+    flex-grow 400ms var(--ease-morph),
+    color 150ms ease-out,
+    background-color 150ms ease-out,
+    border-color 150ms ease-out;
+  &[data-active] {
+    transition:
+      flex-grow 400ms var(--ease-morph),
+      color 300ms ease-out 100ms,
+      background-color 300ms ease-out 100ms,
+      border-color 300ms ease-out 100ms;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+@utility morph-shown {
+  opacity: 1;
+  scale: 1;
+  filter: none;
+  transition:
+    opacity 300ms ease-out 100ms,
+    scale 300ms ease-out 100ms,
+    filter 300ms ease-out 100ms;
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+@utility morph-hidden {
+  pointer-events: none;
+  opacity: 0;
+  scale: 0.95;
+  filter: blur(4px);
+  transition:
+    opacity 150ms ease-out,
+    scale 150ms ease-out,
+    filter 150ms ease-out;
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 }
 
 @utility swatch-ring {

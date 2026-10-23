@@ -1,5 +1,6 @@
-import { useRef, useState, type SyntheticEvent } from "react";
-import { useVideoClock } from "@/hooks/useVideoClock";
+import { useEffect, useRef, useState, type SyntheticEvent } from "react";
+import { useClockValue, useVideoClock } from "@/hooks/useVideoClock";
+import { amountAt, type Region } from "@/lib/editor/regions";
 import { frameStep } from "@/lib/editor/timeline";
 import type { Size } from "@/lib/geometry";
 
@@ -37,8 +38,14 @@ export function usePlayback(src: string) {
     },
     toggleLoop: () => setIsLooping((isOn) => !isOn),
     toggleSound: () => setIsMuted((isOn) => !isOn),
+    setRate: (rate: number) => {
+      if (!video.current) return;
+      video.current.preservesPitch = false;
+      video.current.playbackRate = rate;
+    },
     videoProps: {
       ref: video,
+      preload: "auto",
       loop: isLooping,
       muted: isMuted,
       onPlay: () => setIsPlaying(true),
@@ -54,6 +61,13 @@ export function usePlayback(src: string) {
 }
 
 export type Playback = ReturnType<typeof usePlayback>;
+
+export function useSpeed(playback: Playback, regions: Region[]) {
+  const rate = useClockValue(playback.clock, (seconds) =>
+    amountAt(regions, "speed", seconds * 1000),
+  );
+  useEffect(() => playback.setRate(rate), [playback, rate]);
+}
 
 function togglePlay(video: HTMLVideoElement | null) {
   if (!video) return;

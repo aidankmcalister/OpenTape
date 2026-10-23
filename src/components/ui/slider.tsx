@@ -11,9 +11,10 @@ const PARTS = {
       "size-3 rounded-full border border-ring bg-white ring-ring/50 hover:ring-3 focus-visible:ring-3 active:ring-3",
   },
   field: {
-    track: "h-8 w-full rounded-md border border-hairline bg-secondary",
-    indicator: "bg-highlight/20",
-    thumb: "h-8 w-0.5 bg-highlight focus-visible:ring-2 focus-visible:ring-ring",
+    track: "h-1 w-full rounded-full bg-accent",
+    indicator: "rounded-full bg-highlight",
+    thumb:
+      "size-4 rounded-full bg-primary-foreground shadow-md hover:ring-4 hover:ring-highlight/25 focus-visible:ring-4 focus-visible:ring-highlight/50 data-dragging:ring-4 data-dragging:ring-highlight/25",
   },
   hue: {
     track:
@@ -46,7 +47,7 @@ function Slider({
 
   return (
     <SliderPrimitive.Root
-      className={cn("data-horizontal:w-full data-vertical:h-full", className)}
+      className={cn("flex flex-col gap-2 data-horizontal:w-full data-vertical:h-full", className)}
       data-slot="slider"
       data-variant={variant}
       defaultValue={defaultValue}
@@ -56,6 +57,11 @@ function Slider({
       thumbAlignment="edge"
       {...props}
     >
+      {children ? (
+        <div className="flex h-5 items-center justify-between text-label">
+          {children}
+        </div>
+      ) : null}
       <SliderPrimitive.Control className="relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-vertical:h-full data-vertical:min-h-40 data-vertical:w-auto data-vertical:flex-col">
         <SliderPrimitive.Track
           data-slot="slider-track"
@@ -82,11 +88,6 @@ function Slider({
             )}
           />
         ))}
-        {children ? (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-between px-3 text-caption">
-            {children}
-          </div>
-        ) : null}
       </SliderPrimitive.Control>
     </SliderPrimitive.Root>
   )

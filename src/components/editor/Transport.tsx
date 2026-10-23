@@ -1,6 +1,7 @@
 import {
   Pause,
   Play,
+  Plus,
   Repeat,
   SkipBack,
   SkipForward,
@@ -8,16 +9,74 @@ import {
   VolumeX,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Kbd } from "@/components/ui/kbd";
 import { Separator } from "@/components/ui/separator";
 import { Toggle } from "@/components/ui/toggle";
 import type { Playback } from "@/hooks/editor/usePlayback";
 import { useClockValue } from "@/hooks/useVideoClock";
+import { REGIONS, type RegionKind } from "@/lib/editor/regions";
 import { formatTime, type Clock } from "@/lib/time";
+import { cn } from "@/lib/utils";
+import { REGION_LOOKS } from "./Timeline";
 
-export default function Transport({ playback }: { playback: Playback }) {
+export default function Transport({
+  playback,
+  onAdd,
+}: {
+  playback: Playback;
+  onAdd: (kind: RegionKind) => void;
+}) {
   return (
     <div className="grid h-10 grid-cols-3 items-center border-b border-hairline px-2">
-      <div />
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Add at the playhead"
+            />
+          }
+        >
+          <Plus />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-52">
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className="px-2">
+              Add at playhead
+            </DropdownMenuLabel>
+            {(Object.keys(REGIONS) as RegionKind[]).map((kind) => {
+              const { Icon, tone } = REGION_LOOKS[kind];
+              return (
+                <DropdownMenuItem
+                  key={kind}
+                  className="h-10 gap-3"
+                  onClick={() => onAdd(kind)}
+                >
+                  <span
+                    className={cn(
+                      "grid size-7 place-items-center rounded-md",
+                      tone,
+                    )}
+                  >
+                    <Icon />
+                  </span>
+                  <span className="font-semibold">{REGIONS[kind].label}</span>
+                  <Kbd className="ml-auto">{REGIONS[kind].key}</Kbd>
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <div className="flex justify-center gap-1">
         <Button
           variant="ghost"

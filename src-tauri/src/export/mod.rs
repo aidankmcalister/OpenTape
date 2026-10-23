@@ -6,10 +6,11 @@ use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2_av_foundation::{
     AVAssetReader, AVAssetReaderStatus, AVAssetReaderVideoCompositionOutput,
-    AVAsynchronousCIImageFilteringRequest, AVMediaTypeVideo, AVMutableVideoComposition, AVURLAsset,
+    AVAsynchronousCIImageFilteringRequest, AVMediaTypeVideo, AVMutableComposition,
+    AVMutableVideoComposition, AVURLAsset,
 };
 use objc2_core_foundation::{CGAffineTransform, CGPoint, CGRect, CGSize};
-use objc2_core_media::CMTime;
+use objc2_core_media::{CMTime, CMTimeRange, kCMTimeZero};
 use objc2_foundation::{NSArray, NSError, NSString, NSURL};
 use serde::Deserialize;
 use ts_rs::TS;
@@ -33,6 +34,23 @@ pub(crate) struct ExportLayout {
     border: Option<ExportBorder>,
     background: ExportGradient,
     zoom: Vec<ExportZoom>,
+    speed: Vec<ExportSpeed>,
+    cuts: Vec<ExportCut>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, TS)]
+#[ts(export, export_to = "bindings.ts")]
+pub(crate) struct ExportCut {
+    start: f64,
+    end: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, TS)]
+#[ts(export, export_to = "bindings.ts")]
+pub(crate) struct ExportSpeed {
+    start: f64,
+    end: f64,
+    amount: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, TS)]
@@ -124,7 +142,8 @@ pub(crate) fn export(
     progress: impl Fn(f32),
 ) -> Result<()> {
     let cutout = cutout(layout)?;
-    let asset = unsafe { AVURLAsset::URLAssetWithURL_options(&file_url(video), None) };
+    let recording_asset = unsafe { AVURLAsset::URLAssetWithURL_options(&file_url(video), None) };
+    let asset = retimed(&recording_asset, &layout.speed, &layout.cuts)?;
     let video_type = unsafe { AVMediaTypeVideo }.context("AVFoundation has no video type")?;
     #[allow(deprecated)]
     let track = unsafe { asset.tracksWithMediaType(video_type) }
@@ -137,6 +156,8 @@ pub(crate) fn export(
         layout.height,
         layout.zoom.clone(),
     );
+    let mut cuts = layout.cuts.clone();
+    cuts.sort_by(|a, b| a.start.total_cmp(&b.start));
     let picture = CGRect::new(
         CGPoint::new(0.0, 0.0),
         CGSize::new(layout.width.into(), layout.height.into()),
@@ -146,7 +167,7 @@ pub(crate) fn export(
         move |request: NonNull<AVAsynchronousCIImageFilteringRequest>| {
             let request = unsafe { request.as_ref() };
             unsafe {
-                let zoom = zoom_at(&zoom, request.compositionTime().seconds());
+                let zoom = zoom_at(&zoom, uncut(&cuts, request.compositionTime().seconds()));
                 let place = placement(&zoomed(&video_rect, &recording, zoom), height, natural);
                 let frame = request.sourceImage().imageByApplyingTransform(place);
                 let image = cutout
@@ -205,6 +226,50 @@ pub(crate) fn export(
         reason(unsafe { reader.error() })
     );
     Ok(())
+}
+
+fn retimed(
+    asset: &AVURLAsset,
+    speed: &[ExportSpeed],
+    cuts: &[ExportCut],
+) -> Result<Retained<AVMutableComposition>> {
+    let composition = unsafe { AVMutableComposition::composition() };
+    let whole = unsafe { CMTimeRange::new(kCMTimeZero, asset.duration()) };
+    #[allow(deprecated)]
+    unsafe { composition.insertTimeRange_ofAsset_atTime_error(whole, asset, kCMTimeZero) }
+        .map_err(|error| {
+            anyhow::anyhow!("could not read the recording: {}", reason(Some(error)))
+        })?;
+    for span in latest_first(speed, |span| span.start) {
+        let length = span.end - span.start;
+        let range = unsafe { CMTimeRange::new(seconds(span.start), seconds(length)) };
+        unsafe { composition.scaleTimeRange_toDuration(range, seconds(length / span.amount)) };
+    }
+    for cut in latest_first(cuts, |cut| cut.start) {
+        let range = unsafe { CMTimeRange::new(seconds(cut.start), seconds(cut.end - cut.start)) };
+        unsafe { composition.removeTimeRange(range) };
+    }
+    Ok(composition)
+}
+
+fn latest_first<T: Copy>(spans: &[T], start: fn(&T) -> f64) -> Vec<T> {
+    let mut spans = spans.to_vec();
+    spans.sort_by(|a, b| start(b).total_cmp(&start(a)));
+    spans
+}
+
+fn uncut(earliest_first: &[ExportCut], seconds: f64) -> f64 {
+    earliest_first.iter().fold(seconds, |at, cut| {
+        if at >= cut.start {
+            at + cut.end - cut.start
+        } else {
+            at
+        }
+    })
+}
+
+fn seconds(value: f64) -> CMTime {
+    unsafe { CMTime::with_seconds(value, 600) }
 }
 
 fn reason(error: Option<Retained<NSError>>) -> String {

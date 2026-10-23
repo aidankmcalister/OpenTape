@@ -8,6 +8,7 @@ export type EditorAction =
   | "toggleSound"
   | "export"
   | "addZoom"
+  | "addSpeed"
   | "removeRegion"
   | "undo"
   | "redo";
@@ -31,6 +32,7 @@ export const KEYMAP: Binding[] = [
   { action: "toggleSound", key: "m" },
   { action: "export", key: "e", meta: true },
   { action: "addZoom", key: "z" },
+  { action: "addSpeed", key: "s" },
   { action: "removeRegion", key: "Backspace" },
   { action: "undo", key: "z", meta: true, shift: false },
   { action: "redo", key: "z", meta: true, shift: true },
@@ -54,6 +56,7 @@ export const SHORTCUTS: {
     group: "Editing",
     rows: [
       { label: "Add a zoom", actions: ["addZoom"] },
+      { label: "Add a speed region", actions: ["addSpeed"] },
       { label: "Delete selected zoom", actions: ["removeRegion"] },
       { label: "Undo", actions: ["undo"] },
       { label: "Redo", actions: ["redo"] },

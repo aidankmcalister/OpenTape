@@ -3,7 +3,7 @@ import { useElementSize } from "@/hooks/useElementSize";
 import { useClockValue } from "@/hooks/useVideoClock";
 import { fillCss, frameLayout, type Appearance } from "@/lib/editor/appearance";
 import { zoomAt } from "@/lib/editor/zoom";
-import type { Region } from "@/lib/editor/regions";
+import { outputAt, type Region } from "@/lib/editor/regions";
 import type { Clock } from "@/lib/time";
 import Island from "./Island";
 
@@ -78,12 +78,11 @@ function Zoom({
   regions: Region[];
   children: ReactNode;
 }) {
-  const scale = useClockValue(
-    clock,
-    (seconds) => zoomAt(regions, seconds * 1000).scale,
-  );
+  const at = (seconds: number) =>
+    zoomAt(regions, outputAt(regions, seconds * 1000));
+  const scale = useClockValue(clock, (seconds) => at(seconds).scale);
   const origin = useClockValue(clock, (seconds) => {
-    const { center } = zoomAt(regions, seconds * 1000);
+    const { center } = at(seconds);
     return `${center.x * 100}% ${center.y * 100}%`;
   });
   return (

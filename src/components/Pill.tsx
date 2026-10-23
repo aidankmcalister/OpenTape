@@ -70,8 +70,7 @@ export function MorphPill<Key extends string>({
           key={key}
           {...dragRegion}
           className={cn(
-            "absolute top-0 left-1/2 flex w-max -translate-x-1/2 items-center ease-out will-change-[opacity,scale,filter,translate] motion-reduce:transition-none",
-            "transition-[opacity,scale,filter] data-[active=false]:pointer-events-none data-[active=false]:scale-95 data-[active=false]:opacity-0 data-[active=false]:blur-xs data-[active=false]:duration-150 data-[active=true]:delay-100 data-[active=true]:duration-300",
+            "absolute top-0 left-1/2 flex w-max -translate-x-1/2 items-center will-change-[opacity,scale,filter,translate] morph-hidden data-[active=true]:morph-shown",
             layerClassName,
           )}
           {...morph.layerProps(key)}

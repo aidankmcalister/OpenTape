@@ -124,6 +124,19 @@ fn exports_a_recording_in_the_default_appearance() {
                 ..NO_ZOOM
             })
             .collect(),
+        speed: std::env::var("EXPORT_TEST_SPEED").map_or(vec![], |amount| {
+            vec![ExportSpeed {
+                start: 1.0,
+                end: 2.0,
+                amount: amount.parse().unwrap(),
+            }]
+        }),
+        cuts: std::env::var("EXPORT_TEST_CUT").map_or(vec![], |_| {
+            vec![ExportCut {
+                start: 3.0,
+                end: 4.0,
+            }]
+        }),
     };
     let var = |name: &str, or: &str| std::env::var(name).unwrap_or(or.into());
     let options = ExportOptions {
@@ -145,4 +158,35 @@ fn exports_a_recording_in_the_default_appearance() {
     )
     .unwrap();
     assert!(Path::new(&output).exists());
+}
+
+#[test]
+fn speed_is_applied_latest_first_so_earlier_spans_keep_their_times() {
+    let span = |start| ExportSpeed {
+        start,
+        end: start + 1.0,
+        amount: 2.0,
+    };
+    let order: Vec<f64> = latest_first(&[span(1.0), span(5.0), span(3.0)], |span| span.start)
+        .iter()
+        .map(|span| span.start)
+        .collect();
+    assert_eq!(order, [5.0, 3.0, 1.0]);
+}
+
+#[test]
+fn a_frame_after_a_cut_reads_the_zoom_from_after_the_cut() {
+    let cuts = [
+        ExportCut {
+            start: 1.0,
+            end: 2.0,
+        },
+        ExportCut {
+            start: 4.0,
+            end: 4.5,
+        },
+    ];
+    assert_eq!(uncut(&cuts, 0.5), 0.5);
+    assert_eq!(uncut(&cuts, 1.0), 2.0);
+    assert_eq!(uncut(&cuts, 3.5), 5.0);
 }

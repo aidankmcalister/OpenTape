@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTauriEvent } from "@/hooks/useTauri";
-import type { ExportZoom } from "@/lib/bindings";
 import {
   aboutMegabytes,
   DEFAULT_EXPORT,
@@ -11,7 +10,6 @@ import {
   scaleLayout,
   type ExportSettings,
 } from "@/lib/editor/export";
-import { zoomTrack } from "@/lib/editor/zoom";
 import type { Appearance } from "@/lib/editor/appearance";
 import type { Region } from "@/lib/editor/regions";
 import type { Size } from "@/lib/geometry";
@@ -32,9 +30,9 @@ export function useExport(
 ) {
   const [state, setState] = useState<ExportState>({ stage: "idle" });
   const [settings, setSettings] = useState(DEFAULT_EXPORT);
-  const layoutAt = (size: Size, zoom: ExportZoom[]) =>
+  const layoutAt = (size: Size, withRegions: Region[] = []) =>
     scaleLayout(
-      exportLayout(appearance, size, zoom),
+      exportLayout(appearance, size, withRegions, durationMs),
       RESOLUTIONS[settings.resolution],
     );
 
@@ -61,8 +59,7 @@ export function useExport(
   async function start(size: Size) {
     setState({ stage: "exporting", progress: 0 });
     try {
-      const zoom = zoomTrack(regions, durationMs);
-      const layout = layoutAt(size, zoom);
+      const layout = layoutAt(size, regions);
       const path = await invoke<string>("export_recording", {
         layout,
         options: exportOptions(settings),
@@ -74,7 +71,7 @@ export function useExport(
   }
 
   const canStart = videoSize !== null && state.stage !== "exporting";
-  const output = videoSize ? layoutAt(videoSize, []) : null;
+  const output = videoSize ? layoutAt(videoSize) : null;
   return {
     state,
     start: canStart ? () => void start(videoSize) : null,

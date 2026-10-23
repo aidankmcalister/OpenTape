@@ -12,15 +12,19 @@ export type DisplayInfo = { id: number, name: string, frame: Frame, size: Captur
 
 export type ExportBorder = { width: number, color: string, opacity: number, };
 
+export type ExportCut = { start: number, end: number, };
+
 export type ExportFormat = "mp4" | "gif";
 
 export type ExportGradient = { angle: number, stops: Array<ExportStop>, };
 
-export type ExportLayout = { width: number, height: number, recording: PixelRect, video: PixelRect, radius: number, shadow: ExportShadow, border: ExportBorder | null, background: ExportGradient, zoom: Array<ExportZoom>, };
+export type ExportLayout = { width: number, height: number, recording: PixelRect, video: PixelRect, radius: number, shadow: ExportShadow, border: ExportBorder | null, background: ExportGradient, zoom: Array<ExportZoom>, speed: Array<ExportSpeed>, cuts: Array<ExportCut>, };
 
 export type ExportOptions = { format: ExportFormat, frameRate: number, bitsPerPixel: number, toClipboard: boolean, };
 
 export type ExportShadow = { offsetY: number, blur: number, opacity: number, };
+
+export type ExportSpeed = { start: number, end: number, amount: number, };
 
 export type ExportStop = { color: string, at: number, };
 

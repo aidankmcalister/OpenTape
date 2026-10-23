@@ -3,15 +3,17 @@ import type {
   ExportFormat,
   ExportLayout,
   ExportOptions,
-  ExportZoom,
   PixelRect,
 } from "@/lib/bindings";
 import { type Appearance, BORDER_COLORS, fillGradient } from "./appearance";
+import type { Region } from "./regions";
+import { zoomTrack } from "./zoom";
 
 export function exportLayout(
   appearance: Appearance,
   video: Size,
-  zoom: ExportZoom[],
+  regions: Region[] = [],
+  durationMs = 0,
 ): ExportLayout {
   const ratio = video.width / video.height;
   const paddingShare = ((2 * appearance.padding) / 1920) * Math.max(1, ratio);
@@ -47,7 +49,14 @@ export function exportLayout(
       opacity: appearance.shadowOpacity / 100,
     },
     background: fillGradient(appearance.fill),
-    zoom,
+    zoom: zoomTrack(regions, durationMs),
+    speed: regions
+      .filter(({ kind }) => kind === "speed")
+      .map(({ startMs, endMs, amount }) => ({
+        start: startMs / 1000,
+        end: endMs / 1000,
+        amount,
+      })),
   };
 }
 

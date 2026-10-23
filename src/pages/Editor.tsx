@@ -5,7 +5,7 @@ import Header from "@/components/editor/Header";
 import Island from "@/components/editor/Island";
 import Stage from "@/components/editor/Stage";
 import Transport from "@/components/editor/Transport";
-import { usePlayback } from "@/hooks/editor/usePlayback";
+import { usePlayback, useSpeed } from "@/hooks/editor/usePlayback";
 import { useKeymap } from "@/hooks/editor/useKeymap";
 import Timeline from "@/components/editor/Timeline";
 import ExportButton from "@/components/editor/ExportButton";
@@ -31,6 +31,7 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
   const playback = usePlayback(videoSrc);
   const edits = useProject(playback.clock, playback.durationMs);
   const { appearance, regions } = edits.project;
+  useSpeed(playback, regions);
   const exporting = useExport(appearance, regions, playback);
   useKeymap({
     togglePlay: playback.togglePlay,
@@ -41,7 +42,8 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
     toggleLoop: playback.toggleLoop,
     toggleSound: playback.toggleSound,
     export: () => exporting.start?.(),
-    addZoom: edits.addZoom,
+    addZoom: () => edits.add("zoom"),
+    addSpeed: () => edits.add("speed"),
     removeRegion: edits.removeRegion,
     undo: edits.undo,
     redo: edits.redo,
@@ -88,7 +90,7 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
             {...playback.videoProps}
           />
           <Island className="shrink-0">
-            <Transport playback={playback} />
+            <Transport playback={playback} onAdd={edits.add} />
             <Timeline
               clock={playback.clock}
               durationMs={playback.durationMs}

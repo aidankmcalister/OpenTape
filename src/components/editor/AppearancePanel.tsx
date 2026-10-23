@@ -8,12 +8,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsIconTrigger, TabsList } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { Edits } from "@/hooks/editor/useProject";
 import {
   AMOUNTS,
   BORDER_COLORS,
+  clampAmount,
   COLORS,
   DEFAULT_APPEARANCE,
   fillCss,
@@ -24,7 +25,13 @@ import {
 } from "@/lib/editor/appearance";
 import { changeAppearance, NEW_PROJECT } from "@/lib/editor/project";
 import FillPicker from "./FillPicker";
-import { PanelHeader, Section } from "./Panel";
+import { PanelHeader, Section, ValueInput } from "./Panel";
+
+const FILLS: { kind: Fill["kind"]; label: string; Icon: typeof Blend }[] = [
+  { kind: "gradient", label: "Gradient", Icon: Blend },
+  { kind: "color", label: "Color", Icon: Palette },
+  { kind: "image", label: "Image", Icon: Image },
+];
 
 const SECTIONS: { title: string; amounts: Amount[] }[] = [
   { title: "Frame", amounts: ["padding", "radius", "inset"] },
@@ -56,22 +63,20 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
             changeFill({ ...appearance.fill, kind })
           }
         >
-          <TabsList className="w-full">
-            <TabsTrigger value="gradient">
-              <Blend />
-              Gradient
-            </TabsTrigger>
-            <TabsTrigger value="color">
-              <Palette />
-              Color
-            </TabsTrigger>
-            <TabsTrigger value="image" disabled>
-              <Image />
-              Image
-            </TabsTrigger>
+          <TabsList variant="expand" className="w-full">
+            {FILLS.map(({ kind, label, Icon }) => (
+              <TabsIconTrigger
+                key={kind}
+                value={kind}
+                icon={<Icon />}
+                label={label}
+                disabled={kind === "image"}
+              />
+            ))}
           </TabsList>
         </Tabs>
         <ToggleGroup
+          spacing={1}
           className="w-full justify-between"
           value={[String(appearance.fill.preset)]}
           onValueChange={([preset]) =>
@@ -87,7 +92,7 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
               key={preset}
               value={String(preset)}
               aria-label={`Preset ${preset + 1}`}
-              className="size-6 min-w-6 rounded-full p-0 aria-pressed:swatch-ring"
+              className="size-6 min-w-6 rounded-full p-0 transition-[box-shadow] aria-pressed:swatch-ring"
               style={{ background: fillCss({ ...appearance.fill, preset }) }}
             />
           ))}
@@ -112,7 +117,7 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
             )
           }
         >
-          <SelectTrigger className="h-8 w-full rounded-md border-hairline bg-secondary px-3 text-caption">
+          <SelectTrigger className="h-8 w-full rounded-md border-hairline bg-secondary px-3 text-label">
             <span>Color</span>
             <SelectValue className="justify-end">
               {(value: BorderColor) => BORDER_COLORS[value].label}
@@ -156,9 +161,18 @@ function ValueField({ amount, edits }: { amount: Amount; edits: Edits }) {
       onValueCommitted={edits.commit}
     >
       <span>{label}</span>
-      <span className="font-mono font-medium">
-        {value} {unit}
-      </span>
+      <ValueInput
+        label={label}
+        value={value}
+        unit={unit}
+        onChange={(next) =>
+          edits.change((project) =>
+            changeAppearance(project, {
+              [amount]: clampAmount(amount, next),
+            }),
+          )
+        }
+      />
     </Slider>
   );
 }

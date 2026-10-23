@@ -7,7 +7,8 @@ import type { Edits } from "@/hooks/editor/useProject";
 import { changeRegion, REGIONS, type Region } from "@/lib/editor/regions";
 import { editRegions } from "@/lib/editor/project";
 import { focusAt, focusBox, MIDDLE, ZOOM_AMOUNTS } from "@/lib/editor/zoom";
-import { PanelHeader, Section } from "./Panel";
+import { clamp } from "@/lib/geometry";
+import { PanelHeader, Section, ValueInput } from "./Panel";
 
 export default function ZoomPanel({ edits }: { edits: Edits }) {
   const zoom = edits.selected?.kind === "zoom" ? edits.selected : null;
@@ -50,9 +51,16 @@ export default function ZoomPanel({ edits }: { edits: Edits }) {
           onValueCommitted={edits.commit}
         >
           <span>Amount</span>
-          <span className="font-mono font-medium">
-            {zoom.amount.toFixed(1)}×
-          </span>
+          <ValueInput
+            label="Amount"
+            value={zoom.amount}
+            unit="×"
+            onChange={(amount) =>
+              commit({
+                amount: clamp(amount, ZOOM_AMOUNTS.min, ZOOM_AMOUNTS.max),
+              })
+            }
+          />
         </Slider>
       </Section>
       <Section

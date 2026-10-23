@@ -21,6 +21,7 @@ import {
 } from "@/lib/editor/color";
 import { changeAppearance } from "@/lib/editor/project";
 import { clamp } from "@/lib/geometry";
+import { ValueInput } from "./Panel";
 
 export default function FillPicker({ edits }: { edits: Edits }) {
   const { fill } = edits.project.appearance;
@@ -112,9 +113,17 @@ export default function FillPicker({ edits }: { edits: Edits }) {
               onValueCommitted={edits.commit}
             >
               <span>Angle</span>
-              <span className="font-mono font-medium">
-                {fill.custom.angle}°
-              </span>
+              <ValueInput
+                label="Angle"
+                value={fill.custom.angle}
+                unit="°"
+                onChange={(angle) =>
+                  change({
+                    ...fill.custom,
+                    angle: Math.round(clamp(angle, 0, 360)),
+                  })
+                }
+              />
             </Slider>
           )}
         </div>

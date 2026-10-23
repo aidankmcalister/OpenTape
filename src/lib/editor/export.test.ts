@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { Region } from "./regions";
 import { DEFAULT_APPEARANCE } from "./appearance";
 import {
   aboutMegabytes,
@@ -93,4 +94,19 @@ test("exportLayout grows the video by the inset, and draws a border only with a 
     opacity: 0.35,
     width: 4 * scale,
   });
+});
+
+test("exportLayout sends the zoom track, and each speed region in seconds", () => {
+  const regions: Region[] = [
+    { id: 1, kind: "zoom", startMs: 0, endMs: 1000, amount: 1.5 },
+    { id: 2, kind: "speed", startMs: 2000, endMs: 3500, amount: 2 },
+  ];
+  const layout = exportLayout(
+    DEFAULT_APPEARANCE,
+    { width: 1920, height: 1080 },
+    regions,
+    4000,
+  );
+  expect(layout.zoom).toHaveLength(241);
+  expect(layout.speed).toEqual([{ start: 2, end: 3.5, amount: 2 }]);
 });

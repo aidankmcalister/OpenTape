@@ -4,6 +4,7 @@ import {
   removeRegion,
   removeRegionAt,
   type Region,
+  type RegionKind,
 } from "@/lib/editor/regions";
 import { editRegions, NEW_PROJECT, type Project } from "@/lib/editor/project";
 import { historyOf, record, redo, undo } from "@/lib/editor/history";
@@ -26,9 +27,9 @@ export function useProject(clock: Clock, durationMs: number) {
     selectedId,
     select: setSelectedId,
     change,
-    addZoom: () => {
+    add: (kind: RegionKind) => {
       const atMs = playheadMs();
-      changeRegions((regions) => addRegion(regions, "zoom", atMs, durationMs));
+      changeRegions((regions) => addRegion(regions, kind, atMs, durationMs));
     },
     removeRegion: () => {
       const atMs = playheadMs();
