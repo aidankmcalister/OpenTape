@@ -1,18 +1,25 @@
 import { describe, expect, test } from "bun:test";
 import {
+  changeStop,
   clampAmount,
   DEFAULT_APPEARANCE,
   fillCss,
   fillGradient,
   frameLayout,
+  type Fill,
 } from "./appearance";
+
+const fill = (change: Partial<Fill>): Fill => ({
+  ...DEFAULT_APPEARANCE.fill,
+  ...change,
+});
 
 describe("appearance", () => {
   test("fillCss draws a gradient corner to corner, and a color as its middle stop", () => {
-    expect(fillCss({ kind: "gradient", preset: 0 })).toBe(
+    expect(fillCss(fill({ kind: "gradient", preset: 0 }))).toBe(
       "linear-gradient(135deg, #0f4c5c 0%, #2a9d8f 55%, #e9c46a 100%)",
     );
-    expect(fillCss({ kind: "color", preset: 2 })).toBe("#3b82f6");
+    expect(fillCss(fill({ kind: "color", preset: 2 }))).toBe("#3b82f6");
   });
 
   test.each([
@@ -49,9 +56,33 @@ describe("appearance", () => {
   });
 
   test("fillGradient makes a color a gradient that doesn't change", () => {
-    expect(fillGradient({ kind: "color", preset: 2 }).stops).toEqual([
+    expect(fillGradient(fill({ kind: "color", preset: 2 })).stops).toEqual([
       { color: "#3b82f6", at: 0 },
       { color: "#3b82f6", at: 1 },
     ]);
+  });
+
+  test("a custom fill draws its own gradient, or its first color as a color", () => {
+    const custom = {
+      angle: 90,
+      stops: [
+        { color: "#ff0000", at: 1 },
+        { color: "#0000ff", at: 0 },
+      ],
+    };
+    expect(fillCss(fill({ preset: "custom", custom }))).toBe(
+      "linear-gradient(90deg, #0000ff 0%, #ff0000 100%)",
+    );
+    expect(fillCss(fill({ kind: "color", preset: "custom", custom }))).toBe(
+      "#ff0000",
+    );
+  });
+
+  test("changeStop changes one stop and keeps the rest", () => {
+    const { custom } = DEFAULT_APPEARANCE.fill;
+    const changed = changeStop(custom, 1, { color: "#000000" });
+    expect(changed.stops[1]).toEqual({ color: "#000000", at: 0.55 });
+    expect(changed.stops[0]).toBe(custom.stops[0]);
+    expect(changed.angle).toBe(custom.angle);
   });
 });

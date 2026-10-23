@@ -23,6 +23,7 @@ import {
   type Fill,
 } from "@/lib/editor/appearance";
 import { changeAppearance, NEW_PROJECT } from "@/lib/editor/project";
+import FillPicker from "./FillPicker";
 import { PanelHeader, Section } from "./Panel";
 
 const SECTIONS: { title: string; amounts: Amount[] }[] = [
@@ -74,7 +75,11 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
           className="w-full justify-between"
           value={[String(appearance.fill.preset)]}
           onValueChange={([preset]) =>
-            preset && changeFill({ ...appearance.fill, preset: Number(preset) })
+            preset &&
+            changeFill({
+              ...appearance.fill,
+              preset: preset === "custom" ? "custom" : Number(preset),
+            })
           }
         >
           {presets.map((_, preset) => (
@@ -86,6 +91,7 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
               style={{ background: fillCss({ ...appearance.fill, preset }) }}
             />
           ))}
+          <FillPicker edits={edits} />
         </ToggleGroup>
       </Section>
       {SECTIONS.map(({ title, amounts }) => (

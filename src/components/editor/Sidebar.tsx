@@ -3,7 +3,6 @@ import {
   Captions,
   CircleHelp,
   Image,
-  Keyboard,
   MousePointer2,
   SlidersHorizontal,
   Volume2,
@@ -13,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import type { Edits } from "@/hooks/editor/useProject";
 import Island from "./Island";
+import ShortcutsSheet from "./ShortcutSheet";
 import AppearancePanel from "./AppearancePanel";
 import ZoomPanel from "./ZoomPanel";
 
@@ -27,7 +27,6 @@ const PANELS = [
 const BUILT = ["background", "zoom"];
 
 const LINKS = [
-  { label: "Keyboard shortcuts", Icon: Keyboard },
   { label: "Help", Icon: CircleHelp },
   { label: "GitHub", Icon: GitHubMark },
   { label: "Settings", Icon: SlidersHorizontal },
@@ -58,6 +57,7 @@ export default function Sidebar({ edits }: { edits: Edits }) {
           </Button>
         ))}
         <Separator className="mt-auto mb-1 w-6" />
+        <ShortcutsSheet />
         {LINKS.map(({ label, Icon }) => (
           <Button
             key={label}

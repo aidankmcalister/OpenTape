@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { actionFor, KEYMAP, type Binding } from "./keymap";
+import { actionFor, keyLabel, KEYMAP, SHORTCUTS, type Binding } from "./keymap";
 
 const PRESS = {
   key: "",
@@ -53,5 +53,26 @@ describe("keymap", () => {
         `${meta ? "⌘" : ""}${shift ? "⇧" : ""}${alt ? "⌥" : ""}${key.toLowerCase()}`,
     );
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+describe("shortcuts sheet", () => {
+  test("lists every binding exactly once", () => {
+    const listed = SHORTCUTS.flatMap(({ rows }) =>
+      rows.flatMap(({ actions }) => actions),
+    );
+    expect(listed.sort()).toEqual(KEYMAP.map(({ action }) => action).sort());
+  });
+
+  test.each([
+    ["togglePlay", "Space"],
+    ["stepBack", "←"],
+    ["toEnd", "⌥→"],
+    ["toggleLoop", "L"],
+    ["removeRegion", "⌫"],
+    ["export", "⌘E"],
+    ["redo", "⇧⌘Z"],
+  ] as const)("keyLabel(%p) is %p", (action, label) => {
+    expect(keyLabel(action)).toBe(label);
   });
 });

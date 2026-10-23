@@ -1,7 +1,11 @@
 import { type Size, clamp, fitInside } from "@/lib/geometry";
-import type { ExportGradient } from "@/lib/bindings";
+import type { ExportGradient, ExportStop } from "@/lib/bindings";
 
-export type Fill = { kind: "gradient" | "color" | "image"; preset: number };
+export type Fill = {
+  kind: "gradient" | "color" | "image";
+  preset: number | "custom";
+  custom: ExportGradient;
+};
 
 export type Appearance = {
   fill: Fill;
@@ -52,7 +56,7 @@ export const AMOUNTS: Record<
 };
 
 export const DEFAULT_APPEARANCE: Appearance = {
-  fill: { kind: "gradient", preset: 0 },
+  fill: { kind: "gradient", preset: 0, custom: presetGradient("gradient", 0) },
   padding: 64,
   radius: 20,
   inset: 0,
@@ -64,8 +68,21 @@ export const DEFAULT_APPEARANCE: Appearance = {
 };
 
 export function fillGradient(fill: Fill): ExportGradient {
-  if (fill.kind === "color") {
-    const color = COLORS[fill.preset];
+  if (fill.preset !== "custom") return presetGradient(fill.kind, fill.preset);
+  if (fill.kind !== "color") return fill.custom;
+  const { color } = fill.custom.stops[0];
+  return {
+    angle: fill.custom.angle,
+    stops: [
+      { color, at: 0 },
+      { color, at: 1 },
+    ],
+  };
+}
+
+function presetGradient(kind: Fill["kind"], preset: number): ExportGradient {
+  if (kind === "color") {
+    const color = COLORS[preset];
     return {
       angle: 135,
       stops: [
@@ -74,7 +91,7 @@ export function fillGradient(fill: Fill): ExportGradient {
       ],
     };
   }
-  const [from, middle, to] = GRADIENTS[fill.preset];
+  const [from, middle, to] = GRADIENTS[preset];
   const stops = [
     { color: from, at: 0 },
     { color: middle, at: 0.55 },
@@ -84,10 +101,28 @@ export function fillGradient(fill: Fill): ExportGradient {
 }
 
 export function fillCss(fill: Fill): string {
-  if (fill.kind === "color") return COLORS[fill.preset];
-  const { angle, stops } = fillGradient(fill);
-  const css = stops.map(({ color, at }) => `${color} ${Math.round(at * 100)}%`);
+  const gradient = fillGradient(fill);
+  return fill.kind === "color"
+    ? gradient.stops[0].color
+    : gradientCss(gradient);
+}
+
+export function gradientCss({ angle, stops }: ExportGradient): string {
+  const css = [...stops]
+    .sort((a, b) => a.at - b.at)
+    .map(({ color, at }) => `${color} ${Math.round(at * 100)}%`);
   return `linear-gradient(${angle}deg, ${css.join(", ")})`;
+}
+
+export function changeStop(
+  gradient: ExportGradient,
+  index: number,
+  change: Partial<ExportStop>,
+): ExportGradient {
+  const stops = gradient.stops.map((stop, i) =>
+    i === index ? { ...stop, ...change } : stop,
+  );
+  return { ...gradient, stops };
 }
 
 export function clampAmount(amount: Amount, value: number): number {

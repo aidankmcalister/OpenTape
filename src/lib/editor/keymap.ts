@@ -36,6 +36,47 @@ export const KEYMAP: Binding[] = [
   { action: "redo", key: "z", meta: true, shift: true },
 ];
 
+export const SHORTCUTS: {
+  group: string;
+  rows: { label: string; actions: EditorAction[] }[];
+}[] = [
+  {
+    group: "Playback",
+    rows: [
+      { label: "Play or pause", actions: ["togglePlay"] },
+      { label: "Step one frame", actions: ["stepBack", "stepForward"] },
+      { label: "Jump to start or end", actions: ["toStart", "toEnd"] },
+      { label: "Loop", actions: ["toggleLoop"] },
+      { label: "Mute", actions: ["toggleSound"] },
+    ],
+  },
+  {
+    group: "Editing",
+    rows: [
+      { label: "Add a zoom", actions: ["addZoom"] },
+      { label: "Delete selected zoom", actions: ["removeRegion"] },
+      { label: "Undo", actions: ["undo"] },
+      { label: "Redo", actions: ["redo"] },
+      { label: "Export", actions: ["export"] },
+    ],
+  },
+];
+
+export const KEY_NAMES: Record<string, string> = {
+  " ": "Space",
+  ArrowLeft: "←",
+  ArrowRight: "→",
+  Backspace: "⌫",
+};
+
+export function keyLabel(action: EditorAction): string {
+  const binding = KEYMAP.find((binding) => binding.action === action);
+  if (!binding) return "";
+  const { key, alt, shift, meta } = binding;
+  const name = KEY_NAMES[key] ?? key.toUpperCase();
+  return `${alt ? "⌥" : ""}${shift ? "⇧" : ""}${meta ? "⌘" : ""}${name}`;
+}
+
 export function actionFor(
   press: Pick<
     KeyboardEvent,
