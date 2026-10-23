@@ -1,8 +1,3 @@
-//! Recording: start a target, pause, restart or stop it, and announce every change as one
-//! recording status. Rust owns the status; the record bar only shows it. Which action is allowed
-//! when is decided in one place, `next_phase`. A stopped recording goes to the current
-//! recording.
-
 use std::{path::PathBuf, sync::Mutex};
 
 use anyhow::{Context, Result, bail};
@@ -29,21 +24,16 @@ pub(crate) enum Phase {
     Stopping,
 }
 
-/// The recording status, the only copy of it. The record bar shows it.
 #[derive(Debug, Default, Clone, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "bindings.ts")]
 pub(crate) struct RecordingStatus {
     pub phase: Phase,
-    /// Why the last start, restart or stop failed, until the next change.
     pub error: Option<String>,
-    /// Time recorded when this status was sent, not counting pauses. The bar's timer counts
-    /// on from it while recording.
     #[ts(type = "number")]
     pub elapsed_ms: u64,
 }
 
-/// What a click asks the recording to do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Action {
     Start,
@@ -53,8 +43,7 @@ enum Action {
     Stop,
 }
 
-/// The phase `action` moves `phase` to, or why it can't happen now. Pausing while paused and
-/// resuming while recording are allowed, so restart can pause first whatever the state.
+/// Pause while paused and resume while recording are allowed, so restart can always pause.
 fn next_phase(phase: Phase, action: Action) -> Result<Phase> {
     use Phase::{Idle, Paused, Recording, Starting, Stopping};
     match (phase, action) {
@@ -70,24 +59,20 @@ fn next_phase(phase: Phase, action: Action) -> Result<Phase> {
     }
 }
 
-/// The phase and the running recording sit behind one lock, so a click can never see one change
-/// without the other.
+/// One lock, so a click never sees the phase change without the recording, or the reverse.
 #[derive(Default)]
 pub(crate) struct RecordingState(Mutex<Inner>);
 
-/// What sits behind the lock. While recording or paused, `running` is always there; in every
-/// other phase, it never is.
+/// `running` is set exactly while recording or paused.
 #[derive(Default)]
 struct Inner {
     phase: Phase,
     error: Option<String>,
     running: Option<RunningRecording>,
-    /// How many recordings have started, which numbers each one.
     recordings_started: u64,
 }
 
 impl RecordingState {
-    /// Idle to starting in one step, so of two quick starts only the first goes through.
     fn claim_start(&self) -> Result<()> {
         let mut inner = lock(&self.0);
         inner.phase = next_phase(inner.phase, Action::Start)?;
@@ -95,7 +80,6 @@ impl RecordingState {
         Ok(())
     }
 
-    /// Pauses or resumes, and returns the phase before and the number of the recording.
     fn set_paused(&self, paused: bool) -> Result<(Phase, u64)> {
         let mut inner = lock(&self.0);
         let action = if paused {
@@ -116,9 +100,7 @@ impl RecordingState {
         Ok(before)
     }
 
-    /// Takes the recording out to stop or restart it. `recording_number`, when given, must still
-    /// be the running recording's, so a restart confirmed after its recording ended can't restart
-    /// a newer one.
+    /// `recording_number` stops a late restart confirm from restarting a newer recording.
     fn take_running(
         &self,
         action: Action,
@@ -135,8 +117,6 @@ impl RecordingState {
         Ok(running)
     }
 
-    /// Starting to recording, now that capture runs. No click can leave starting (see
-    /// `next_phase`), so the phase is still starting here.
     fn mark_started(&self, running: RunningRecording) {
         let mut inner = lock(&self.0);
         inner.running = Some(running);
@@ -145,7 +125,6 @@ impl RecordingState {
         inner.error = None;
     }
 
-    /// Back to idle, saying why when it was a failure.
     fn mark_idle(&self, error: Option<String>) {
         let mut inner = lock(&self.0);
         inner.phase = Phase::Idle;
@@ -166,9 +145,7 @@ impl RecordingState {
     }
 }
 
-/// Starts recording `target` in the background. Progress and errors arrive as status events.
 pub(crate) fn start(app: AppHandle, target: Target) {
-    // Refused only while a recording is already underway, like a second click on Record.
     if app.state::<RecordingState>().claim_start().is_err() {
         return;
     }
@@ -188,8 +165,7 @@ pub(crate) fn pause_recording(app: AppHandle, paused: bool) -> CmdResult {
     Ok(())
 }
 
-/// Asks first, then throws away what's been recorded and records the same target again. It
-/// pauses while asking, so the alert never ends up in the recording.
+/// Pauses while asking, so the alert never ends up in the recording.
 #[tauri::command]
 pub(crate) async fn restart_recording(
     app: AppHandle,
@@ -213,7 +189,6 @@ pub(crate) async fn restart_recording(
     let running = state.take_running(Action::Restart, Some(recording_number))?;
     announce_status(&app);
     let target = running.target().clone();
-    // From here on, failures reach the bar as the status, like a failed start.
     if let Err(err) = run_blocking(move || running.discard()).await {
         go_idle(&app, Some(&err));
         return Ok(());
@@ -222,7 +197,6 @@ pub(crate) async fn restart_recording(
     Ok(())
 }
 
-/// Stops, and hands the recording to the preview.
 #[tauri::command]
 pub(crate) async fn stop_recording(app: AppHandle, state: State<'_, RecordingState>) -> CmdResult {
     let running = state.take_running(Action::Stop, None)?;
@@ -234,7 +208,6 @@ pub(crate) async fn stop_recording(app: AppHandle, state: State<'_, RecordingSta
     Ok(())
 }
 
-/// Opens the capture and reports how it went as a status.
 async fn start_capture(app: &AppHandle, target: Target) {
     match open_capture(app, target).await {
         Ok(running) => {
@@ -245,13 +218,11 @@ async fn start_capture(app: &AppHandle, target: Target) {
     }
 }
 
-/// Records into a new folder in app storage, out of sight until it's saved.
 async fn open_capture(app: &AppHandle, target: Target) -> Result<RunningRecording> {
     let folder = app.state::<CurrentRecording>().new_folder();
     run_blocking(move || capture::start(target, folder)).await
 }
 
-/// Goes idle, which also takes down the recording's frame, however the recording ended.
 fn go_idle(app: &AppHandle, error: Option<&anyhow::Error>) {
     picker::close_frame(app);
     let message = error.map(|err| format!("{err:#}"));
@@ -261,7 +232,6 @@ fn go_idle(app: &AppHandle, error: Option<&anyhow::Error>) {
 
 fn announce_status(app: &AppHandle) {
     let status = app.state::<RecordingState>().status();
-    // Fails only once the bar is gone, when there's no one left to tell.
     let _ = PageEvent::RecordingStatus(status).send_to(app, bar::LABEL);
 }
 
@@ -269,7 +239,6 @@ fn announce_status(app: &AppHandle) {
 mod tests {
     use super::*;
 
-    /// A state that's recording a fake recording, with no capture behind it.
     fn recording() -> RecordingState {
         let state = RecordingState::default();
         state.claim_start().expect("idle can start");
@@ -350,7 +319,6 @@ mod tests {
     #[test]
     fn restart_should_only_restart_the_recording_it_paused() {
         let state = recording();
-        // Restart pauses first, remembering whether it was already paused.
         let (before, first) = state.set_paused(true).expect("pauses");
         assert_eq!(before, Phase::Recording);
         assert_eq!(state.set_paused(true).expect("pauses").0, Phase::Paused);
@@ -361,10 +329,8 @@ mod tests {
         state.mark_started(RunningRecording::fake("/tmp/again.mov"));
         let (_, second) = state.set_paused(true).expect("pauses");
         assert_eq!(second, first + 1);
-        // A second confirm of the first restart leaves the restarted recording alone.
         assert!(state.take_running(Action::Restart, Some(first)).is_err());
         assert_eq!(phase(&state), Phase::Paused);
-        // So does a confirm that arrives after a stop and a new start.
         state
             .take_running(Action::Stop, None)
             .expect("paused can stop");

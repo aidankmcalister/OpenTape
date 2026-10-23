@@ -33,16 +33,12 @@ export default function ExportButton({
           </Button>
         ),
         exporting: (
-          <PillMessage icon={<Spinner />}>
-            Exporting
-            {/* As wide as "100%" all the way, so the pill keeps one width while it counts. */}
-            <span className="-ml-1 grid tabular-nums">
-              <span className="invisible col-start-1 row-start-1">100%</span>
-              <span className="col-start-1 row-start-1">
-                {Math.round(progress * 100)}%
-              </span>
+          <div className="flex w-41.5 items-center justify-between pr-3">
+            <PillMessage icon={<Spinner />}>Exporting</PillMessage>
+            <span className="text-ui font-medium tabular-nums">
+              {Math.round(progress * 100)}%
             </span>
-          </PillMessage>
+          </div>
         ),
         done: (
           <>

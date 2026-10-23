@@ -41,11 +41,7 @@ export default function Picker({ displayId }: { displayId: number }) {
   );
 }
 
-/**
- * Tints what will be recorded and dims the rest, including parts of the target that other windows
- * cover. Plain boxes and a clip path, because WebKit redraws SVG masks slowly at display size.
- * Memoized to skip the redraw for cursor moves that stay inside one window.
- */
+// Plain boxes and a clip path, because WebKit redraws SVG masks slowly at display size.
 const Highlight = memo(
   function Highlight({
     highlight,
@@ -56,7 +52,7 @@ const Highlight = memo(
   }) {
     const { rect, covered, barRect, title, icon, size, target } = highlight;
     const isDisplay = target.kind === "display";
-    // About the corner of a macOS window, so the tint sits inside it.
+    // About a macOS window's corner radius.
     const corner = isDisplay ? 0 : 10;
     const visible = [
       roundedRectPath(rect, corner),
@@ -89,7 +85,6 @@ const Highlight = memo(
               }
               title={title}
               size={size}
-              // Below 300 wide the bar drops the name and size so it always fits inside the window.
               isCompact={barRect.width < 300}
               onRecord={onRecord}
             />

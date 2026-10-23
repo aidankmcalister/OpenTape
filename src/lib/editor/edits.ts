@@ -1,6 +1,7 @@
 import { clamp, fitInside, type Point, type Size } from "@/lib/geometry";
 import type { ExportGradient, ExportLayout } from "@/lib/bindings";
 import { twoDigits } from "@/lib/time";
+import { FRAME_MS } from "./timeline";
 
 export type Fill = { kind: "gradient" | "color" | "image"; preset: number };
 
@@ -28,7 +29,6 @@ export const GRADIENTS: [string, string, string][] = [
   ["#0a0a0b", "#18181b", "#3f3f46"],
 ];
 
-/** The middle stop of each gradient, so Color offers the same family. */
 export const COLORS = GRADIENTS.map(([, middle]) => middle);
 
 export const AMOUNTS: Record<
@@ -55,7 +55,6 @@ export const DEFAULT_LOOK: Look = {
   borderWidth: 0,
 };
 
-/** A fill as a gradient: corner to corner, with the middle colour a little past halfway. A colour is a gradient that doesn't change. */
 export function fillGradient(fill: Fill): ExportGradient {
   if (fill.kind === "color") {
     const color = COLORS[fill.preset];
@@ -87,13 +86,10 @@ export function clampAmount(amount: Amount, value: number): number {
   return Math.round(clamp(value, 0, AMOUNTS[amount].max));
 }
 
-/**
- * How the look frames the recording on a canvas. The frame fits inside the canvas, leaving 48pt
- * around it, and the recording fits inside the frame, leaving the look's padding. `scale` turns
- * look sizes into canvas points: a look is measured on a frame 1920 wide, so it matches at any
- * preview or export size. `video` is where the video draws inside the recording, grown by the inset
- * so the recording crops its edges.
- */
+export function amountFromShare(amount: Amount, share: number): number {
+  return clampAmount(amount, share * AMOUNTS[amount].max);
+}
+
 export function frameLayout(look: Look, canvas: Size, ratio: number) {
   const shrink = ({ width, height }: Size, by: number) => ({
     width: Math.max(width - by * 2, 0),
@@ -126,15 +122,13 @@ export function frameLayout(look: Look, canvas: Size, ratio: number) {
   };
 }
 
-/**
- * The export of a `video` in `look`: the recording at its full size, centred in a frame sized so the
- * padding, corners and shadow come out as they look on the stage. In pixels, and even, as H.264
- * needs.
- */
-export function exportLayout(look: Look, video: Size): ExportLayout {
+export function exportLayout(
+  look: Look,
+  video: Size,
+  zoom: number[],
+): ExportLayout {
   const ratio = video.width / video.height;
-  // Padding is measured on a 1920-wide frame, so it grows with the frame. This is the frame whose
-  // padding leaves the recording exactly its own size, the way frameLayout pads the stage.
+  // The frame whose 1920-relative padding leaves the recording exactly its own size, as frameLayout does.
   const paddingShare = ((2 * look.padding) / 1920) * Math.max(1, ratio);
   const width = even(video.width / (1 - paddingShare));
   const height = even(width / ratio);
@@ -155,6 +149,7 @@ export function exportLayout(look: Look, video: Size): ExportLayout {
       opacity: look.shadowOpacity / 100,
     },
     background: fillGradient(look.fill),
+    zoom,
   };
 }
 
@@ -169,9 +164,7 @@ export type Region = {
   kind: RegionKind;
   startMs: number;
   endMs: number;
-  /** How far a zoom zooms in, or how fast a speed region plays. */
   amount: number;
-  /** Where a zoom zooms in, as fractions of the video. The middle when left out. */
   centre?: Point;
 };
 
@@ -183,10 +176,29 @@ export const REGIONS: Record<
   speed: { label: "Speed", hint: "Speed up or slow down", key: "S", amount: 2 },
 };
 
-/**
- * Adds a region starting at the playhead. It runs up to two seconds, stopping early at the next
- * region or the end. Nothing is added when the playhead is inside a region or there's no room.
- */
+const MIN_REGION_MS = 250;
+
+export type RegionDrag = "move" | "start" | "end";
+
+export type Project = { look: Look; regions: Region[] };
+
+export const NEW_PROJECT: Project = { look: DEFAULT_LOOK, regions: [] };
+
+export function editRegions(
+  project: Project,
+  edit: (regions: Region[]) => Region[],
+): Project {
+  const regions = edit(project.regions);
+  return regions === project.regions ? project : { ...project, regions };
+}
+
+export function changeLook(project: Project, change: Partial<Look>): Project {
+  const look = { ...project.look, ...change };
+  return JSON.stringify(look) === JSON.stringify(project.look)
+    ? project
+    : { ...project, look };
+}
+
 export function addRegion(
   regions: Region[],
   kind: RegionKind,
@@ -201,8 +213,7 @@ export function addRegion(
     durationMs,
   );
   const endMs = Math.min(atMs + 2000, nextStart);
-  // Shorter than a quarter second, a region is too small to see or grab.
-  if (endMs - atMs < 250) return regions;
+  if (endMs - atMs < MIN_REGION_MS) return regions;
   const id = Math.max(0, ...regions.map((region) => region.id)) + 1;
   const added = {
     id,
@@ -214,7 +225,54 @@ export function addRegion(
   return [...regions, added].sort((a, b) => a.startMs - b.startMs);
 }
 
-/** The zoom or speed at `ms`: the region's amount there, or 1 outside every region. */
+export function dragRegion(
+  regions: Region[],
+  id: number,
+  drag: RegionDrag,
+  deltaMs: number,
+  durationMs: number,
+): Region[] {
+  const region = regions.find((region) => region.id === id);
+  if (!region) return regions;
+  const others = regions.filter((other) => other !== region);
+  const floor = Math.max(
+    0,
+    ...others
+      .filter((other) => other.endMs <= region.startMs)
+      .map((other) => other.endMs),
+  );
+  const ceiling = Math.min(
+    durationMs,
+    ...others
+      .filter((other) => other.startMs >= region.endMs)
+      .map((other) => other.startMs),
+  );
+  let { startMs, endMs } = region;
+  if (drag === "move") {
+    const shift = clamp(deltaMs, floor - startMs, ceiling - endMs);
+    startMs += shift;
+    endMs += shift;
+  } else if (drag === "start") {
+    startMs = clamp(startMs + deltaMs, floor, endMs - MIN_REGION_MS);
+  } else {
+    endMs = clamp(endMs + deltaMs, startMs + MIN_REGION_MS, ceiling);
+  }
+  if (startMs === region.startMs && endMs === region.endMs) return regions;
+  return regions.map((other) =>
+    other === region ? { ...region, startMs, endMs } : other,
+  );
+}
+
+export function removeRegion(regions: Region[], id: number): Region[] {
+  return regions.some((region) => region.id === id)
+    ? regions.filter((region) => region.id !== id)
+    : regions;
+}
+
+export function removeRegionAt(regions: Region[], ms: number): Region[] {
+  return regions.filter((region) => !covers(region, ms));
+}
+
 export function amountAt(
   regions: Region[],
   kind: RegionKind,
@@ -226,17 +284,12 @@ export function amountAt(
   return region?.amount ?? 1;
 }
 
-/** The kind of region a key adds, like Z for zoom, in either case. */
 export function regionKindForKey(key: string): RegionKind | undefined {
   return (Object.keys(REGIONS) as RegionKind[]).find(
     (kind) => REGIONS[kind].key.toLowerCase() === key.toLowerCase(),
   );
 }
 
-/**
- * Everything needed to draw the output at `outputMs`, the time after speed regions: the look's
- * layout, the zoom and the source time to show. Export draws each frame from it.
- */
 export function frameAt(
   scene: { look: Look; regions: Region[]; canvas: Size; ratio: number },
   outputMs: number,
@@ -248,16 +301,10 @@ export function frameAt(
   };
 }
 
-/** How a zoom eases in and out. The stage's CSS transition and `zoomAt` share it. */
 export const ZOOM_EASE = { ms: 600, curve: [0.32, 0.72, 0, 1] } as const;
 
 const MIDDLE = { x: 0.5, y: 0.5 };
 
-/**
- * The zoom at an output time. It eases toward `target` from wherever it was at the last region
- * edge, over ZOOM_EASE in output time, the way the stage's CSS transition does as it plays. It
- * zooms on the latest zoom region's centre and keeps it while easing back out.
- */
 export function zoomAt(regions: Region[], outputMs: number) {
   let from = 1;
   let target = 1;
@@ -281,7 +328,14 @@ export function zoomAt(regions: Region[], outputMs: number) {
   return { scale: scaleAt(outputMs), target, centre };
 }
 
-/** The output time at a source time. A speed region plays `amount` times as fast, so it's shorter. */
+export function zoomTrack(regions: Region[], durationMs: number): number[] {
+  const frames = Math.ceil(durationMs / FRAME_MS) + 1;
+  return Array.from(
+    { length: frames },
+    (_, frame) => zoomAt(regions, frame * FRAME_MS).scale,
+  );
+}
+
 export function outputAt(regions: Region[], sourceMs: number): number {
   return speedRegions(regions).reduce(
     (ms, { startMs, endMs, amount }) =>
@@ -290,7 +344,6 @@ export function outputAt(regions: Region[], sourceMs: number): number {
   );
 }
 
-/** The source time at an output time, undoing `outputAt`. */
 export function sourceAt(regions: Region[], outputMs: number): number {
   return speedRegions(regions).reduce((ms, { startMs, endMs, amount }) => {
     const playedMs = outputMs - outputAt(regions, startMs);
@@ -298,7 +351,6 @@ export function sourceAt(regions: Region[], outputMs: number): number {
   }, outputMs);
 }
 
-/** Labelled marks at a round step that fits about ten labels, with a short mark between each. */
 export function rulerMarks(durationMs: number) {
   const durationS = durationMs / 1000;
   const stepS =
@@ -313,7 +365,6 @@ export function rulerMarks(durationMs: number) {
   return marks;
 }
 
-/** "0:04" on the ruler. */
 export function rulerLabel(ms: number): string {
   const totalSeconds = Math.round(ms / 1000);
   return `${Math.floor(totalSeconds / 60)}:${twoDigits(totalSeconds % 60)}`;
@@ -327,7 +378,6 @@ function speedRegions(regions: Region[]): Region[] {
   return regions.filter(({ kind }) => kind === "speed");
 }
 
-/** ZOOM_EASE's curve, from 0 to 1 as `progress` goes from 0 to 1, solved like CSS's cubic-bezier. */
 function ease(progress: number): number {
   if (progress >= 1) return 1;
   const [x1, y1, x2, y2] = ZOOM_EASE.curve;

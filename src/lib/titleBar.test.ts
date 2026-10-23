@@ -1,11 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import conf from "../../src-tauri/tauri.conf.json";
 
-/**
- * Where AppKit draws the traffic lights for Tauri's `trafficLightPosition`, measured from window
- * captures (macOS 26, 2026-10-19; y 20 and y 34 both fit): each circle is 14pt, the circles are
- * 23pt apart, the first starts at `x`, and their top sits 9pt above `y`.
- */
+// Measured from macOS 26 window captures: 14pt circles, 23pt apart, tops 9pt above `y`.
 const CIRCLE = 14;
 const LIGHTS_WIDTH = 23 * 2 + CIRCLE;
 const TOP_ABOVE_Y = 9;

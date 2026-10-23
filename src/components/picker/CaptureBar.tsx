@@ -4,10 +4,6 @@ import Pill from "@/components/Pill";
 import type { Rect, Size } from "@/lib/geometry";
 import { useGlass } from "@/hooks/picker/usePicker";
 
-/**
- * The bar for every capture mode. It sits on Rust's frosted glass, so the apps behind it blur.
- * Compact drops the name and size so the bar fits small windows.
- */
 export default function CaptureBar({
   icon,
   title,
@@ -16,7 +12,6 @@ export default function CaptureBar({
   isCompact = false,
   onRecord,
 }: {
-  /** A `CaptureTile`. */
   icon: ReactNode;
   title: string;
   size: Size;
@@ -45,12 +40,10 @@ export default function CaptureBar({
   );
 }
 
-/** What's being recorded, as a 40px tile: a window's app icon, or an icon for the mode. */
 export function CaptureTile({
   src,
   children,
 }: {
-  /** An app's icon, which fills the tile. */
   src?: string | null;
   children?: ReactNode;
 }) {
@@ -62,7 +55,7 @@ export function CaptureTile({
   );
 }
 
-/** Dims everything around `rect`. Plain rectangles, because a huge box-shadow doesn't render in the overlay. */
+// Plain rectangles, because a huge box-shadow doesn't render in the overlay.
 export function DimOutside({ rect }: { rect: Rect }) {
   const right = rect.x + rect.width;
   const bottom = rect.y + rect.height;

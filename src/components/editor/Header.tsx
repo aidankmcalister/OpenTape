@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 
-/** The strip you drag the window by, with the recording's name, and `children` at the right. */
 export default function Header({
   name,
   children,

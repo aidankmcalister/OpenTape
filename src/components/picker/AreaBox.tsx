@@ -29,7 +29,6 @@ const HANDLES: { handle: Handle; left: string; top: string; cursor: string }[] =
     { handle: "w", left: "0%", top: "50%", cursor: "ew-resize" },
   ];
 
-/** While it records, the box stays as a frame that dims everything else, with no handles or bar. */
 export default function AreaBox({
   display,
   hasBox,
@@ -99,17 +98,14 @@ export default function AreaBox({
 }
 
 const FREE = "free";
-/** Room between the chip and its menu, and between the menu and the menu bar. */
 const MENU_GAP = 8;
 
-/** The Area's ratio chip and the menu it opens. The icon turns orange while a ratio is locked. */
 function RatioChip({
   ratio,
   safeTop,
   onChoose,
 }: {
   ratio: Ratio | null;
-  /** The menu opens below the chip instead when it would reach under the menu bar or notch. */
   safeTop: number;
   onChoose: (ratio: Ratio | null) => void;
 }) {
@@ -143,7 +139,6 @@ function RatioChip({
           {RATIOS.map((choice) => (
             <DropdownMenuRadioItem key={choice.label} value={choice.label}>
               <span className="grid size-4 place-items-center text-muted-foreground">
-                {/* A small outline in the ratio's own proportions. */}
                 <span
                   className="rounded-[2px] border-[1.5px] border-current"
                   style={{

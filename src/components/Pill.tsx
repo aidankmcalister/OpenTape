@@ -5,7 +5,6 @@ import type { Animation } from "@/lib/bindings";
 import type { Size } from "@/lib/geometry";
 import { cn } from "@/lib/utils";
 
-/** The glass bar every capture control sits on. */
 export default function Pill({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
@@ -27,7 +26,6 @@ export function PillDivider() {
   );
 }
 
-/** A line of text on a pill, with an icon before it: what's going on, like "Saving…". */
 export function PillMessage({
   icon,
   children,
@@ -43,11 +41,7 @@ export function PillMessage({
   );
 }
 
-/**
- * A pill that morphs between states of different widths. Each state keeps its own GPU layer the
- * whole time, so WebKit never redraws its text mid-animation and snaps it back, which reads as a
- * shake.
- */
+// Each state keeps its own GPU layer the whole time, or WebKit redraws its text mid-animation and it shakes.
 export function MorphPill<Key extends string>({
   active,
   layers,
@@ -58,7 +52,6 @@ export function MorphPill<Key extends string>({
   ...props
 }: {
   active: Key;
-  /** Every state, mounted at once so each can be measured. */
   layers: Record<Key, ReactNode>;
   onShape?: (size: Size, animation: Animation | null) => void;
   layerClassName?: string;

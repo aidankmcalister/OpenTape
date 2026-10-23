@@ -5,13 +5,13 @@ const PRESS = {
   key: "",
   altKey: false,
   metaKey: false,
+  shiftKey: false,
   ctrlKey: false,
   repeat: false,
 };
 
-/** A press of a binding's key, with ⌥ if it needs it. */
-function pressOf({ key, meta = false, alt = false }: Binding) {
-  return { ...PRESS, key, metaKey: meta, altKey: alt };
+function pressOf({ key, meta = false, shift = false, alt = false }: Binding) {
+  return { ...PRESS, key, metaKey: meta, shiftKey: shift, altKey: alt };
 }
 
 const BINDINGS = KEYMAP.map((binding) => [binding.action, binding] as const);
@@ -19,8 +19,12 @@ const BINDINGS = KEYMAP.map((binding) => [binding.action, binding] as const);
 describe("keymap", () => {
   test.each(BINDINGS)("%s runs from its key", (action, binding) => {
     expect(actionFor(pressOf(binding))).toBe(action);
-    if (/^[a-z]$/.test(binding.key)) {
-      const shifted = { ...pressOf(binding), key: binding.key.toUpperCase() };
+    if (/^[a-z]$/.test(binding.key) && binding.shift === undefined) {
+      const shifted = {
+        ...pressOf(binding),
+        key: binding.key.toUpperCase(),
+        shiftKey: true,
+      };
       expect(actionFor(shifted)).toBe(action);
     }
   });
@@ -45,7 +49,8 @@ describe("keymap", () => {
 
   test("no two bindings share a key", () => {
     const keys = KEYMAP.map(
-      ({ key, alt = false }) => `${alt ? "⌥" : ""}${key.toLowerCase()}`,
+      ({ key, meta, shift, alt }) =>
+        `${meta ? "⌘" : ""}${shift ? "⇧" : ""}${alt ? "⌥" : ""}${key.toLowerCase()}`,
     );
     expect(new Set(keys).size).toBe(keys.length);
   });

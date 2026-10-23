@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTauriEvent } from "@/hooks/useTauri";
-import { exportLayout, type Look } from "@/lib/editor/edits";
+import {
+  exportLayout,
+  zoomTrack,
+  type Look,
+  type Region,
+} from "@/lib/editor/edits";
 import type { Size } from "@/lib/geometry";
+import type { Playback } from "./usePlayback";
 
-/** Where an export is: not started, running (with how far, from 0 to 1), done (with the file) or failed. */
 export type ExportState =
   | { stage: "idle" }
   | { stage: "exporting"; progress: number }
@@ -13,8 +18,11 @@ export type ExportState =
 
 const SHOWS_FOR_MS = { done: 4000, failed: 5000 };
 
-/** Exports the recording in `look` to Downloads, and follows how far it's got. */
-export function useExport(look: Look, videoSize: Size | null) {
+export function useExport(
+  look: Look,
+  regions: Region[],
+  { videoSize, durationMs }: Pick<Playback, "videoSize" | "durationMs">,
+) {
   const [state, setState] = useState<ExportState>({ stage: "idle" });
 
   useTauriEvent(
@@ -41,7 +49,8 @@ export function useExport(look: Look, videoSize: Size | null) {
   async function start(size: Size) {
     setState({ stage: "exporting", progress: 0 });
     try {
-      const layout = exportLayout(look, size);
+      const zoom = zoomTrack(regions, durationMs);
+      const layout = exportLayout(look, size, zoom);
       const path = await invoke<string>("export_recording", { layout });
       setState({ stage: "done", path });
     } catch (error) {
@@ -52,7 +61,6 @@ export function useExport(look: Look, videoSize: Size | null) {
   const canStart = videoSize !== null && state.stage !== "exporting";
   return {
     state,
-    /** Null while there's nothing to export yet, or an export is already running. */
     start: canStart ? () => void start(videoSize) : null,
     showInFinder: () => {
       if (state.stage !== "done") return;

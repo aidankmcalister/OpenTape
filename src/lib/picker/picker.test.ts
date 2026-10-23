@@ -80,7 +80,7 @@ describe("area", () => {
     expect(fitRatio(nearEdge, 1, DISPLAY)).toEqual(rect(80, 0, 480, 480));
   });
 
-  // The same cases as Rust's CaptureSize::of test, so the Area box shows what gets recorded.
+  // Same cases as Rust's CaptureSize::of test.
   test.each([
     [920.5, 2, 1840],
     [333, 1.5, 498],
@@ -124,7 +124,6 @@ describe("pickerView", () => {
     scale: 2,
     safeTop: 0,
   };
-  /** `displayId` is the display Rust says holds the window's center. */
   const windowAt = (
     id: number,
     app: string,

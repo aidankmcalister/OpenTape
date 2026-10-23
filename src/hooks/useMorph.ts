@@ -2,19 +2,13 @@ import { useLayoutEffect, useRef, useState } from "react";
 import type { Animation } from "@/lib/bindings";
 import type { Size } from "@/lib/geometry";
 
-/** The one place the morph's timing lives: pills use it, and Rust's glass follows it. */
 const MORPH: Animation = { durationMs: 400, ease: [0.32, 0.72, 0, 1] };
 
-/**
- * Every layer stays mounted at its natural size, and the pill animates to the active one's.
- * `onShape` hears each new size with the animation to follow, or null for the first.
- */
 export function useMorph<Key extends string>(
   active: Key,
   onShape?: (size: Size, animation: Animation | null) => void,
 ) {
   const layers = useRef(new Map<Key, HTMLElement>());
-  /** The size last sent to `onShape`, so an unchanged one isn't sent again. */
   const shaped = useRef<Size | null>(null);
   const shapeListener = useRef(onShape);
   const [pillSize, setPillSize] = useState<Size | null>(null);
@@ -22,7 +16,7 @@ export function useMorph<Key extends string>(
     shapeListener.current = onShape;
   });
 
-  // A remount, like StrictMode's, shapes afresh, so its first shape still isn't animated.
+  // A remount, like StrictMode's, starts over so its first shape isn't animated.
   useLayoutEffect(
     () => () => {
       shaped.current = null;
@@ -56,8 +50,7 @@ export function useMorph<Key extends string>(
     pillStyle: pillSize
       ? {
           ...pillSize,
-          // Opacity too, so a pill can fade itself: fading a wrapper instead would cut its
-          // backdrop blur off from what's behind until the fade ends.
+          // Opacity here, not on a wrapper: fading a wrapper cuts the backdrop blur off until the fade ends.
           transition: `width ${durationMs}ms cubic-bezier(${ease.join(",")}), opacity 200ms ease-out`,
         }
       : undefined,

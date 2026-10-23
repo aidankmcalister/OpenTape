@@ -16,7 +16,6 @@ import { cn } from "@/lib/utils";
 import { loopProgress } from "@/lib/preview/preview";
 import { useRecordingPreview } from "@/hooks/preview/useRecordingPreview";
 
-/** The recording, playing on a loop, with its length and a close button. Hover shows the actions. */
 export default function RecordingPreview() {
   const preview = useRecordingPreview();
   if (!preview.videoSrc) return null;
@@ -50,7 +49,6 @@ export default function RecordingPreview() {
         </Button>
       </div>
       <LoopProgress clock={preview.clock} durationMs={durationMs} />
-      {/* The actions, or what Save or Copy is doing. The clip behind is blurred, so it reads on any recording. */}
       <div
         className={cn(
           "absolute inset-x-0 bottom-5 flex justify-center",
@@ -135,7 +133,6 @@ export default function RecordingPreview() {
   );
 }
 
-/** Follows the clip every frame on its own, so the rest of the preview doesn't redraw with it. */
 function LoopProgress({
   clock,
   durationMs,
@@ -156,7 +153,6 @@ function LoopProgress({
   );
 }
 
-/** A round icon button with its name and key in a tooltip, opened by Rust's hover. */
 function Action({
   name,
   label,

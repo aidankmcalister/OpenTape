@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Size } from "@/lib/geometry";
 
-/** An element's size, kept up to date as it resizes. Put `ref` on the element. */
 export function useElementSize<T extends HTMLElement>() {
   const ref = useRef<T>(null);
   const [size, setSize] = useState<Size>({ width: 0, height: 0 });

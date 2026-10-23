@@ -1,13 +1,10 @@
-//! Points and rectangles, and the conversions between them. Pages, ScreenCaptureKit and the
-//! cursor measure from the top-left; AppKit windows, views and screens from the bottom-left.
+//! Pages, ScreenCaptureKit and the cursor measure from the top-left; AppKit from the bottom-left.
 
 use cidre::cg;
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// A spot in points. The picker's cursor is in global points, top-left origin, like the window
-/// and display frames.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, TS)]
 #[ts(export, export_to = "bindings.ts")]
 pub(crate) struct Point {
@@ -15,7 +12,6 @@ pub(crate) struct Point {
     pub y: f64,
 }
 
-/// A rectangle in points, as the frontend sends and receives it.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "bindings.ts")]
 pub(crate) struct Frame {
@@ -26,7 +22,6 @@ pub(crate) struct Frame {
 }
 
 impl Frame {
-    /// Whether `point` is inside. Both must be measured from the same corner.
     pub(crate) fn contains(self, point: Point) -> bool {
         point.x >= self.x
             && point.x < self.x + self.width
@@ -75,8 +70,6 @@ impl From<NSPoint> for Point {
     }
 }
 
-/// Flips a rectangle between top-left and bottom-left measuring, inside a space `height` tall.
-/// The same sum works both ways.
 pub(crate) fn flip(rect: NSRect, height: f64) -> NSRect {
     NSRect::new(
         NSPoint::new(rect.origin.x, height - rect.origin.y - rect.size.height),
@@ -84,8 +77,6 @@ pub(crate) fn flip(rect: NSRect, height: f64) -> NSRect {
     )
 }
 
-/// A spot in a window (bottom-left origin) as a spot on its page (top-left origin), if it's
-/// inside the window.
 pub(crate) fn page_point(window_point: NSPoint, window_size: NSSize) -> Option<Point> {
     let is_inside = (0.0..window_size.width).contains(&window_point.x)
         && (0.0..window_size.height).contains(&window_point.y);
@@ -95,7 +86,6 @@ pub(crate) fn page_point(window_point: NSPoint, window_size: NSSize) -> Option<P
     })
 }
 
-/// `frame` resized to `size`, keeping its bottom middle in place.
 pub(crate) fn keep_bottom_center(frame: NSRect, size: NSSize) -> NSRect {
     NSRect::new(
         NSPoint::new(
@@ -106,7 +96,6 @@ pub(crate) fn keep_bottom_center(frame: NSRect, size: NSSize) -> NSRect {
     )
 }
 
-/// Global screen rectangle to one relative to the display, which `src_rect` expects.
 pub(crate) fn to_display_relative(rect: cg::Rect, display_frame: cg::Rect) -> cg::Rect {
     let mut relative = rect;
     relative.origin.x -= display_frame.origin.x;
@@ -114,7 +103,6 @@ pub(crate) fn to_display_relative(rect: cg::Rect, display_frame: cg::Rect) -> cg
     relative
 }
 
-/// Display-relative rectangle back to global screen points.
 pub(crate) fn to_global(rect: cg::Rect, display_frame: cg::Rect) -> cg::Rect {
     let mut global = rect;
     global.origin.x += display_frame.origin.x;

@@ -1,8 +1,3 @@
-//! The current recording: the one you've just made. It waits in app storage while the preview,
-//! then the editor, shows it. This module names it, keeps it, saves, copies, edits and closes it,
-//! and each of those steps decides which window shows: the bar while there's none, then the
-//! preview, then the editor. Closing deletes the copy in app storage, saved or not.
-
 use std::{
     path::{Path, PathBuf},
     process::Command,
@@ -20,12 +15,8 @@ use crate::macos::{self, Alert, Choice};
 use crate::util::{CmdResult, lock, run_blocking};
 use crate::windows::{bar, editor, preview};
 
-/// A recording's folder is named for when it started, like "2026-10-16 07.41.28", and that's
-/// the recording's name too.
 const NAME_FORMAT: &str = "%Y-%m-%d %H.%M.%S";
 
-/// The windows that take turns: the bar while there's no recording, then the preview, then the
-/// editor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Window {
     Bar,
@@ -33,30 +24,23 @@ pub(crate) enum Window {
     Editor,
 }
 
-/// The recording as the preview and the editor get it, or `null` once it's gone from them.
 #[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "bindings.ts")]
 pub(crate) struct ShownRecording {
     video_path: String,
-    /// When it started, like "2026-10-16 07.41.28".
     name: String,
 }
 
-/// The windows and the alert the current recording drives. `AppHandle` is the real one; the
-/// tests use a fake that writes down what happened.
 pub(crate) trait Shell {
-    /// Waits for the answer, so it's never called on the main thread.
+    /// Blocks for the answer, so never call it on the main thread.
     fn ask(&self, alert: Alert) -> Choice;
-    /// Hides `from` and shows `to`, handing `to`'s page the recording, if there is one.
     fn switch(&self, from: Window, to: Window, recording: Option<&ShownRecording>) -> Result<()>;
 }
 
 pub(crate) struct Folders {
-    /// App storage, where recordings wait until they're closed.
     pub storage: PathBuf,
     pub downloads: PathBuf,
-    /// Where Copy puts the `.mp4` it hands the clipboard.
     pub copies: PathBuf,
 }
 
@@ -69,7 +53,6 @@ struct Kept {
     video_path: PathBuf,
     name: String,
     saved_to: Option<PathBuf>,
-    /// The window showing it.
     window: Window,
 }
 
@@ -90,15 +73,11 @@ impl CurrentRecording {
         }
     }
 
-    /// A folder in app storage for a recording starting now.
     pub(crate) fn new_folder(&self) -> PathBuf {
         let name = chrono::Local::now().format(NAME_FORMAT).to_string();
         self.folders.storage.join(name)
     }
 
-    /// Keeps a finished recording and shows it in the preview in place of the bar. Refused while
-    /// another is open, so that one is never lost; the app can't get there anyway, because the
-    /// bar, where recordings start, stays hidden until it closes.
     pub(crate) fn keep(&self, shell: &impl Shell, video_path: PathBuf) -> Result<()> {
         let shown = {
             let mut kept = lock(&self.kept);
@@ -120,7 +99,6 @@ impl CurrentRecording {
         shell.switch(Window::Bar, Window::Preview, Some(&shown))
     }
 
-    /// Moves the recording from the preview into the editor.
     pub(crate) fn edit(&self, shell: &impl Shell) -> Result<()> {
         let shown = {
             let mut kept = lock(&self.kept);
@@ -135,14 +113,11 @@ impl CurrentRecording {
         lock(&self.kept).as_ref().map(Kept::shown)
     }
 
-    /// Where Save put it, while that file is still there.
     fn saved_to(&self) -> Option<PathBuf> {
         let saved_to = lock(&self.kept).as_ref()?.saved_to.clone()?;
         saved_to.exists().then_some(saved_to)
     }
 
-    /// The video, and what its exports are called, like macOS names its own screen recordings:
-    /// "Screen Recording 2026-10-16 at 07.41.28".
     fn video(&self) -> Result<(PathBuf, String)> {
         let kept = lock(&self.kept);
         let kept = kept.as_ref().context("there's no recording")?;
@@ -150,8 +125,6 @@ impl CurrentRecording {
         Ok((kept.video_path.clone(), export_name))
     }
 
-    /// Exports it to Downloads as an `.mp4`, unless it's already saved, and returns where.
-    /// Blocks until it's done.
     fn save(&self) -> Result<PathBuf> {
         if let Some(saved_to) = self.saved_to() {
             return Ok(saved_to);
@@ -165,8 +138,6 @@ impl CurrentRecording {
         Ok(output)
     }
 
-    /// Exports it in `layout` to Downloads as an `.mp4`, named the way Save names its files, and
-    /// returns where. Blocks until it's done, calling `progress` with 0 to 1 on the way.
     fn export(&self, layout: &ExportLayout, progress: impl Fn(f32)) -> Result<PathBuf> {
         let (video, export_name) = self.video()?;
         let output = free_path(&self.folders.downloads, &export_name, Path::exists);
@@ -174,7 +145,6 @@ impl CurrentRecording {
         Ok(output)
     }
 
-    /// Exports an `.mp4` for the clipboard, and returns where. Blocks until it's done.
     fn export_copy(&self) -> Result<PathBuf> {
         let (video, export_name) = self.video()?;
         std::fs::create_dir_all(&self.folders.copies)?;
@@ -183,9 +153,7 @@ impl CurrentRecording {
         Ok(output)
     }
 
-    /// Closes the window showing it and brings the bar back, then deletes the copy in app
-    /// storage. An unsaved recording asks first, and Cancel keeps it. Waits for the answer, so
-    /// it's never called on the main thread.
+    /// Never call on the main thread: it may wait on an alert.
     pub(crate) fn close(&self, shell: &impl Shell) -> Result<()> {
         let Some(window) = lock(&self.kept).as_ref().map(|kept| kept.window) else {
             return Ok(());
@@ -193,8 +161,7 @@ impl CurrentRecording {
         if self.saved_to().is_none() {
             match shell.ask(close_alert(window)) {
                 Choice::Cancel => return Ok(()),
-                // The preview's first answer is Save and close. The editor can't export yet, so
-                // its only answer deletes.
+                // In the editor, First is "Delete and close".
                 Choice::First if window == Window::Preview => {
                     self.save()?;
                 }
@@ -211,7 +178,6 @@ impl CurrentRecording {
     }
 }
 
-/// What closing an unsaved recording asks, by the window it's closed from.
 fn close_alert(window: Window) -> Alert {
     if window == Window::Editor {
         Alert {
@@ -230,8 +196,6 @@ fn close_alert(window: Window) -> Alert {
     }
 }
 
-/// Turns the recording into an `.mp4` with macOS's own `avconvert`. It's a passthrough: the
-/// video is copied as is, so it's quick and loses nothing.
 fn to_mp4(video: &Path, output: &Path) -> Result<()> {
     let avconvert = Command::new("/usr/bin/avconvert")
         .args(["--preset", "PresetPassthrough", "--replace", "--source"])
@@ -247,12 +211,10 @@ fn to_mp4(video: &Path, output: &Path) -> Result<()> {
     Ok(())
 }
 
-/// `name.mp4`, with characters a file name can't hold swapped for dashes.
 fn mp4_name(name: &str) -> String {
     format!("{}.mp4", name.replace(['/', ':'], "-"))
 }
 
-/// `name.mp4` in `folder`, or `name 2.mp4`, `name 3.mp4` and so on when it's taken, like Finder.
 fn free_path(folder: &Path, name: &str, is_taken: impl Fn(&Path) -> bool) -> PathBuf {
     let mut path = folder.join(mp4_name(name));
     let mut copy_number = 2;
@@ -274,8 +236,6 @@ impl Shell for AppHandle {
             Window::Preview => preview::WINDOW.hide(self),
             Window::Editor => editor::hide(self),
         }
-        // Both fail only once the page is gone, and then there's no one to tell. The bar's page
-        // doesn't listen.
         let _ = PageEvent::CurrentRecording(None).send_to(self, label(from));
         let _ = PageEvent::CurrentRecording(recording.cloned()).send_to(self, label(to));
         match to {
@@ -295,20 +255,16 @@ fn label(window: Window) -> &'static str {
     }
 }
 
-/// Saves the recording to Downloads as an `.mp4`, and returns where.
 #[tauri::command]
 pub(crate) async fn save_recording(app: AppHandle) -> CmdResult<String> {
     let path = run_blocking(move || app.state::<CurrentRecording>().save()).await?;
     Ok(path.display().to_string())
 }
 
-/// Exports the recording in `layout`, the look as the page lays it out, to Downloads as an
-/// `.mp4`, and returns where. The editor hears `export-progress` on the way.
 #[tauri::command]
 pub(crate) async fn export_recording(app: AppHandle, layout: ExportLayout) -> CmdResult<String> {
     let path = run_blocking(move || {
         app.state::<CurrentRecording>().export(&layout, |progress| {
-            // A missed update only leaves the progress behind; the export carries on.
             let _ = PageEvent::ExportProgress(progress).send_to(&app, editor::LABEL);
         })
     })
@@ -316,7 +272,6 @@ pub(crate) async fn export_recording(app: AppHandle, layout: ExportLayout) -> Cm
     Ok(path.display().to_string())
 }
 
-/// Puts the recording on the clipboard as an `.mp4`.
 #[tauri::command]
 pub(crate) async fn copy_recording(app: AppHandle) -> CmdResult {
     let handle = app.clone();
@@ -325,7 +280,6 @@ pub(crate) async fn copy_recording(app: AppHandle) -> CmdResult {
     Ok(())
 }
 
-/// Opens Finder with the saved `.mp4` selected. Async, so the main thread doesn't wait for Finder.
 #[tauri::command]
 pub(crate) async fn show_saved_in_finder(current: State<'_, CurrentRecording>) -> CmdResult {
     let saved_to = current.saved_to().context("the recording isn't saved")?;
@@ -333,7 +287,6 @@ pub(crate) async fn show_saved_in_finder(current: State<'_, CurrentRecording>) -
     Ok(())
 }
 
-/// Opens Finder with an export selected, from the path `export_recording` returned.
 #[tauri::command]
 pub(crate) async fn show_export_in_finder(path: String) -> CmdResult {
     run_blocking(move || reveal(Path::new(&path))).await?;
@@ -351,7 +304,6 @@ fn reveal(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// The preview's ×. The editor's close button closes the same way.
 #[tauri::command]
 pub(crate) async fn close_recording(app: AppHandle) -> CmdResult {
     run_blocking(move || app.state::<CurrentRecording>().close(&app)).await?;
@@ -364,7 +316,6 @@ pub(crate) fn edit_recording(app: AppHandle, current: State<'_, CurrentRecording
     Ok(())
 }
 
-/// The recording, for an editor page that loads after it was handed over.
 #[tauri::command]
 pub(crate) fn editor_recording(current: State<'_, CurrentRecording>) -> Option<ShownRecording> {
     current.shown()
@@ -376,7 +327,6 @@ mod tests {
 
     use super::*;
 
-    /// Answers every alert with `answer`, and writes down the alerts and the window switches.
     struct FakeShell {
         answer: Choice,
         asked: RefCell<Vec<&'static str>>,
@@ -409,7 +359,6 @@ mod tests {
         }
     }
 
-    /// A current recording with a temp folder as app storage, keeping one finished recording.
     fn keeping_one(test: &str, shell: &FakeShell) -> (CurrentRecording, PathBuf) {
         let root = std::env::temp_dir().join(format!("screen-recorder-test-{test}"));
         let _ = std::fs::remove_dir_all(&root);
@@ -468,7 +417,6 @@ mod tests {
 
     #[test]
     fn closing_saved_should_skip_the_alert_and_delete() {
-        // Cancel would keep it, if it were asked.
         let shell = FakeShell::answering(Choice::Cancel);
         let (current, folder) = keeping_one("saved", &shell);
         let saved_to = folder.with_file_name("saved.mp4");

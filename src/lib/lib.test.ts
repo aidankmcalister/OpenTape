@@ -226,7 +226,6 @@ describe("oneAtATime", () => {
 });
 
 describe("latestWins", () => {
-  // Plays the first ask's answer and the events in the order they reach the page.
   function play(arrivals: ["answer" | "event", string][]) {
     const order = latestWins();
     const shown: string[] = [];
@@ -254,7 +253,6 @@ describe("latestWins", () => {
 });
 
 describe("seekVideo", () => {
-  /** A video whose seeks land only when the test says so. */
   class FakeVideo extends EventTarget {
     seeking = false;
     started: number[] = [];

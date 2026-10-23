@@ -1,6 +1,4 @@
-//! What can be picked: the displays and the on-screen windows, with their frames in global
-//! points (top-left origin), the same space as the cursor position. Also the picker session
-//! built from them, which is sent whole to the overlays whenever it changes.
+//! Frames are in global points with a top-left origin, the same space as the cursor.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -27,13 +25,10 @@ use crate::windows::SafeTop;
 #[ts(export, export_to = "bindings.ts")]
 pub(super) struct DisplayInfo {
     pub id: u32,
-    /// "Display 1", "Display 2", in ScreenCaptureKit's order.
     pub name: String,
     pub frame: Frame,
     pub size: CaptureSize,
-    /// Pixels per point. The Area box uses it to show its size in pixels while you drag it.
     pub scale: f64,
-    /// How far down from the top things stay clear of the menu bar and the notch, in points.
     pub safe_top: f64,
 }
 
@@ -46,18 +41,14 @@ pub(super) struct WindowInfo {
     pub app: String,
     pub frame: Frame,
     pub size: CaptureSize,
-    /// The display holding the window's center: where its capture bar shows when it's pinned,
-    /// and whose overlay frames its recording. `None` when the center is off every display.
     pub display_id: Option<u32>,
 }
 
-/// Displays, and windows ordered front to back so the first hit under the cursor is the visible one.
 #[derive(Debug, Clone, Serialize, TS)]
 #[ts(export, export_to = "bindings.ts")]
 pub(super) struct Sources {
     pub displays: Vec<DisplayInfo>,
     pub windows: Vec<WindowInfo>,
-    /// One icon per app, by process ID, so apps with many windows send it once.
     pub icons: HashMap<u32, String>,
 }
 
@@ -76,13 +67,11 @@ pub(crate) enum Mode {
 pub(crate) struct Session {
     pub(super) mode: Mode,
     pub(super) sources: Sources,
-    /// A window chosen with Tab. It wins over the cursor until the cursor moves.
     pub(super) pinned_window_id: Option<u32>,
     pub(super) area_display_id: Option<u32>,
 }
 
 impl Session {
-    /// The Area box starts on the display you're pointing at.
     pub(super) fn new(mode: Mode, sources: Sources, cursor: Option<Point>) -> Self {
         let area_display_id = cursor
             .and_then(|cursor| display_under(&sources.displays, cursor))
@@ -96,7 +85,6 @@ impl Session {
     }
 }
 
-/// Everything an overlay needs to draw its first frame.
 #[derive(Debug, Clone, Serialize, TS)]
 #[ts(export, export_to = "bindings.ts")]
 pub(crate) struct Setup {
@@ -104,15 +92,12 @@ pub(crate) struct Setup {
     pub(super) cursor: Option<Point>,
 }
 
-/// Which overlay frames a recording, and for a window, where the window sits on that display.
 #[derive(Debug, PartialEq)]
 pub(super) struct Framing {
     pub(super) display_id: u32,
     pub(super) window: Option<Frame>,
 }
 
-/// App icons already drawn, by process ID. Drawing every icon again made each open of the picker
-/// slow, so only apps new since the last list draw theirs, and apps that quit drop out.
 static ICONS: LazyLock<Mutex<HashMap<u32, String>>> = LazyLock::new(Mutex::default);
 
 pub(super) fn list() -> Result<Sources> {
@@ -153,9 +138,7 @@ pub(super) fn list() -> Result<Sources> {
     })
 }
 
-/// Window ids from front to back, since ScreenCaptureKit's list has no set order. Cheap enough to
-/// poll for changes. Empty when macOS gives no list, and then the windows keep ScreenCaptureKit's
-/// order.
+/// Window ids front to back, since ScreenCaptureKit's list has no set order.
 pub(super) fn stacking_order() -> Vec<u32> {
     let options = cg::WindowListOpt::ON_SCREEN_ONLY | cg::WindowListOpt::EXCLUDE_DESKTOP_ELEMENTS;
     cg::WindowList::new(options, cg::WINDOW_ID_NULL)
@@ -174,7 +157,6 @@ pub(super) fn framing(session: &Session, target: &Target) -> Option<Framing> {
     }
 }
 
-/// The window's own display, and where the window sits on it.
 fn window_framing(sources: &Sources, window_id: u32) -> Option<Framing> {
     let window = sources
         .windows
@@ -202,7 +184,6 @@ fn display_under(displays: &[DisplayInfo], point: Point) -> Option<u32> {
         .map(|display| display.id)
 }
 
-/// A window straddling two displays goes by its center, which is on the one showing more of it.
 fn display_at_center(displays: &[DisplayInfo], frame: Frame) -> Option<u32> {
     let center = Point {
         x: frame.x + frame.width / 2.0,
@@ -211,7 +192,6 @@ fn display_at_center(displays: &[DisplayInfo], frame: Frame) -> Option<u32> {
     display_under(displays, center)
 }
 
-/// Gives each display the safe top of the screen whose corner is within a point of its own.
 pub(super) fn apply_safe_tops(displays: &mut [DisplayInfo], tops: &[SafeTop]) {
     for display in displays {
         let frame = display.frame;
@@ -222,7 +202,6 @@ pub(super) fn apply_safe_tops(displays: &mut [DisplayInfo], tops: &[SafeTop]) {
     }
 }
 
-/// `None` for a window not worth offering, and for this app's own windows.
 fn pickable_window(
     content: &sc::ShareableContent,
     window: &sc::Window,
@@ -235,7 +214,7 @@ fn pickable_window(
     if is_own_window || !is_pickable(window.window_layer(), window.is_on_screen(), frame) {
         return None;
     }
-    // Sized at the scale of the display the capture will use, which goes by the window's corner.
+    // The capture picks its display by the window's corner, not its center.
     let capture_display = capture::display_of(content, window).ok()?.display_id().0;
     let scale = displays
         .iter()
@@ -251,13 +230,10 @@ fn pickable_window(
     })
 }
 
-/// Normal app windows that are on screen and big enough to mean something: smaller ones are
-/// usually invisible helpers, not something you'd record.
 fn is_pickable(layer: isize, on_screen: bool, frame: Frame) -> bool {
     layer == NORMAL_WINDOW_LAYER && on_screen && frame.width >= 40.0 && frame.height >= 40.0
 }
 
-/// Sorts by position in `order`. Windows missing from it go last.
 fn sort_front_to_back(windows: &mut [WindowInfo], order: &[u32]) {
     windows.sort_by_key(|window| {
         order
@@ -267,24 +243,15 @@ fn sort_front_to_back(windows: &mut [WindowInfo], order: &[u32]) {
     });
 }
 
-/// The app's icon as a small PNG data URL, so the picker can show the app it's about to record.
-/// `None` when the app has no icon, or macOS fails to draw it; the picker then shows none.
 fn icon_data_url(pid: u32) -> Option<String> {
-    // Runs off the main thread while the picker lists what's on screen. That's allowed: Apple
-    // documents `NSRunningApplication` as thread safe, and an `NSImage` as safe to draw from a
-    // secondary thread while no other thread changes it. Nothing changes these icons, each bitmap
-    // stays on one thread, and none of these calls asks for a `MainThreadMarker`.
+    // Fine off the main thread: Apple documents these icon calls as thread safe.
     let png = macos::catch(|| -> Option<Vec<u8>> {
         let pid = pid.try_into().ok()?;
         let icon = NSRunningApplication::runningApplicationWithProcessIdentifier(pid)?.icon()?;
-        // 32 points on a 2x display.
         let mut rect = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(64.0, 64.0));
-        // SAFETY: `rect` is a live, writable NSRect for the whole call, which is all the method
-        // asks of it. No context and no hints are both allowed.
         let image = unsafe { icon.CGImageForProposedRect_context_hints(&mut rect, None, None) }?;
         let bitmap = NSBitmapImageRep::initWithCGImage(NSBitmapImageRep::alloc(), &image);
-        // SAFETY: the method is unsafe because the dictionary's values are untyped. An empty
-        // dictionary has none, and it's valid for every file type.
+        // SAFETY: an empty properties dictionary has no untyped values.
         let data = unsafe {
             bitmap.representationUsingType_properties(
                 NSBitmapImageFileType::PNG,
@@ -304,7 +271,6 @@ fn icon_data_url(pid: u32) -> Option<String> {
 mod tests {
     use super::*;
 
-    /// A 1000 x 800 display at (`x`, 0).
     fn display(id: u32, x: f64) -> DisplayInfo {
         DisplayInfo {
             id,
@@ -321,7 +287,6 @@ mod tests {
         }
     }
 
-    /// A 400 x 300 window at (`x`, 50), on no display until `two_displays_with` places it.
     fn window(id: u32, x: f64) -> WindowInfo {
         WindowInfo {
             id,
@@ -338,8 +303,6 @@ mod tests {
         }
     }
 
-    /// Two displays side by side, 1 from x 0 and 2 from x 1000, holding `windows`, each placed
-    /// on a display the way `list` places them.
     fn two_displays_with(mut windows: Vec<WindowInfo>) -> Sources {
         let displays = vec![display(1, 0.0), display(2, 1000.0)];
         for window in &mut windows {
@@ -357,7 +320,6 @@ mod tests {
         let windows = [1100.0, 700.0, 850.0, 5000.0];
         let windows = windows.iter().zip(1..).map(|(&x, id)| window(id, x));
         let session = Session::new(Mode::Window, two_displays_with(windows.collect()), None);
-        // Where a 400 x 300 window at (`x`, 50) shows on display `display_id`.
         let framed = |display_id, x| {
             let window = Frame {
                 x,
@@ -379,13 +341,10 @@ mod tests {
         };
         let cases = [
             (Target::Window { window_id: 1 }, framed(2, 100.0)),
-            // A window straddling two displays goes by its center.
             (Target::Window { window_id: 2 }, framed(1, 700.0)),
             (Target::Window { window_id: 3 }, framed(2, -150.0)),
-            // A window off every display, or gone, isn't framed.
             (Target::Window { window_id: 4 }, None),
             (Target::Window { window_id: 5 }, None),
-            // An area is framed on its display, without a window.
             (
                 area,
                 Some(Framing {
@@ -393,7 +352,6 @@ mod tests {
                     window: None,
                 }),
             ),
-            // A whole display needs no frame.
             (Target::Display { display_id: 1 }, None),
         ];
         for (target, expected) in cases {

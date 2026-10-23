@@ -1,7 +1,5 @@
-/** The Area box's geometry, and where its capture bar sits. */
 import { clamp, type Point, type Rect, type Size } from "@/lib/geometry";
 
-/** A resize handle by compass direction, or "move" for dragging the whole box. */
 export type Handle = "move" | "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
 export type Ratio = { label: string; value: number };
@@ -14,10 +12,8 @@ export const RATIOS: Ratio[] = [
 ];
 
 const MIN_SIDE = 50;
-/** Room between the capture bar and the box or the display's edges. */
 const BAR_GAP = 12;
 
-/** A 1280×720 box in the middle of the display, or the whole of a smaller one. */
 export function centeredArea(bounds: Size): Rect {
   const width = Math.min(1280, bounds.width);
   const height = Math.min(720, bounds.height);
@@ -29,7 +25,6 @@ export function centeredArea(bounds: Size): Rect {
   };
 }
 
-/** The box after dragging `handle` by `delta`, kept on the display and at least 50 points a side. */
 export function dragArea(
   initial: Rect,
   handle: Handle,
@@ -65,11 +60,6 @@ export function dragArea(
   };
 }
 
-/**
- * The box at `ratio`, around the same center and with about the same area, so switching ratios
- * back and forth never grows or shrinks it. Capped to 85% of the display, so it never swallows
- * the screen.
- */
 export function fitRatio(area: Rect, ratio: number, bounds: Size): Rect {
   const side = Math.sqrt(area.width * area.height);
   const wide = side * Math.sqrt(ratio);
@@ -91,10 +81,6 @@ export function fitRatio(area: Rect, ratio: number, bounds: Size): Rect {
   };
 }
 
-/**
- * Centered above the box, clear of the record bar at the bottom of the screen. When there's no
- * room above, below the menu bar and the notch (`safeTop`), it sits inside the box's top edge.
- */
 export function captureBarPosition(
   area: Rect,
   bar: Size,
@@ -112,12 +98,7 @@ export function captureBarPosition(
   };
 }
 
-/**
- * The Area box's size in pixels, live while you drag it: scaled by the display's `scale`, then
- * each side rounded down to even, because H.264 needs even sizes. Rust's `CaptureSize::of` sizes
- * the recording by the same rule, and the tests share their cases, so what the bar shows is what
- * gets recorded. Displays and windows come with their sizes from Rust.
- */
+// Rounded down to even for H.264, matching Rust's CaptureSize::of.
 export function pixelSize(points: Size, scale: number): Size {
   const even = (value: number) => Math.floor((value * scale) / 2) * 2;
   return { width: even(points.width), height: even(points.height) };

@@ -12,16 +12,8 @@ import {
   type Clock,
 } from "@/lib/time";
 
-/** A video's clock, plus `seek` to move the video. */
 export type VideoClock = Clock & { seek: (seconds: number) => void };
 
-/**
- * The video's time, smooth enough to drive a playhead. It's kept outside React state, so only what
- * reads it through `useClockValue` redraws as it moves. `src` restarts it when the video changes.
- *
- * `seek` is the one way to move the video. The playhead and readout jump at once, and the picture
- * follows as fast as the video decodes; `seekVideo` coalesces rapid seeks.
- */
 export function useVideoClock(
   video: RefObject<HTMLVideoElement | null>,
   isPlaying: boolean,
@@ -33,7 +25,6 @@ export function useVideoClock(
     const element = video.current;
     if (!element) return;
     const sync = () => clock.set(seekTarget(element));
-    // "seeking" moves the playhead the moment a seek starts; "seeked" settles it where it landed.
     element.addEventListener("seeking", sync);
     element.addEventListener("seeked", sync);
     const unsync = () => {
@@ -69,7 +60,6 @@ export function useVideoClock(
   return videoClock;
 }
 
-/** `select` of the clock's seconds, redrawing the caller only when that result changes. */
 export function useClockValue<T>(
   clock: Clock,
   select: (seconds: number) => T,

@@ -1,7 +1,3 @@
-//! Thin wrappers over macOS (AppKit) features Tauri doesn't cover: running AppKit code on the
-//! main thread, floating panels, native alerts and the clipboard. The frosted glass lives in
-//! `glass`.
-
 pub(crate) mod glass;
 
 use std::{panic::AssertUnwindSafe, path::PathBuf, sync::mpsc};
@@ -21,19 +17,12 @@ use tauri_plugin_dialog::{
     DialogExt, MessageDialogButtons, MessageDialogKind, MessageDialogResult,
 };
 
-/// Runs `job`, turning an Objective-C exception it throws into an error. Works on any thread.
-/// Every AppKit call goes through here, usually by way of `run_on_main_thread` or
-/// `with_ns_window`.
-///
-/// AppKit reports misuse by throwing Objective-C exceptions. Rust can't unwind through them, so
-/// one that isn't caught aborts the app.
+/// AppKit throws Objective-C exceptions, which abort the app unless caught here.
 pub(crate) fn catch<R>(job: impl FnOnce() -> R) -> Result<R> {
     exception::catch(AssertUnwindSafe(job)).map_err(|thrown| anyhow!("macOS refused: {thrown:?}"))
 }
 
-/// Runs `job` on the main thread, as AppKit requires, waits for it, and returns what it
-/// returned. Called on the main thread, it runs `job` right away, since queueing it there and
-/// waiting would block the thread that has to run it.
+/// On the main thread it runs `job` directly, since queueing and waiting there would deadlock.
 pub(crate) fn run_on_main_thread<R: Send + 'static>(
     app: &AppHandle,
     job: impl FnOnce(MainThreadMarker) -> R + Send + 'static,
@@ -46,32 +35,23 @@ pub(crate) fn run_on_main_thread<R: Send + 'static>(
         let result = MainThreadMarker::new()
             .context("Tauri ran a main-thread job elsewhere")
             .and_then(|main_thread| catch(|| job(main_thread)));
-        // Can't fail: `run_on_main_thread` is waiting on the other end.
         let _ = done_tx.send(result);
     })?;
-    // An error here means the app quit before the job ran, which dropped it.
     done_rx
         .recv()
         .context("the app quit before macOS could do it")?
 }
 
-/// Runs `change` with the window's `NSWindow`, on the main thread as AppKit requires.
-///
-/// It doesn't wait for `change` to run. An Objective-C exception it throws is caught and logged:
-/// nothing is waiting to hear about it, and the next change tries again.
 pub(crate) fn with_ns_window(
     window: &WebviewWindow,
     change: impl FnOnce(&NSWindow) + Send + 'static,
 ) -> tauri::Result<()> {
     let target = window.clone();
     window.run_on_main_thread(move || {
-        // Fails only once the window is gone, and then there's nothing to change.
         let Ok(raw_ns_window) = target.ns_window() else {
             return;
         };
-        // SAFETY: Tauri hands back this window's NSWindow, or null, which `as_ref` turns into
-        // `None`. This closure runs on the main thread, where AppKit allows NSWindow calls and
-        // where windows are destroyed, so the window outlives the borrow, which ends with it.
+        // SAFETY: windows are destroyed on the main thread, so this NSWindow outlives the borrow.
         let Some(ns_window) = (unsafe { raw_ns_window.cast::<NSWindow>().as_ref() }) else {
             return;
         };
@@ -81,23 +61,16 @@ pub(crate) fn with_ns_window(
     })
 }
 
-/// Shows the window on every space at `level`, as a panel so it can also join other apps'
-/// full-screen spaces. Only for windows that live as long as the app: closing a panel crashes.
+/// Only for windows that live as long as the app: closing a panel crashes.
 pub(crate) fn float_panel(ns_window: &NSWindow, level: NSWindowLevel) {
-    // Swaps the window's class for `FloatingPanel` in place, making it a non-activating panel:
-    // the kind of window macOS lets float over other apps' full-screen spaces while the app keeps
-    // its Dock icon. Electron's `type: 'panel'` and tauri-nspanel make the same swap.
+    // Swaps the class in place for a non-activating panel, as tauri-nspanel does.
     let panel_class: &AnyClass = FloatingPanel::class();
     let object: &AnyObject = ns_window.as_ref();
-    // A class whose objects are bigger than this one would read past the end of its memory.
     if panel_class.instance_size() > object.class().instance_size() {
         eprintln!("the window can't become a panel, so it won't show over full-screen apps");
     } else {
         let window: *const AnyObject = object;
-        // SAFETY: the window is a live NSWindow on the main thread. `FloatingPanel` subclasses
-        // NSWindow, adds no state, and fits in the window's memory (checked above). Tao's window
-        // class adds only a `focusable` flag, which nothing reads once Tao's methods are swapped
-        // out.
+        // SAFETY: no added state, fits (checked above), and Tao's `focusable` ivar goes unread.
         unsafe { ffi::object_setClass(window.cast_mut(), panel_class) };
         ns_window.setStyleMask(ns_window.styleMask() | NSWindowStyleMask::NonactivatingPanel);
     }
@@ -112,8 +85,7 @@ pub(crate) fn float_panel(ns_window: &NSWindow, level: NSWindowLevel) {
 }
 
 define_class!(
-    // SAFETY: NSPanel has no subclassing requirements, and this class adds no instance
-    // variables and no `Drop`, so `float_panel` can swap it onto an existing window.
+    // SAFETY: no instance variables and no `Drop`, so `float_panel` can swap it onto a window.
     #[unsafe(super(NSPanel, NSWindow, NSResponder, NSObject))]
     #[thread_kind = MainThreadOnly]
     #[name = "ScreenRecorderPanel"]
@@ -121,7 +93,6 @@ define_class!(
 
     impl FloatingPanel {
         /// Borderless panels refuse keyboard focus by default, but the Area fields need it.
-        // SAFETY: the signature matches `-[NSWindow canBecomeKeyWindow]`, which returns a BOOL.
         #[unsafe(method(canBecomeKeyWindow))]
         fn can_become_key_window(&self) -> bool {
             true
@@ -129,8 +100,6 @@ define_class!(
     }
 );
 
-/// Puts the file at `path` on the clipboard the way Finder's Copy does, so it pastes as the file
-/// itself.
 pub(crate) fn put_file_on_clipboard(app: &AppHandle, path: PathBuf) -> Result<()> {
     run_on_main_thread(app, move |_| {
         let url = NSURL::fileURLWithPath(&NSString::from_str(&path.display().to_string()));
@@ -145,8 +114,6 @@ pub(crate) fn put_file_on_clipboard(app: &AppHandle, path: PathBuf) -> Result<()
     })?
 }
 
-/// A question with one or two answers, plus Cancel, centered on the screen like Screen
-/// Studio's instead of a sheet stuck to one of this app's small windows.
 pub(crate) struct Alert {
     pub title: &'static str,
     pub message: &'static str,
@@ -161,22 +128,19 @@ pub(crate) enum Choice {
     Cancel,
 }
 
-/// Asks from async code: waits for the answer on a background thread.
 pub(crate) async fn ask_in_background(app: &AppHandle, alert: Alert) -> Result<Choice> {
     let app = app.clone();
     let choice = tauri::async_runtime::spawn_blocking(move || ask(&app, alert)).await?;
     Ok(choice)
 }
 
-/// Waits for an answer. On the main thread it answers Cancel straight away instead: the alert
-/// needs the main thread to show, so waiting there would never end.
+/// On the main thread it answers Cancel, since the alert needs that thread to show.
 pub(crate) fn ask(app: &AppHandle, alert: Alert) -> Choice {
     if MainThreadMarker::new().is_some() {
         eprintln!("an alert was asked on the main thread, so it was cancelled");
         return Choice::Cancel;
     }
-    // The bar and preview never activate the app, and an inactive app's alert opens behind
-    // whatever you're using. If activating fails, the alert still opens, maybe behind others.
+    // An inactive app's alert opens behind other apps, and the bar never activates the app.
     let activate = run_on_main_thread(app, |main_thread| {
         NSApplication::sharedApplication(main_thread).activate();
     });

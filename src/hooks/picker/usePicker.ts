@@ -18,17 +18,13 @@ import {
   type PickerView,
 } from "@/lib/picker/view";
 
-/**
- * What this overlay shows. The cursor streams in 60 times a second, so it's kept in a ref: the
- * overlay redraws only when what it shows changes, like crossing into another window.
- */
+// The cursor streams in 60 times a second, so it lives in a ref and only a change in what's shown redraws.
 export function usePicker(displayId: number) {
   const session = useRef<Session | null>(null);
   const cursor = useRef<Point | null>(null);
   const [view, setView] = useState<PickerView | null>(null);
   const [framing, setFraming] = useState<{
     isFraming: boolean;
-    /** For a window recording, where the window sits on this display. */
     windowRect: Rect | null;
   }>({ isFraming: false, windowRect: null });
   const { setPointer } = usePointerHover();
@@ -61,7 +57,6 @@ export function usePicker(displayId: number) {
     },
     "window",
   );
-  // Rust tells only the overlay that now frames the recording.
   useTauriEvent(
     "picker-recording",
     (windowRect) => setFraming({ isFraming: true, windowRect }),
@@ -71,8 +66,7 @@ export function usePicker(displayId: number) {
   const recordOnce = (target: Target) =>
     void oneAtATime(() => record(target)).catch(console.error);
 
-  // Return records what's highlighted; Tab cycles the windows, front to back. Every overlay
-  // hears the key, and only the one under the cursor acts. The Area box handles its own.
+  // Every overlay hears the key; only the one under the cursor acts. The Area box handles its own.
   useTauriEvent(
     "picker-key",
     (key) => {
@@ -97,13 +91,9 @@ export function usePicker(displayId: number) {
   return { view, framing, record: recordOnce };
 }
 
-/**
- * Puts Rust's frosted glass under the element, following it as it moves, so a see-through pill
- * blurs the apps behind an overlay. A page can only blur its own content.
- */
+// A page can only blur its own content, so Rust's native glass blurs the apps behind the pill.
 export function useGlass<T extends HTMLElement>() {
   const ref = useRef<T>(null);
-  /** Where the glass was last put, so it's only moved when the element moves. */
   const placed = useRef("");
 
   useLayoutEffect(() => {
@@ -118,7 +108,7 @@ export function useGlass<T extends HTMLElement>() {
     );
   });
 
-  // Hidden on unmount, and forgotten, so a remount puts it back.
+  // Forgotten so a remount puts the glass back.
   useEffect(
     () => () => {
       placed.current = "";

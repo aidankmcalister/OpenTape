@@ -62,7 +62,6 @@ export default function Transport({ playback }: { playback: Playback }) {
   );
 }
 
-/** Reads the clock itself, so only the readout redraws while the video plays. */
 function TimeReadout({
   clock,
   durationMs,

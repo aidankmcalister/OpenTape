@@ -6,8 +6,9 @@ import { usePlayback } from "@/hooks/editor/usePlayback";
 import { useKeymap } from "@/hooks/editor/useKeymap";
 import Timeline from "@/components/editor/Timeline";
 import ExportButton from "@/components/editor/ExportButton";
+import LookPanel from "@/components/editor/LookPanel";
 import { useExport } from "@/hooks/editor/useExport";
-import { DEFAULT_LOOK } from "@/lib/editor/edits";
+import { useProject } from "@/hooks/editor/useProject";
 
 export default function Editor() {
   const recording = useOpenedRecording();
@@ -22,10 +23,11 @@ export default function Editor() {
   );
 }
 
-/** The header and the islands under it. Playback lives here because the stage, transport, timeline and export all use it. */
 function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
   const playback = usePlayback(videoSrc);
-  const exporting = useExport(DEFAULT_LOOK, playback.videoSize);
+  const edits = useProject(playback.clock, playback.durationMs);
+  const { look, regions } = edits.project;
+  const exporting = useExport(look, regions, playback);
   useKeymap({
     togglePlay: playback.togglePlay,
     stepBack: () => playback.step(-1),
@@ -35,6 +37,10 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
     toggleLoop: playback.toggleLoop,
     toggleSound: playback.toggleSound,
     export: () => exporting.start?.(),
+    addZoom: edits.addZoom,
+    removeRegion: edits.removeRegion,
+    undo: edits.undo,
+    redo: edits.redo,
   });
   return (
     <>
@@ -45,14 +51,25 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
           onShowInFinder={exporting.showInFinder}
         />
       </Header>
-      <main className="flex min-h-0 flex-1 flex-col gap-2 px-2 pb-2">
-        <Stage src={videoSrc} ratio={playback.ratio} {...playback.videoProps} />
-        <Transport playback={playback} />
-        <Timeline
-          clock={playback.clock}
-          durationMs={playback.durationMs}
-          onSeek={playback.seek}
-        />
+      <main className="flex min-h-0 flex-1 gap-2 px-2 pb-2">
+        <LookPanel edits={edits} />
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <Stage
+            src={videoSrc}
+            look={look}
+            ratio={playback.ratio}
+            clock={playback.clock}
+            regions={regions}
+            {...playback.videoProps}
+          />
+          <Transport playback={playback} />
+          <Timeline
+            clock={playback.clock}
+            durationMs={playback.durationMs}
+            edits={edits}
+            onSeek={playback.seek}
+          />
+        </div>
       </main>
     </>
   );

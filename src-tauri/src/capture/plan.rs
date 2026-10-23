@@ -1,7 +1,3 @@
-//! What's on screen as ScreenCaptureKit sees it, and how what to record (a display, a window or
-//! an area) becomes what ScreenCaptureKit needs: a content filter that leaves out the right
-//! windows, a stream config, and the output size.
-
 use anyhow::{Context, Result, anyhow};
 use cidre::{arc, cg, cm, ns, sc, sys};
 use serde::{Deserialize, Serialize};
@@ -9,10 +5,8 @@ use ts_rs::TS;
 
 use crate::geometry::{to_display_relative, to_global};
 
-/// The layer ordinary app windows sit on. Higher layers hold menus and dragged items.
 pub(crate) const NORMAL_WINDOW_LAYER: isize = 0;
 
-/// What to record. Sent from the frontend as `{ kind: "window", windowId: 398 }` and so on.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "bindings.ts")]
 #[serde(
@@ -27,7 +21,6 @@ pub(crate) enum Target {
     Window {
         window_id: u32,
     },
-    /// A rectangle in points, measured from the display's top-left corner.
     Area {
         display_id: u32,
         x: f64,
@@ -37,17 +30,13 @@ pub(crate) enum Target {
     },
 }
 
-/// Everything needed to start a capture, whatever the target.
 pub(super) struct CapturePlan {
     pub filter: arc::R<sc::ContentFilter>,
     pub config: arc::R<sc::StreamCfg>,
     pub size: CaptureSize,
-    /// Where the captured content was on screen at the start, in global points.
     pub screen_rect: cg::Rect,
 }
 
-/// A recording's size in pixels: what the file will be, and what the picker shows. Always even,
-/// because H.264 needs even dimensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[ts(export, export_to = "bindings.ts")]
 pub(crate) struct CaptureSize {
@@ -56,9 +45,7 @@ pub(crate) struct CaptureSize {
 }
 
 impl CaptureSize {
-    /// `rect` in pixels at `scale`, each side rounded down to an even number. The Area box shows
-    /// its size live while you drag it, so the frontend's `pixelSize` (`src/picker/area.ts`) runs
-    /// this same rule on the same scale, checked by the same cases as the test below.
+    /// Even sides, for H.264. `pixelSize` in `src/picker/area.ts` must match this rule.
     pub(crate) fn of(rect: cg::Rect, scale: f64) -> Self {
         Self {
             width: (rect.size.width * scale) as usize / 2 * 2,
@@ -86,7 +73,6 @@ pub(crate) fn display_of(
         .context("the window is not on any display")
 }
 
-/// Pixels per point.
 pub(crate) fn display_scale(display: &sc::Display) -> f64 {
     let filter = sc::ContentFilter::with_display_excluding_windows(display, &ns::Array::new());
     f64::from(sc::ShareableContent::info_for_filter(&filter).point_pixel_scale())
@@ -143,8 +129,6 @@ fn find_display(content: &sc::ShareableContent, display_id: u32) -> Result<arc::
         .with_context(|| format!("display {display_id} is gone"))
 }
 
-/// `src_rect` is the part of the display to record, in points from its top-left corner; `None`
-/// records all of it.
 fn plan(
     filter: arc::R<sc::ContentFilter>,
     display: &sc::Display,
@@ -168,8 +152,7 @@ fn plan(
     }
 }
 
-/// The whole display without this app, including windows it opens after capture starts, like
-/// the frame and alerts. Falls back to leaving out this app's current windows.
+/// Leaves out the app, not just its windows, so windows it opens later stay out too.
 fn without_this_app(
     content: &sc::ShareableContent,
     display: &sc::Display,
@@ -194,7 +177,6 @@ fn without_this_app(
     )
 }
 
-/// The windows a capture leaves out. `recorded_app` is set when recording one of its windows.
 fn hidden_windows(
     content: &sc::ShareableContent,
     recorded_app: Option<sys::Pid>,
@@ -210,9 +192,6 @@ fn hidden_windows(
     ns::Array::from_slice_retained(&hidden)
 }
 
-/// This app's windows (the bar, the overlays) never show. When recording a window, other apps'
-/// normal windows hide too, so windows dragged over the recorded one don't show. Higher layers
-/// (drags and menus) stay.
 fn hides(
     layer: isize,
     owner: Option<sys::Pid>,
@@ -229,7 +208,6 @@ fn hides(
 }
 
 fn own_pid() -> sys::Pid {
-    // A macOS process ID always fits. If it didn't, -1 matches no app.
     sys::Pid::try_from(std::process::id()).unwrap_or(-1)
 }
 
@@ -258,19 +236,13 @@ mod tests {
     #[test]
     fn hides_should_leave_out_this_app_and_whatever_covers_a_recorded_window() {
         const OWN: sys::Pid = 1;
-        // (layer, owner, recording app 100's window?, hidden)
         let cases = [
-            // Other apps' normal windows hide while recording a window...
             (0, Some(200), true, true),
-            // ...but not the recorded app's, nor higher layers like drags and menus.
             (0, Some(100), true, false),
             (101, Some(200), true, false),
-            // This app's own windows always hide.
             (101, Some(OWN), true, true),
             (25, Some(OWN), false, true),
-            // Recording a display keeps other apps.
             (0, Some(200), false, false),
-            // Windows without an owner never hide.
             (0, None, true, false),
             (0, None, false, false),
         ];

@@ -1,6 +1,3 @@
-//! The app's entry point: registers the shared state, sets up the fixed windows and the
-//! system-wide keys, and lists every command the frontend can call and every event Rust sends.
-
 mod capture;
 mod current_recording;
 #[cfg(debug_assertions)]
@@ -26,15 +23,12 @@ use ts_rs::TS;
 use windows::preview::PreviewKey;
 use windows::{bar, editor, preview};
 
-/// Every event Rust sends the pages, named the way the pages hear it, with what it carries. The
-/// pages read each event's payload type from this, so the two can't drift apart.
 #[derive(Debug, Serialize, TS)]
 #[serde(tag = "event", content = "payload", rename_all = "kebab-case")]
 #[ts(export, export_to = "bindings.ts")]
 pub(crate) enum PageEvent {
     PickerSession(Session),
     PickerCursor(Point),
-    /// Where the window being recorded sits, sent to the overlay that frames the recording.
     PickerRecording(Option<Frame>),
     PickerKey(PickerKey),
     PickerClosed,
@@ -43,18 +37,15 @@ pub(crate) enum PageEvent {
     BarPointer(Option<Point>),
     PreviewPointer(Option<Point>),
     PreviewKey(PreviewKey),
-    /// How far an export has got, from 0 to 1, sent to the editor while it exports.
     ExportProgress(f32),
 }
 
 impl PageEvent {
-    /// Sends it to the window labelled `label`.
     pub(crate) fn send_to(self, app: &AppHandle, label: &str) -> tauri::Result<()> {
         let (name, payload) = self.split()?;
         app.emit_to(label, &name, payload)
     }
 
-    /// Sends it to every window `filter` picks.
     pub(crate) fn send_to_each(
         self,
         app: &AppHandle,
@@ -64,7 +55,6 @@ impl PageEvent {
         app.emit_filter(&name, payload, filter)
     }
 
-    /// Its name and its payload, as serde writes them for the pages.
     fn split(self) -> tauri::Result<(String, serde_json::Value)> {
         let mut value = serde_json::to_value(self)?;
         let name = value["event"].as_str().unwrap_or_default().to_owned();
@@ -72,15 +62,12 @@ impl PageEvent {
     }
 }
 
-/// Keys taken system-wide for a while, because this app's floating windows aren't the focused
-/// window. Each set says which keys it takes and what pressing one does, so no one else has to
-/// know its keys.
+/// Global shortcuts, because the floating windows never take focus.
 pub(crate) trait KeySet: Copy + Send + Sync + 'static {
     const KEYS: [Self; 3];
     fn shortcut(self) -> Shortcut;
     fn press(self, app: &AppHandle);
 
-    /// Takes the set's keys until `give_back`.
     fn take(app: &AppHandle) -> Result<(), ShortcutError> {
         let shortcuts = Self::KEYS.map(Self::shortcut);
         app.global_shortcut()

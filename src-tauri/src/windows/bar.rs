@@ -1,7 +1,3 @@
-//! The record bar: bottom center, right above the Dock. Its window stays one size; the pill
-//! inside animates, the glass follows it, and clicks beside the pill pass through to the apps
-//! underneath. It also offers the cameras and microphones, listed here.
-
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use cidre::{av, ns};
@@ -23,8 +19,6 @@ use crate::util::CmdResult;
 
 pub(crate) const LABEL: &str = "bar";
 
-/// Clicks beside the pill pass through to the apps underneath. The bar never becomes the key
-/// window, so its page gets no mouse moves; Rust reports the pointer for its hover states.
 pub(crate) static WINDOW: Floating = Floating::new(Behaviour {
     label: LABEL,
     anchor: Anchor::BottomCenter,
@@ -35,7 +29,6 @@ pub(crate) static WINDOW: Floating = Floating::new(Behaviour {
         on_enter_or_leave: |_, _| {},
     }),
 });
-/// The pill's current width, as `f64` bits, shared with the pointer loop.
 static PILL_WIDTH: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Serialize, TS)]
@@ -52,7 +45,6 @@ pub(crate) struct Devices {
     pub microphones: Vec<Device>,
 }
 
-/// Listing the cameras and microphones needs no permission.
 #[tauri::command]
 pub(crate) fn list_devices() -> Devices {
     Devices {
@@ -86,7 +78,6 @@ fn discover_devices(types: &[&av::CaptureDeviceType], media: &av::MediaType) -> 
     .collect()
 }
 
-/// Called whenever the pill changes size, so the glass and the click area follow it.
 #[tauri::command]
 pub(crate) fn shape_bar(
     window: WebviewWindow,
@@ -96,9 +87,7 @@ pub(crate) fn shape_bar(
 ) -> CmdResult {
     PILL_WIDTH.store(width.to_bits(), Ordering::Relaxed);
     macos::with_ns_window(&window, move |ns_window| {
-        // Widens the window around its bottom center when the pill doesn't fit. It never
-        // narrows: the see-through sides let clicks pass instead, so the pill can animate
-        // without a resize.
+        // Never narrows: clicks pass through the sides, so the pill animates without a resize.
         let frame = ns_window.frame();
         if width > frame.size.width {
             let size = NSSize::new(width, frame.size.height);
@@ -110,7 +99,6 @@ pub(crate) fn shape_bar(
     Ok(())
 }
 
-/// The bar is hidden in the config, so it doesn't flash in the middle before it's placed.
 pub(crate) fn setup(bar: &WebviewWindow) -> tauri::Result<()> {
     WINDOW.setup(bar)?;
     macos::with_ns_window(bar, |ns_window| glass::add(ns_window, ns_window.mtm()))?;
@@ -118,8 +106,6 @@ pub(crate) fn setup(bar: &WebviewWindow) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Lets clicks through everywhere except the centered pill. Runs as the pointer moves and as
-/// the pill changes size.
 fn let_clicks_through(ns_window: &NSWindow) {
     let width = f64::from_bits(PILL_WIDTH.load(Ordering::Relaxed));
     let pointer = ns_window.mouseLocationOutsideOfEventStream();

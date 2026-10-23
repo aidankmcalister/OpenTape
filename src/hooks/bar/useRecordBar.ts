@@ -13,7 +13,6 @@ import type { Animation, Devices, Mode, RecordingStatus } from "@/lib/bindings";
 import type { Size } from "@/lib/geometry";
 import { elapsedMsAt, parseOptions } from "@/lib/bar/bar";
 
-/** A status from Rust, and when it arrived, so the timer can count on from it. */
 type Timer = { status: RecordingStatus; receivedAt: number };
 
 export function useRecordBar() {
@@ -32,11 +31,9 @@ export function useRecordBar() {
   }
   useRustValue("recording_status", "recording-status", applyStatus);
   useTauriEvent("picker-closed", () => setPickerMode(null));
-  // The bar never takes focus, so Rust reports the pointer for hover.
   const { setPointer } = usePointerHover();
   useTauriEvent("bar-pointer", setPointer, "window");
 
-  /** Runs `job` unless another is still running, showing its error on the bar if it fails. */
   async function attempt(job: () => Promise<unknown>) {
     try {
       await oneAtATime(job);
@@ -46,13 +43,10 @@ export function useRecordBar() {
   }
 
   return {
-    /** The mode whose picker is open. */
     pickerMode,
     phase,
-    /** Read with `useElapsedMs`, so only the timer redraws as it counts. */
     timer,
     error,
-    /** Opens or switches the picker, or closes it with null. */
     chooseMode: async (mode: Mode | null) => {
       setError(null);
       await attempt(async () => {
@@ -66,7 +60,7 @@ export function useRecordBar() {
     },
     togglePause: () =>
       attempt(() => invoke("pause_recording", { paused: phase !== "paused" })),
-    // Rust asks first, because restarting deletes what's been recorded.
+    // Rust confirms first.
     restart: () => attempt(() => invoke("restart_recording")),
     stop: () => attempt(() => invoke("stop_recording")),
     dismissError: () => setError(null),
@@ -77,7 +71,6 @@ export function useRecordBar() {
         ]),
       ).catch(console.error),
     quit,
-    /** Tells Rust the pill's size, so the glass behind it and its click area follow. */
     shape: ({ width, height }: Size, animation: Animation | null) =>
       void invoke("shape_bar", { width, height, animation }).catch(
         console.error,
@@ -85,7 +78,6 @@ export function useRecordBar() {
   };
 }
 
-/** The camera, microphone and system audio choices, remembered between launches. */
 export function useCaptureOptions() {
   const [devices, setDevices] = useState<Devices>({
     cameras: [],
@@ -102,7 +94,6 @@ export function useCaptureOptions() {
     [options],
   );
 
-  /** One menu at a time, so a double click doesn't open a second after the first. */
   async function chooseDevice(anchor: HTMLElement, kind: keyof Devices) {
     const key = kind === "cameras" ? "cameraId" : "microphoneId";
     const none = kind === "cameras" ? "No camera" : "No microphone";
@@ -124,7 +115,6 @@ export function useCaptureOptions() {
   }
 
   return {
-    /** Null when off, or when the chosen device is unplugged. */
     camera: devices.cameras.find(({ id }) => id === options.cameraId) ?? null,
     microphone:
       devices.microphones.find(({ id }) => id === options.microphoneId) ?? null,
@@ -140,10 +130,6 @@ export function useCaptureOptions() {
   };
 }
 
-/**
- * Counts on from Rust's recorded time while recording, and holds still while paused. It ticks ten
- * times a second, so call it from the component that shows the time.
- */
 export function useElapsedMs({ status, receivedAt }: Timer): number {
   const [now, setNow] = useState(receivedAt);
   const isRecording = status.phase === "recording";

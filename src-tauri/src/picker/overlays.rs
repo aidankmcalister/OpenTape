@@ -1,5 +1,4 @@
-//! The picker's overlay windows: one see-through panel per display. They're made once, then
-//! hidden and shown again, because closing a panel crashes.
+//! Overlays are made once, then hidden and shown again, because closing a panel crashes.
 
 use anyhow::Result;
 use objc2::MainThreadOnly;
@@ -29,8 +28,7 @@ pub(super) fn overlay_label(display_id: u32) -> String {
     format!("{LABEL_PREFIX}{display_id}")
 }
 
-/// For `emit_filter`: sends an event to every overlay in one go. Emitting to each overlay by
-/// label would also run a script in every other overlay listening for it.
+/// For `emit_filter`. Emitting by label would also run a script in every other overlay.
 pub(super) fn is_overlay(target: &EventTarget) -> bool {
     match target {
         EventTarget::AnyLabel { label }
@@ -41,8 +39,6 @@ pub(super) fn is_overlay(target: &EventTarget) -> bool {
     }
 }
 
-/// Shows the overlay for `display`, making it the first time. Overlays are panels, so they can
-/// show over another app's full-screen space.
 pub(super) fn show_overlay(app: &AppHandle, display: &DisplayInfo) -> Result<()> {
     let Some(window) = app.get_webview_window(&overlay_label(display.id)) else {
         return build_overlay(app, display, true);
@@ -55,15 +51,12 @@ pub(super) fn show_overlay(app: &AppHandle, display: &DisplayInfo) -> Result<()>
     Ok(())
 }
 
-/// Hides an overlay and reloads its page while it's out of sight, so it comes back fresh.
 pub(super) fn put_away(overlay: &WebviewWindow) {
-    // Each step fails only once the window is gone, and then there's nothing left to put away.
     let _ = overlay.hide();
     let _ = place_glass(overlay, None);
     let _ = overlay.reload();
 }
 
-/// Puts the frosted glass under the overlay's capture bar, or hides it with `None`.
 pub(super) fn place_glass(overlay: &WebviewWindow, rect: Option<Frame>) -> tauri::Result<()> {
     let pill = rect.map(NSRect::from);
     macos::with_ns_window(overlay, move |ns_window| {
@@ -71,8 +64,6 @@ pub(super) fn place_glass(overlay: &WebviewWindow, rect: Option<Frame>) -> tauri
     })
 }
 
-/// Makes a hidden overlay for each display at launch, so the first pick doesn't wait for the
-/// webviews to start. A display plugged in later gets its overlay on first use.
 pub(super) fn prepare_overlays(app: &AppHandle, displays: &[DisplayInfo]) -> Result<()> {
     for display in displays {
         if app.get_webview_window(&overlay_label(display.id)).is_none() {
@@ -92,13 +83,11 @@ fn build_overlay(app: &AppHandle, display: &DisplayInfo, visible: bool) -> Resul
         .shadow(false)
         .resizable(false)
         .skip_taskbar(true)
-        // The first click on an overlay reaches its page, so a button works on the first press.
         .accept_first_mouse(true)
         .focused(false)
         .visible(visible)
         .build()?;
     windows::never_close(&window);
-    // Above the menu bar, so the overlay can dim and frame the whole display.
     macos::with_ns_window(&window, |ns_window| {
         macos::float_panel(ns_window, NSStatusWindowLevel);
     })?;

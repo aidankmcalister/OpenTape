@@ -1,6 +1,3 @@
-//! The app's fixed windows: the record bar, the recording preview and the editor. They're
-//! hidden instead of closed, so they can come back. The bar and the preview float (`floating`).
-
 pub(crate) mod bar;
 pub(crate) mod editor;
 mod floating;
@@ -12,8 +9,7 @@ use tauri::{WebviewWindow, WindowEvent};
 
 use crate::geometry;
 
-/// Keeps a panel from ever closing: closing one crashes the app. ⌘W and `close()` both ask
-/// first, so refusing here covers both; the app hides panels instead.
+/// Closing a panel crashes the app, so panels are hidden, never closed.
 pub(crate) fn never_close(window: &WebviewWindow) {
     window.on_window_event(|event| {
         if let WindowEvent::CloseRequested { api, .. } = event {
@@ -22,8 +18,6 @@ pub(crate) fn never_close(window: &WebviewWindow) {
     });
 }
 
-/// A screen's top-left corner in global points, measured like ScreenCaptureKit's displays, and
-/// how far down from its top things stay clear of the menu bar and the notch.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct SafeTop {
     pub x: f64,
@@ -45,7 +39,7 @@ pub(crate) fn safe_tops(main_thread: MainThreadMarker) -> Vec<SafeTop> {
             (frame.origin.y + frame.size.height) - (visible.origin.y + visible.size.height);
         tops.push(SafeTop {
             x: frame.origin.x,
-            // NSScreen measures from the bottom-left of the primary screen.
+            // NSScreen measures from the primary screen's bottom-left.
             y: geometry::flip(frame, primary_height).origin.y,
             inset: menu_bar.max(screen.safeAreaInsets().top),
         });

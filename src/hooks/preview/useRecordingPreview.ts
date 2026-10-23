@@ -27,13 +27,10 @@ export function useRecordingPreview() {
     IDLE_ACTIVITY,
   );
   const { hoveredName, setPointer } = usePointerHover();
-  // Save, Copy, Edit and Close each export or move the recording, so only one runs at a time,
-  // whether it came from a click or a key.
   const oneAtATime = useOneAtATime();
   const videoSrc = videoPath && convertFileSrc(videoPath);
   const clock = useVideoClock(video, isPlaying, videoSrc);
 
-  // A result shows for a moment, then clears.
   useEffect(() => {
     const showsFor = SHOWS_FOR_MS[activity];
     if (showsFor === undefined) return;
@@ -72,10 +69,8 @@ export function useRecordingPreview() {
   }
 
   const actions = {
-    // Rust saves to Downloads as an `.mp4`.
     save: () => oneAtATime(() => track("save", "save_recording")),
     copy: () => oneAtATime(() => track("copy", "copy_recording")),
-    // Rust hands the recording to the editor, and tells this page it's gone.
     edit: () => oneAtATime(() => invoke("edit_recording")).catch(console.error),
   } satisfies Record<PreviewKey, () => Promise<unknown>>;
 
@@ -95,20 +90,13 @@ export function useRecordingPreview() {
   useTauriEvent("preview-key", (key) => void actions[key](), "window");
 
   return {
-    /** Null until a recording finishes, and again once it's closed or moved to the editor. */
     videoSrc,
-    /** Null until the video loads. */
     durationMs,
-    /** The loop's time. Read it with `useClockValue`, so only the progress bar redraws. */
     clock,
-    /** From Rust, because an inactive macOS window gets no mouse moves. Shows the actions. */
     isHovered,
-    /** The `data-hover` name of the control under the pointer. */
     hoveredName,
     activity,
-    /** Why the last Save or Copy failed. */
     failure,
-    /** Spread on the `<video>`, which plays on a loop, so its time and length can be read. */
     videoProps: {
       ref: video,
       onLoadedMetadata: ({ currentTarget }: SyntheticEvent<HTMLVideoElement>) =>
@@ -117,8 +105,7 @@ export function useRecordingPreview() {
       onPause: () => setIsPlaying(false),
     },
     ...actions,
-    // Rust asks to save or delete first, unless it's saved, and tells this page once it's gone.
-    // Cancelling the alert keeps it shown.
+    // Rust confirms first unless it's saved; cancelling keeps the preview shown.
     close: () =>
       oneAtATime(() => invoke("close_recording")).catch(console.error),
     showInFinder: () => invoke("show_saved_in_finder").catch(console.error),

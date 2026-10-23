@@ -1,6 +1,4 @@
-//! Polls the cursor position and mouse buttons and writes the changes as JSON Lines. Polling
-//! needs no permission, while an event tap would need Input Monitoring and some cursor crates
-//! trigger an Accessibility prompt.
+//! Polls the cursor, because an event tap would need Input Monitoring permission.
 
 use std::{
     fs::File,
@@ -19,11 +17,8 @@ use cidre::cg;
 
 use super::timeline::host_time_now;
 
-/// A running background logger. Call `stop` to finish the file. Dropping it without that, as
-/// when capture fails to start, still ends its thread.
 pub(super) struct CursorLogger {
     stop: Arc<AtomicBool>,
-    /// Always there until `stop` takes it.
     thread: Option<JoinHandle<Result<()>>>,
 }
 
@@ -59,7 +54,6 @@ impl Drop for CursorLogger {
     }
 }
 
-/// One reading of the cursor, timestamped on the host clock (the clock video frames use).
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Sample {
     t: f64,
@@ -70,7 +64,6 @@ struct Sample {
 }
 
 fn poll_until_stopped(mut out: BufWriter<File>, stop: &AtomicBool) -> Result<()> {
-    // 240 readings a second.
     let interval = Duration::from_secs_f64(1.0 / 240.0);
     let mut next_poll = Instant::now();
     let mut last_flush = Instant::now();
@@ -95,8 +88,6 @@ fn poll_until_stopped(mut out: BufWriter<File>, stop: &AtomicBool) -> Result<()>
             out.flush()?;
             last_flush = Instant::now();
         }
-        // Sleeps until the next fixed slot, so the rate doesn't drift. A slot already missed
-        // starts the schedule over from now.
         next_poll += interval;
         match next_poll.checked_duration_since(Instant::now()) {
             Some(wait) => thread::sleep(wait),
@@ -107,8 +98,6 @@ fn poll_until_stopped(mut out: BufWriter<File>, stop: &AtomicBool) -> Result<()>
     Ok(())
 }
 
-/// The JSON lines for what changed between the previous reading and this one: a move, then any
-/// button going down or up. The first reading counts as a move.
 fn lines_between(previous: Option<&Sample>, now: &Sample) -> Vec<String> {
     let position = format!(r#""t":{:.6},"x":{:.1},"y":{:.1}"#, now.t, now.x, now.y);
     let move_line = format!(r#"{{"type":"move",{position}}}"#);
@@ -155,7 +144,6 @@ mod tests {
         let move_10 = r#"{"type":"move","t":1.500000,"x":10.0,"y":20.0}"#;
         let move_15 = r#"{"type":"move","t":1.500000,"x":15.0,"y":20.0}"#;
         let cases: [(Option<Sample>, Sample, &[&str]); 8] = [
-            // The first reading is a move, even with a button down.
             (None, sample(10.0, true, false), &[move_10]),
             (Some(still), still, &[]),
             (
@@ -168,7 +156,6 @@ mod tests {
                 still,
                 &[r#"{"type":"up","t":1.500000,"x":10.0,"y":20.0,"button":"right"}"#],
             ),
-            // Holding a button while moving logs only the move.
             (
                 Some(sample(10.0, true, false)),
                 sample(15.0, true, false),
@@ -179,13 +166,11 @@ mod tests {
                 sample(10.0, false, true),
                 &[],
             ),
-            // A move smaller than a point is still a move.
             (
                 Some(still),
                 sample(10.4, false, false),
                 &[r#"{"type":"move","t":1.500000,"x":10.4,"y":20.0}"#],
             ),
-            // A move with a click logs the move first.
             (
                 Some(still),
                 sample(15.0, true, true),

@@ -1,13 +1,4 @@
-//! Export: the recording drawn in its look and written to an `.mp4` by AVFoundation.
-//!
-//! The page works out the layout with the same maths as the stage and sends plain pixel numbers,
-//! so the stage and the export can't disagree. The look is the same on every frame, so it's drawn
-//! once, as a cut-out: the background and the shadow, with a rounded hole where the recording
-//! shows through. Each frame is that cut-out laid over the video, which keeps the recording's own
-//! pixels untouched when it's exported at full size.
-//!
-//! The frames are read with the look applied and written by hand, rather than with an export
-//! session, because an export session shrinks anything bigger than the recording back to its size.
+//! Written frame by frame: an AVAssetExportSession shrinks output bigger than the recording.
 
 use std::path::Path;
 use std::ptr::{NonNull, null_mut};
@@ -37,20 +28,19 @@ use objc2_foundation::{NSArray, NSDictionary, NSError, NSNumber, NSString, NSURL
 use serde::Deserialize;
 use ts_rs::TS;
 
-/// Everything the export draws, in pixels of the exported video, measured from its top left.
 #[derive(Debug, Clone, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "bindings.ts")]
 pub(crate) struct ExportLayout {
-    /// The whole picture. Both are even, as H.264 needs.
+    /// Even, as H.264 needs.
     width: u32,
     height: u32,
-    /// Where the recording sits.
     recording: PixelRect,
-    /// The recording's corner radius.
     radius: f64,
     shadow: ExportShadow,
     background: ExportGradient,
+    /// The zoom at each 60th of a second from the start, about the recording's middle; 1 is none.
+    zoom: Vec<f64>,
 }
 
 #[derive(Debug, Clone, Deserialize, TS)]
@@ -62,7 +52,6 @@ pub(crate) struct PixelRect {
     height: f64,
 }
 
-/// A shadow like CSS's `box-shadow: 0 <offsetY> <blur> rgb(0 0 0 / <opacity>)`.
 #[derive(Debug, Clone, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "bindings.ts")]
@@ -72,11 +61,9 @@ pub(crate) struct ExportShadow {
     opacity: f64,
 }
 
-/// A gradient like CSS's `linear-gradient(<angle>deg, <stops>)`.
 #[derive(Debug, Clone, Deserialize, TS)]
 #[ts(export, export_to = "bindings.ts")]
 pub(crate) struct ExportGradient {
-    /// In degrees, as CSS measures them: 0 points up, 90 points right.
     angle: f64,
     stops: Vec<ExportStop>,
 }
@@ -84,14 +71,10 @@ pub(crate) struct ExportGradient {
 #[derive(Debug, Clone, Deserialize, TS)]
 #[ts(export, export_to = "bindings.ts")]
 pub(crate) struct ExportStop {
-    /// Like "#2a9d8f".
     color: String,
-    /// From 0 to 1 along the gradient.
     at: f64,
 }
 
-/// Writes `video` to `output` in `layout`, calling `progress` with 0 to 1 as it goes. Blocks until
-/// the file is done.
 pub(crate) fn export(
     video: &Path,
     output: &Path,
@@ -101,24 +84,24 @@ pub(crate) fn export(
     let cutout = cutout(layout)?;
     let asset = unsafe { AVURLAsset::URLAssetWithURL_options(&file_url(video), None) };
     let video_type = unsafe { AVMediaTypeVideo }.context("AVFoundation has no video type")?;
-    // The newer form loads tracks through a callback; for a file on disk this is just as quick.
+    // The non-deprecated form is callback-only; for a file on disk this is just as quick.
     #[allow(deprecated)]
     let track = unsafe { asset.tracksWithMediaType(video_type) }
         .firstObject()
         .context("the recording has no video")?;
-    let place = placement(&layout.recording, layout.height, unsafe {
-        track.naturalSize()
-    });
+    let natural = unsafe { track.naturalSize() };
+    let (recording, height, zoom) = (layout.recording.clone(), layout.height, layout.zoom.clone());
     let picture = CGRect::new(
         CGPoint::new(0.0, 0.0),
         CGSize::new(layout.width.into(), layout.height.into()),
     );
 
-    // Runs for every frame, on AVFoundation's threads: the frame moved into place, under the cut-out.
     let draw_frame = RcBlock::new(
         move |request: NonNull<AVAsynchronousCIImageFilteringRequest>| {
             let request = unsafe { request.as_ref() };
             unsafe {
+                let scale = zoom_at(&zoom, request.compositionTime().seconds());
+                let place = placement(&zoomed(&recording, scale), height, natural);
                 let frame = request.sourceImage().imageByApplyingTransform(place);
                 let image = cutout
                     .imageByCompositingOverImage(&frame)
@@ -127,7 +110,7 @@ pub(crate) fn export(
             }
         },
     );
-    // The newer form only reports the composition through a callback; this one returns it.
+    // The non-deprecated form only reports the composition through a callback.
     #[allow(deprecated)]
     let composition = unsafe {
         AVMutableVideoComposition::videoCompositionWithAsset_applyingCIFiltersWithHandler(
@@ -179,10 +162,8 @@ pub(crate) fn export(
     );
     unsafe { writer.startSessionAtSourceTime(kCMTimeZero) };
     let duration = unsafe { asset.duration().seconds() };
-    // Reported in steps of at least 1%, so a long recording doesn't send an event every frame.
     let mut reported = 0.0;
     while let Some(frame) = unsafe { frames.copyNextSampleBuffer() } {
-        // The encoder takes frames as fast as it can; wait whenever it has a backlog.
         while !unsafe { input.isReadyForMoreMediaData() } {
             std::thread::sleep(Duration::from_millis(2));
         }
@@ -218,8 +199,6 @@ pub(crate) fn export(
     Ok(())
 }
 
-/// H.264 at `width` × `height`: 8 bits per pixel per second, like the recorder's own files, with a
-/// keyframe at least every second so the export scrubs quickly too.
 fn h264(width: u32, height: u32) -> Result<Retained<NSDictionary<NSString, AnyObject>>> {
     let key =
         |key: Option<&'static NSString>| key.context("AVFoundation is missing a video setting");
@@ -258,8 +237,6 @@ fn reason(error: Option<Retained<NSError>>) -> String {
     )
 }
 
-/// The look without the recording: the background and the recording's shadow, with a rounded
-/// hole where the recording goes. Core Graphics counts up from the bottom, so rectangles flip.
 fn cutout(layout: &ExportLayout) -> Result<Retained<CIImage>> {
     let (width, height) = (layout.width as usize, layout.height as usize);
     let srgb = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB }))
@@ -285,7 +262,7 @@ fn cutout(layout: &ExportLayout) -> Result<Retained<CIImage>> {
     CGContext::draw_linear_gradient(context, Some(&gradient), start, end, extend);
 
     let hole = rounded_rect(&layout.recording, layout.radius, layout.height);
-    // The shadow comes from filling the hole's shape, which the next step clears again.
+    // Filling the hole casts the shadow; the clear below removes the fill.
     CGContext::save_g_state(context);
     let shadow = CGColor::new_srgb(0.0, 0.0, 0.0, layout.shadow.opacity);
     let offset = CGSize::new(0.0, -layout.shadow.offset_y);
@@ -321,9 +298,6 @@ fn gradient(space: &CGColorSpace, background: &ExportGradient) -> Result<CFRetai
     .context("could not make the background's gradient")
 }
 
-/// Where a CSS `linear-gradient(<angle>deg, …)` starts and ends on a `width` × `height` picture, in
-/// Core Graphics' coordinates. CSS runs the line through the centre, just long enough to reach the
-/// corners.
 fn gradient_line(angle: f64, width: f64, height: f64) -> (CGPoint, CGPoint) {
     let (dx, dy) = (angle.to_radians().sin(), -angle.to_radians().cos());
     let half = (width * dx.abs() + height * dy.abs()) / 2.0;
@@ -337,7 +311,6 @@ fn gradient_line(angle: f64, width: f64, height: f64) -> (CGPoint, CGPoint) {
     (point(-1.0), point(1.0))
 }
 
-/// Moves and scales a video frame of `natural` size onto `rect`, in a picture `height` tall.
 fn placement(rect: &PixelRect, height: u32, natural: CGSize) -> CGAffineTransform {
     CGAffineTransform {
         a: rect.width / natural.width,
@@ -349,6 +322,21 @@ fn placement(rect: &PixelRect, height: u32, natural: CGSize) -> CGAffineTransfor
     }
 }
 
+fn zoomed(rect: &PixelRect, scale: f64) -> PixelRect {
+    let (width, height) = (rect.width * scale, rect.height * scale);
+    PixelRect {
+        x: rect.x - (width - rect.width) / 2.0,
+        y: rect.y - (height - rect.height) / 2.0,
+        width,
+        height,
+    }
+}
+
+fn zoom_at(zoom: &[f64], seconds: f64) -> f64 {
+    let step = (seconds * 60.0).round().max(0.0) as usize;
+    zoom.get(step).or(zoom.last()).copied().unwrap_or(1.0)
+}
+
 fn rounded_rect(rect: &PixelRect, radius: f64, height: u32) -> CFRetained<CGPath> {
     let flipped = CGRect::new(
         CGPoint::new(rect.x, f64::from(height) - rect.y - rect.height),
@@ -357,7 +345,6 @@ fn rounded_rect(rect: &PixelRect, radius: f64, height: u32) -> CFRetained<CGPath
     unsafe { CGPath::with_rounded_rect(flipped, radius, radius, std::ptr::null()) }
 }
 
-/// "#2a9d8f" as red, green and blue from 0 to 1.
 fn rgb(hex: &str) -> Result<[f64; 3]> {
     let digits = hex.strip_prefix('#').filter(|digits| digits.len() == 6);
     let digits = digits.with_context(|| format!("{hex:?} isn't a colour like #2a9d8f"))?;
@@ -381,13 +368,10 @@ mod tests {
 
     #[test]
     fn gradient_lines_run_the_way_css_draws_them() {
-        // 90deg runs left to right, through the middle.
         let (start, end) = gradient_line(90.0, 100.0, 50.0);
         assert!(close(start, 0.0, 25.0) && close(end, 100.0, 25.0));
-        // 180deg runs top to bottom, and Core Graphics' top is the larger y.
         let (start, end) = gradient_line(180.0, 100.0, 50.0);
         assert!(close(start, 50.0, 50.0) && close(end, 50.0, 0.0));
-        // 135deg on a square runs from the top-left corner to the bottom-right one.
         let (start, end) = gradient_line(135.0, 100.0, 100.0);
         assert!(close(start, 0.0, 100.0) && close(end, 100.0, 0.0));
     }
@@ -406,15 +390,33 @@ mod tests {
     }
 
     #[test]
+    fn zooming_grows_the_recording_about_its_middle() {
+        let rect = PixelRect {
+            x: 100.0,
+            y: 50.0,
+            width: 200.0,
+            height: 100.0,
+        };
+        let grown = zoomed(&rect, 1.5);
+        assert_eq!((grown.x, grown.y), (50.0, 25.0));
+        assert_eq!((grown.width, grown.height), (300.0, 150.0));
+    }
+
+    #[test]
+    fn the_zoom_is_read_at_the_nearest_step_and_holds_past_the_end() {
+        let zoom = [1.0, 1.2, 1.5];
+        assert_eq!(zoom_at(&zoom, 0.02), 1.2);
+        assert_eq!(zoom_at(&zoom, 10.0), 1.5);
+        assert_eq!(zoom_at(&[], 1.0), 1.0);
+    }
+
+    #[test]
     fn colours_read_from_hex_and_bad_ones_say_why() {
         assert_eq!(rgb("#ff0000").unwrap(), [1.0, 0.0, 0.0]);
         assert!(rgb("2a9d8f").is_err());
         assert!(rgb("#2a9d8").is_err());
     }
 
-    /// Exports a real recording, so it's skipped unless asked for:
-    /// `EXPORT_TEST_VIDEO=<video> EXPORT_TEST_OUTPUT=<new .mp4> cargo test -- --ignored`
-    /// The layout is the default look's at the video's full size, the way the page works it out.
     #[test]
     #[ignore = "needs a real video"]
     fn exports_a_recording_in_the_default_look() {
@@ -464,6 +466,9 @@ mod tests {
                     },
                 ],
             },
+            zoom: (0..180)
+                .map(|step| if (60..120).contains(&step) { 1.5 } else { 1.0 })
+                .collect(),
         };
         export(Path::new(&video), Path::new(&output), &layout, |_| {}).unwrap();
         assert!(Path::new(&output).exists());

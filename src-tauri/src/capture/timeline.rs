@@ -1,9 +1,7 @@
-//! A recording's time, with its pauses cut out. All times are seconds on the host clock, the
-//! clock ScreenCaptureKit stamps frames with, so frames and the record bar's timer agree.
+//! Times are host-clock seconds, the clock ScreenCaptureKit stamps frames with.
 
 use cidre::cm;
 
-/// The host clock's time now, in seconds.
 pub(super) fn host_time_now() -> f64 {
     cm::Clock::host_time_clock().time().as_secs()
 }
@@ -11,7 +9,6 @@ pub(super) fn host_time_now() -> f64 {
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct Timeline {
     started: f64,
-    /// Finished pauses, as `[start, end]`, oldest first.
     pauses: Vec<[f64; 2]>,
     paused_at: Option<f64>,
 }
@@ -39,14 +36,11 @@ impl Timeline {
         }
     }
 
-    /// How long has been recorded by `now`, not counting pauses.
     pub(super) fn elapsed(&self, now: f64) -> f64 {
         let open_pause = self.paused_at.map_or(0.0, |start| now - start);
         now - self.started - self.total_paused() - open_pause
     }
 
-    /// Where a frame captured at `captured` belongs in the video once the pauses are cut out, or
-    /// `None` when it was captured during a pause.
     pub(super) fn video_time(&self, captured: f64) -> Option<f64> {
         if self.paused_at.is_some_and(|start| captured >= start) {
             return None;
@@ -80,8 +74,6 @@ mod tests {
         timeline.pause(12.0);
         timeline.resume(15.0);
         assert_eq!(timeline.elapsed(16.0), 3.0);
-        // (captured at, place in the video): frames from the pause are dropped, the frame that
-        // ends it is kept, and later frames close the gap.
         let frames = [
             (11.0, Some(11.0)),
             (13.0, None),
@@ -96,7 +88,6 @@ mod tests {
                 "captured at {captured}"
             );
         }
-        // While a pause is still open, frames before it stay and frames after it are dropped.
         timeline.pause(20.0);
         assert_eq!(timeline.video_time(19.0), Some(16.0));
         assert_eq!(timeline.video_time(21.0), None);
@@ -106,10 +97,8 @@ mod tests {
     #[test]
     fn several_pauses_should_add_up() {
         let mut timeline = Timeline::new(0.0);
-        // Resuming without a pause changes nothing.
         timeline.resume(0.5);
         assert_eq!(timeline, Timeline::new(0.0));
-        // A pause right at the start cuts the opening; pausing twice keeps the first start.
         timeline.pause(0.0);
         timeline.pause(1.0);
         timeline.resume(2.0);

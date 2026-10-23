@@ -2,22 +2,43 @@ import { describe, expect, test } from "bun:test";
 import {
   addRegion,
   amountAt,
+  amountFromShare,
+  changeLook,
+  dragRegion,
   clampAmount,
   DEFAULT_LOOK,
+  editRegions,
   exportLayout,
   fillCss,
   fillGradient,
   frameAt,
   frameLayout,
+  NEW_PROJECT,
   regionKindForKey,
+  removeRegion,
+  removeRegionAt,
   rulerLabel,
   outputAt,
   rulerMarks,
   sourceAt,
+  zoomTrack,
   type Region,
+  type RegionDrag,
 } from "./edits";
 
 describe("look", () => {
+  test("amountFromShare turns how far along a field you are into a whole amount", () => {
+    expect(amountFromShare("padding", 0.5)).toBe(80);
+    expect(amountFromShare("shadowOpacity", 1.2)).toBe(100);
+    expect(amountFromShare("radius", -1)).toBe(0);
+  });
+
+  test("changeLook and editRegions keep the same project when nothing changes", () => {
+    expect(changeLook(NEW_PROJECT, { padding: 64 })).toBe(NEW_PROJECT);
+    expect(changeLook(NEW_PROJECT, { padding: 80 }).look.padding).toBe(80);
+    expect(editRegions(NEW_PROJECT, (regions) => regions)).toBe(NEW_PROJECT);
+  });
+
   test("fillCss draws a gradient corner to corner, and a color as its middle stop", () => {
     expect(fillCss({ kind: "gradient", preset: 0 })).toBe(
       "linear-gradient(135deg, #0f4c5c 0%, #2a9d8f 55%, #e9c46a 100%)",
@@ -66,7 +87,11 @@ describe("look", () => {
   });
 
   test("exportLayout keeps the recording at full size, centred in an even frame", () => {
-    const layout = exportLayout(DEFAULT_LOOK, { width: 3840, height: 2278 });
+    const layout = exportLayout(
+      DEFAULT_LOOK,
+      { width: 3840, height: 2278 },
+      [],
+    );
     expect([layout.width, layout.height]).toEqual([4326, 2566]);
     expect(layout.recording).toEqual({
       x: 243,
@@ -78,7 +103,11 @@ describe("look", () => {
   });
 
   test("exportLayout pads a tall recording by its width, as the stage does", () => {
-    const layout = exportLayout(DEFAULT_LOOK, { width: 1080, height: 1920 });
+    const layout = exportLayout(
+      DEFAULT_LOOK,
+      { width: 1080, height: 1920 },
+      [],
+    );
     expect([layout.width % 2, layout.height % 2]).toEqual([0, 0]);
     expect(layout.recording.x).toBe(Math.round((layout.width - 1080) / 2));
     expect(layout.recording.x).toBeCloseTo((64 * layout.width) / 1920, 0);
@@ -93,7 +122,6 @@ describe("regions", () => {
     endMs: 3000,
     amount: 1.5,
   };
-  /** The regions' spans, like "0-1000 1000-3000". */
   const spans = (regions: Region[]) =>
     regions.map(({ startMs, endMs }) => `${startMs}-${endMs}`).join(" ");
 
@@ -140,6 +168,45 @@ describe("regions", () => {
     );
     const ids = added.map((region) => region.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  const ZOOM_5_TO_6: Region = {
+    ...ZOOM_1_TO_3,
+    id: 2,
+    startMs: 5000,
+    endMs: 6000,
+  };
+  const drag = (edge: RegionDrag, deltaMs: number) =>
+    spans(dragRegion([ZOOM_1_TO_3, ZOOM_5_TO_6], 1, edge, deltaMs, 10_000));
+
+  test.each([
+    ["move", 500, "1500-3500 5000-6000", "moves the whole region"],
+    ["move", 5000, "3000-5000 5000-6000", "stops at the next region"],
+    ["move", -5000, "0-2000 5000-6000", "stops at the start"],
+    ["start", -400, "600-3000 5000-6000", "moves just the start"],
+    ["start", 5000, "2750-3000 5000-6000", "keeps a quarter second"],
+    ["end", 9000, "1000-5000 5000-6000", "stops the end at the next region"],
+  ] as const)("dragRegion %p by %p gives %p: %s", (edge, deltaMs, expected) => {
+    expect(drag(edge, deltaMs)).toBe(expected);
+  });
+
+  test("dragRegion past the last region stops at the end", () => {
+    expect(spans(dragRegion([ZOOM_5_TO_6], 2, "end", 9000, 8000))).toBe(
+      "5000-8000",
+    );
+  });
+
+  test("a drag that changes nothing, or a removal of nothing, returns the same regions", () => {
+    const regions = [ZOOM_1_TO_3];
+    expect(dragRegion(regions, 1, "move", 0, 10_000)).toBe(regions);
+    expect(dragRegion(regions, 9, "move", 500, 10_000)).toBe(regions);
+    expect(removeRegion(regions, 9)).toBe(regions);
+    expect(removeRegion(regions, 1)).toEqual([]);
+  });
+
+  test("removeRegionAt removes the region under the playhead, and nothing elsewhere", () => {
+    expect(removeRegionAt([ZOOM_1_TO_3], 2999)).toEqual([]);
+    expect(removeRegionAt([ZOOM_1_TO_3], 3000)).toEqual([ZOOM_1_TO_3]);
   });
 
   test.each([
@@ -235,7 +302,6 @@ describe("frameAt", () => {
     const zoom = [region("zoom", 1000, 3000, 1.5)];
     expect(zoomAt(zoom, 999)).toBe(1);
     expect(zoomAt(zoom, 1000)).toBeCloseTo(1, 5);
-    // The curve rushes then settles, so halfway through the ease it's most of the way in.
     expect(zoomAt(zoom, 1300)).toBeGreaterThan(1.4);
     expect(zoomAt(zoom, 1600)).toBe(1.5);
     expect(zoomAt(zoom, 3000)).toBeCloseTo(1.5, 5);
@@ -268,10 +334,17 @@ describe("frameAt", () => {
       region("speed", 0, 4000, 2),
       region("zoom", 1000, 3000, 1.5),
     ];
-    // The zoom starts at source 1000, output 500, and is in fully 600ms of output later.
     expect(zoomAt(regions, 500)).toBeCloseTo(1, 5);
     expect(zoomAt(regions, 1099)).toBeLessThan(1.5);
     expect(zoomAt(regions, 1100)).toBe(1.5);
+  });
+
+  test("zoomTrack gives the zoom at every 60th of a second, end included", () => {
+    const track = zoomTrack([region("zoom", 1000, 3000, 1.5)], 4000);
+    expect(track).toHaveLength(241);
+    expect(track[0]).toBe(1);
+    expect(track[120]).toBe(1.5);
+    expect(track[240]).toBe(1);
   });
 
   test("zooms on the middle unless the region has a centre, and keeps it zooming out", () => {

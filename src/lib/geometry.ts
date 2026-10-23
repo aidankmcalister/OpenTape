@@ -31,18 +31,15 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-/** `rect` as absolute-position CSS. */
 export function rectStyle(rect: Rect) {
   return { left: rect.x, top: rect.y, width: rect.width, height: rect.height };
 }
 
-/** The largest size of `ratio` (width / height) that fits inside `bounds`. */
 export function fitInside(bounds: Size, ratio: number): Size {
   const width = Math.min(bounds.width, bounds.height * ratio);
   return { width, height: width / ratio };
 }
 
-/** An SVG path for a rectangle with rounded corners, for CSS `clip-path: path(...)`. */
 export function roundedRectPath(
   { x, y, width, height }: Rect,
   corner: number,

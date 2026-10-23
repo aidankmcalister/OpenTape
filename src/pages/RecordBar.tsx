@@ -131,7 +131,6 @@ function Setup({
           options.systemAudio ? (
             <MonitorSpeaker />
           ) : (
-            // Crossed out the way Lucide's own "off" icons are.
             <span className="relative grid place-items-center">
               <MonitorSpeaker />
               <svg
@@ -165,7 +164,6 @@ function Setup({
   );
 }
 
-/** A device's menu or toggle. Long names are capped so the bar keeps a steady size. */
 function DeviceButton({
   isOn,
   icon,
@@ -233,7 +231,6 @@ function Recording({ bar }: { bar: Bar }) {
   );
 }
 
-/** Ticks on its own, so the rest of the bar doesn't redraw ten times a second. */
 function Elapsed({ timer }: { timer: Bar["timer"] }) {
   const elapsedMs = useElapsedMs(timer);
   return (

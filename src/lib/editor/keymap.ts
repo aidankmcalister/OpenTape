@@ -1,4 +1,3 @@
-/** What the editor's keys can do. The page says how each one is done. */
 export type EditorAction =
   | "togglePlay"
   | "stepBack"
@@ -7,12 +6,17 @@ export type EditorAction =
   | "toEnd"
   | "toggleLoop"
   | "toggleSound"
-  | "export";
+  | "export"
+  | "addZoom"
+  | "removeRegion"
+  | "undo"
+  | "redo";
 
 export type Binding = {
   action: EditorAction;
   key: string;
   meta?: boolean;
+  shift?: boolean;
   alt?: boolean;
   repeats?: boolean;
 };
@@ -26,24 +30,25 @@ export const KEYMAP: Binding[] = [
   { action: "toggleLoop", key: "l" },
   { action: "toggleSound", key: "m" },
   { action: "export", key: "e", meta: true },
+  { action: "addZoom", key: "z" },
+  { action: "removeRegion", key: "Backspace" },
+  { action: "undo", key: "z", meta: true, shift: false },
+  { action: "redo", key: "z", meta: true, shift: true },
 ];
 
-/**
- * The action a key press asks for, or null. ⌘ counts only for a binding that asks for it, so ⌘C
- * and the rest stay with the app's menus, and ⌃ always does. A letter works with or without Shift,
- * and holding a key repeats only where its binding says so.
- */
+// ⌘ must match exactly, so ⌘C and the rest stay with the app's menus.
 export function actionFor(
   press: Pick<
     KeyboardEvent,
-    "key" | "altKey" | "metaKey" | "ctrlKey" | "repeat"
+    "key" | "altKey" | "metaKey" | "shiftKey" | "ctrlKey" | "repeat"
   >,
 ): EditorAction | null {
   if (press.ctrlKey) return null;
   const binding = KEYMAP.find(
-    ({ key, meta = false, alt = false }) =>
+    ({ key, meta = false, shift, alt = false }) =>
       key.toLowerCase() === press.key.toLowerCase() &&
       meta === press.metaKey &&
+      (shift === undefined || shift === press.shiftKey) &&
       alt === press.altKey,
   );
   if (!binding || (press.repeat && !binding.repeats)) return null;
