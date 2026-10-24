@@ -3,6 +3,7 @@ import {
   Play,
   Plus,
   Repeat,
+  Scissors,
   SkipBack,
   SkipForward,
   Volume2,
@@ -30,53 +31,67 @@ import { REGION_LOOKS } from "./Timeline";
 export default function Transport({
   playback,
   onAdd,
+  isCutting,
+  onToggleCut,
 }: {
   playback: Playback;
   onAdd: (kind: RegionKind) => void;
+  isCutting: boolean;
+  onToggleCut: () => void;
 }) {
   return (
     <div className="grid h-10 grid-cols-3 items-center border-b border-hairline px-2">
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Add at the playhead"
-            />
-          }
+      <div className="flex items-center gap-1">
+        <Toggle
+          aria-label="Cut tool"
+          pressed={isCutting}
+          onPressedChange={onToggleCut}
         >
-          <Plus />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-52">
-          <DropdownMenuGroup>
-            <DropdownMenuLabel className="px-2">
-              Add at playhead
-            </DropdownMenuLabel>
-            {(Object.keys(REGIONS) as RegionKind[]).map((kind) => {
-              const { Icon, tone } = REGION_LOOKS[kind];
-              return (
-                <DropdownMenuItem
-                  key={kind}
-                  className="h-10 gap-3"
-                  onClick={() => onAdd(kind)}
-                >
-                  <span
-                    className={cn(
-                      "grid size-7 place-items-center rounded-md",
-                      tone,
-                    )}
+          <Scissors />
+        </Toggle>
+        <Separator orientation="vertical" className="mx-1 my-3" />
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Add at the playhead"
+              />
+            }
+          >
+            <Plus />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-52">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="px-2">
+                Add at playhead
+              </DropdownMenuLabel>
+              {(Object.keys(REGIONS) as RegionKind[]).map((kind) => {
+                const { Icon, tone } = REGION_LOOKS[kind];
+                return (
+                  <DropdownMenuItem
+                    key={kind}
+                    className="h-10 gap-3"
+                    onClick={() => onAdd(kind)}
                   >
-                    <Icon />
-                  </span>
-                  <span className="font-semibold">{REGIONS[kind].label}</span>
-                  <Kbd className="ml-auto">{REGIONS[kind].key}</Kbd>
-                </DropdownMenuItem>
-              );
-            })}
-          </DropdownMenuGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+                    <span
+                      className={cn(
+                        "grid size-7 place-items-center rounded-md",
+                        tone,
+                      )}
+                    >
+                      <Icon />
+                    </span>
+                    <span className="font-semibold">{REGIONS[kind].label}</span>
+                    <Kbd className="ml-auto">{REGIONS[kind].key}</Kbd>
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
       <div className="flex justify-center gap-1">
         <Button
           variant="ghost"

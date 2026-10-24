@@ -6,7 +6,8 @@ import type {
   PixelRect,
 } from "@/lib/bindings";
 import { type Appearance, BORDER_COLORS, fillGradient } from "./appearance";
-import type { Region } from "./regions";
+import { type Clip, cutSpans } from "./clips";
+import { outputAt, type Region } from "./regions";
 import { zoomTrack } from "./zoom";
 
 export function exportLayout(
@@ -14,6 +15,7 @@ export function exportLayout(
   video: Size,
   regions: Region[] = [],
   durationMs = 0,
+  clips: Clip[] = [],
 ): ExportLayout {
   const ratio = video.width / video.height;
   const paddingShare = ((2 * appearance.padding) / 1920) * Math.max(1, ratio);
@@ -57,6 +59,10 @@ export function exportLayout(
         end: endMs / 1000,
         amount,
       })),
+    cuts: cutSpans(clips, durationMs).map(({ startMs, endMs }) => ({
+      start: outputAt(regions, startMs) / 1000,
+      end: outputAt(regions, endMs) / 1000,
+    })),
   };
 }
 

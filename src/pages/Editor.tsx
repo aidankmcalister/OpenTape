@@ -5,7 +5,7 @@ import Header from "@/components/editor/Header";
 import Island from "@/components/editor/Island";
 import Stage from "@/components/editor/Stage";
 import Transport from "@/components/editor/Transport";
-import { usePlayback, useSpeed } from "@/hooks/editor/usePlayback";
+import { useCuts, usePlayback, useSpeed } from "@/hooks/editor/usePlayback";
 import { useKeymap } from "@/hooks/editor/useKeymap";
 import Timeline from "@/components/editor/Timeline";
 import ExportButton from "@/components/editor/ExportButton";
@@ -30,9 +30,10 @@ export default function Editor() {
 function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
   const playback = usePlayback(videoSrc);
   const edits = useProject(playback.clock, playback.durationMs);
-  const { appearance, regions } = edits.project;
+  const { appearance, regions, clips } = edits.project;
   useSpeed(playback, regions);
-  const exporting = useExport(appearance, regions, playback);
+  useCuts(playback, clips);
+  const exporting = useExport(edits.project, playback);
   useKeymap({
     togglePlay: playback.togglePlay,
     stepBack: () => playback.step(-1),
@@ -44,7 +45,8 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
     export: () => exporting.start?.(),
     addZoom: () => edits.add("zoom"),
     addSpeed: () => edits.add("speed"),
-    removeRegion: edits.removeRegion,
+    toggleCut: edits.toggleCut,
+    remove: edits.remove,
     undo: edits.undo,
     redo: edits.redo,
   });
@@ -90,12 +92,19 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
             {...playback.videoProps}
           />
           <Island className="shrink-0">
-            <Transport playback={playback} onAdd={edits.add} />
+            <Transport
+              playback={playback}
+              onAdd={edits.add}
+              isCutting={edits.isCutting}
+              onToggleCut={edits.toggleCut}
+            />
             <Timeline
               clock={playback.clock}
               durationMs={playback.durationMs}
               edits={edits}
               onSeek={playback.seek}
+              heldMs={playback.heldMs}
+              onSkim={playback.skim}
             />
           </Island>
         </div>

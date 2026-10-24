@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 import { useClockValue, useVideoClock } from "@/hooks/useVideoClock";
+import { type Clip, cutEndAt } from "@/lib/editor/clips";
 import { amountAt, type Region } from "@/lib/editor/regions";
 import { frameStep } from "@/lib/editor/timeline";
 import type { Size } from "@/lib/geometry";
@@ -12,10 +13,27 @@ export function usePlayback(src: string) {
   const [durationMs, setDurationMs] = useState(0);
   const [ratio, setRatio] = useState(16 / 9);
   const [videoSize, setVideoSize] = useState<Size | null>(null);
+  const [heldMs, setHeldMs] = useState<number | null>(null);
+  const held = useRef<number | null>(null);
   const clock = useVideoClock(video, isPlaying, src);
 
+  function hold(ms: number | null) {
+    held.current = ms;
+    setHeldMs(ms);
+  }
+
   function seek(ms: number) {
+    hold(null);
     clock.seek(ms / 1000);
+  }
+
+  function skim(ms: number | null) {
+    if (ms === null) {
+      if (held.current !== null) seek(held.current);
+    } else if (!isPlaying) {
+      if (held.current === null) hold(clock.seconds() * 1000);
+      clock.seek(ms / 1000);
+    }
   }
 
   return {
@@ -26,8 +44,13 @@ export function usePlayback(src: string) {
     ratio,
     videoSize,
     clock,
-    togglePlay: () => togglePlay(video.current),
+    togglePlay: () => {
+      skim(null);
+      togglePlay(video.current);
+    },
     seek,
+    skim,
+    heldMs,
     toStart: () => seek(0),
     toEnd: () => seek(durationMs),
     step: (frames: number) => {
@@ -67,6 +90,15 @@ export function useSpeed(playback: Playback, regions: Region[]) {
     amountAt(regions, "speed", seconds * 1000),
   );
   useEffect(() => playback.setRate(rate), [playback, rate]);
+}
+
+export function useCuts(playback: Playback, clips: Clip[]) {
+  const cutEndMs = useClockValue(playback.clock, (seconds) =>
+    cutEndAt(clips, seconds * 1000, playback.durationMs),
+  );
+  useEffect(() => {
+    if (playback.isPlaying && cutEndMs !== null) playback.seek(cutEndMs);
+  }, [playback, cutEndMs]);
 }
 
 function togglePlay(video: HTMLVideoElement | null) {

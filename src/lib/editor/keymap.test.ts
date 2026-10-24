@@ -69,7 +69,8 @@ describe("shortcuts sheet", () => {
     ["stepBack", "←"],
     ["toEnd", "⌥→"],
     ["toggleLoop", "L"],
-    ["removeRegion", "⌫"],
+    ["toggleCut", "C"],
+    ["remove", "⌫"],
     ["export", "⌘E"],
     ["redo", "⇧⌘Z"],
   ] as const)("keyLabel(%p) is %p", (action, label) => {

@@ -19,7 +19,7 @@ export const REGIONS: Record<
   speed: { label: "Speed", hint: "Speed up or slow down", key: "S", amount: 2 },
 };
 
-const MIN_REGION_MS = 250;
+export const MIN_REGION_MS = 250;
 
 export type RegionDrag = "move" | "start" | "end";
 
@@ -49,13 +49,13 @@ export function addRegion(
   return [...regions, added].sort((a, b) => a.startMs - b.startMs);
 }
 
-export function dragRegion(
-  regions: Region[],
+export function dragRegion<T extends Pick<Region, "id" | "startMs" | "endMs">>(
+  regions: T[],
   id: number,
   drag: RegionDrag,
   deltaMs: number,
   durationMs: number,
-): Region[] {
+): T[] {
   const region = regions.find((region) => region.id === id);
   if (!region) return regions;
   const others = regions.filter((other) => other !== region);

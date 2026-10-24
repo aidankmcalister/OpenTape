@@ -6,7 +6,13 @@ import {
   type Region,
   type RegionKind,
 } from "@/lib/editor/regions";
-import { editRegions, NEW_PROJECT, type Project } from "@/lib/editor/project";
+import { type Clip, removeClip, splitClip } from "@/lib/editor/clips";
+import {
+  editClips,
+  editRegions,
+  NEW_PROJECT,
+  type Project,
+} from "@/lib/editor/project";
 import { historyOf, record, redo, undo } from "@/lib/editor/history";
 import type { Clock } from "@/lib/time";
 
@@ -14,24 +20,45 @@ export function useProject(clock: Clock, durationMs: number) {
   const [history, setHistory] = useState(() => historyOf(NEW_PROJECT));
   const [draft, setDraft] = useState<Project | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedClipId, setSelectedClipId] = useState<number | null>(null);
+  const [isCutting, setIsCutting] = useState(false);
   const playheadMs = () => clock.seconds() * 1000;
   const change = (edit: (project: Project) => Project) =>
     setHistory((current) => record(current, edit(current.present)));
   const changeRegions = (edit: (regions: Region[]) => Region[]) =>
     change((project) => editRegions(project, edit));
+  const changeClips = (edit: (clips: Clip[]) => Clip[]) =>
+    change((project) => editClips(project, edit));
   const project = draft ?? history.present;
   return {
     project,
     selected:
       project.regions.find((region) => region.id === selectedId) ?? null,
     selectedId,
-    select: setSelectedId,
+    selectedClipId,
+    select: (id: number | null) => {
+      setSelectedId(id);
+      setSelectedClipId(null);
+    },
+    selectClip: (id: number) => {
+      setSelectedClipId(id);
+      setSelectedId(null);
+    },
     change,
     add: (kind: RegionKind) => {
       const atMs = playheadMs();
       changeRegions((regions) => addRegion(regions, kind, atMs, durationMs));
     },
-    removeRegion: () => {
+    isCutting,
+    toggleCut: () => setIsCutting((isOn) => !isOn),
+    split: (atMs: number) =>
+      changeClips((clips) => splitClip(clips, atMs, durationMs)),
+    remove: () => {
+      if (selectedClipId !== null) {
+        changeClips((clips) => removeClip(clips, selectedClipId, durationMs));
+        setSelectedClipId(null);
+        return;
+      }
       const atMs = playheadMs();
       changeRegions((regions) =>
         selectedId === null

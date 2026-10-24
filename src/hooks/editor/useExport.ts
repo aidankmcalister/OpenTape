@@ -10,7 +10,8 @@ import {
   scaleLayout,
   type ExportSettings,
 } from "@/lib/editor/export";
-import type { Appearance } from "@/lib/editor/appearance";
+import type { Clip } from "@/lib/editor/clips";
+import type { Project } from "@/lib/editor/project";
 import type { Region } from "@/lib/editor/regions";
 import type { Size } from "@/lib/geometry";
 import type { Playback } from "./usePlayback";
@@ -24,15 +25,18 @@ export type ExportState =
 const SHOWS_FOR_MS = { done: 4000, failed: 5000 };
 
 export function useExport(
-  appearance: Appearance,
-  regions: Region[],
+  { appearance, regions, clips }: Project,
   { videoSize, durationMs }: Pick<Playback, "videoSize" | "durationMs">,
 ) {
   const [state, setState] = useState<ExportState>({ stage: "idle" });
   const [settings, setSettings] = useState(DEFAULT_EXPORT);
-  const layoutAt = (size: Size, withRegions: Region[] = []) =>
+  const layoutAt = (
+    size: Size,
+    withRegions: Region[] = [],
+    withClips: Clip[] = [],
+  ) =>
     scaleLayout(
-      exportLayout(appearance, size, withRegions, durationMs),
+      exportLayout(appearance, size, withRegions, durationMs, withClips),
       RESOLUTIONS[settings.resolution],
     );
 
@@ -59,7 +63,7 @@ export function useExport(
   async function start(size: Size) {
     setState({ stage: "exporting", progress: 0 });
     try {
-      const layout = layoutAt(size, regions);
+      const layout = layoutAt(size, regions, clips);
       const path = await invoke<string>("export_recording", {
         layout,
         options: exportOptions(settings),

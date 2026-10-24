@@ -1,8 +1,12 @@
-import { FastForward, ZoomIn } from "lucide-react";
+import { FastForward, Film, Layers, Scissors, ZoomIn } from "lucide-react";
 import { useClockValue } from "@/hooks/useVideoClock";
-import { useRegionDrag } from "@/hooks/editor/useRegionDrag";
+import {
+  type TimelineDrag,
+  useTimelineDrag,
+} from "@/hooks/editor/useTimelineDrag";
 import type { Edits } from "@/hooks/editor/useProject";
-import { useScrub } from "@/hooks/editor/useScrub";
+import { useScrub, useSkim } from "@/hooks/editor/useScrub";
+import { type Clip, clipSeams, keptClips } from "@/lib/editor/clips";
 import { rulerLabel, rulerMarks } from "@/lib/editor/timeline";
 import {
   REGIONS,
@@ -37,19 +41,34 @@ export default function Timeline({
   durationMs,
   edits,
   onSeek,
+  heldMs,
+  onSkim,
 }: {
   clock: Clock;
   durationMs: number;
   edits: Edits;
   onSeek: (ms: number) => void;
+  heldMs: number | null;
+  onSkim: (ms: number | null) => void;
 }) {
   const scrubProps = useScrub(durationMs, onSeek);
-  const dragProps = useRegionDrag(edits, durationMs);
+  const { hoverMs, msAt, skimProps } = useSkim(durationMs, onSkim);
+  const drag = useTimelineDrag(edits, durationMs);
+  const clips = keptClips(edits.project.clips, durationMs);
   return (
-    <div className="h-20 px-4">
+    <div className="relative flex h-23 pr-4">
+      <div className="flex w-8 shrink-0 flex-col items-center pt-6 text-faint">
+        <div className="grid h-10 place-items-center">
+          <Film className="size-4" />
+        </div>
+        <div className="grid h-7 place-items-center">
+          <Layers className="size-4" />
+        </div>
+      </div>
+      <div className="pointer-events-none absolute inset-x-0 top-16 h-px bg-hairline" />
       <div
         data-track
-        className="relative h-full select-none"
+        className="relative flex-1 select-none"
         {...scrubProps}
         onPointerDown={(event) => {
           edits.select(null);
@@ -59,16 +78,53 @@ export default function Timeline({
         {durationMs > 0 ? (
           <>
             <Ruler durationMs={durationMs} />
+            <div
+              className={cn(
+                "absolute inset-x-0 top-6 h-10",
+                edits.isCutting && "cursor-crosshair",
+              )}
+              {...skimProps}
+              onPointerDownCapture={(event) => {
+                if (!edits.isCutting) return;
+                event.stopPropagation();
+                edits.split(msAt(event));
+              }}
+            >
+              {clips.map((clip, index) => (
+                <ClipItem
+                  key={clip.id}
+                  clip={clip}
+                  durationMs={durationMs}
+                  isSelected={clip.id === edits.selectedClipId}
+                  onSelect={() => edits.selectClip(clip.id)}
+                  trims={[
+                    ...(index === 0 ? ["start" as const] : []),
+                    ...(index === clips.length - 1 ? ["end" as const] : []),
+                  ]}
+                  drag={drag.clip}
+                />
+              ))}
+              {clipSeams(clips).map((ms) => (
+                <Seam key={ms} ms={ms} durationMs={durationMs} />
+              ))}
+              {hoverMs !== null ? (
+                <SkimLine
+                  ms={hoverMs}
+                  durationMs={durationMs}
+                  isCutting={edits.isCutting}
+                />
+              ) : null}
+            </div>
             {edits.project.regions.map((region) => (
               <RegionItem
                 key={region.id}
                 region={region}
                 durationMs={durationMs}
                 isSelected={region.id === edits.selectedId}
-                dragProps={dragProps}
+                drag={drag.region}
               />
             ))}
-            <Playhead clock={clock} durationMs={durationMs} />
+            <Playhead clock={clock} durationMs={durationMs} heldMs={heldMs} />
           </>
         ) : null}
       </div>
@@ -97,16 +153,99 @@ function Ruler({ durationMs }: { durationMs: number }) {
   );
 }
 
+function ClipItem({
+  clip,
+  durationMs,
+  isSelected,
+  onSelect,
+  trims,
+  drag,
+}: {
+  clip: Clip;
+  durationMs: number;
+  isSelected: boolean;
+  onSelect: () => void;
+  trims: ("start" | "end")[];
+  drag: TimelineDrag["clip"];
+}) {
+  return (
+    <div
+      data-selected={isSelected}
+      className="group absolute top-2 flex h-6 items-center gap-2 overflow-hidden rounded-sm bg-accent px-3 text-muted-foreground data-[selected=true]:inset-ring data-[selected=true]:inset-ring-muted-foreground"
+      style={{
+        left: `${percentAt(clip.startMs, durationMs)}%`,
+        width: `${percentAt(clip.endMs - clip.startMs, durationMs)}%`,
+      }}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        onSelect();
+      }}
+    >
+      <Film className="size-4 shrink-0" />
+      <span className="ml-auto rounded-full bg-accent px-2 font-mono text-caption leading-5">
+        {((clip.endMs - clip.startMs) / 1000).toFixed(1)}s
+      </span>
+      {trims.map((edge) => (
+        <div
+          key={edge}
+          className={cn(
+            "absolute inset-y-0 w-1.5 cursor-ew-resize bg-primary",
+            edge === "start" ? "left-0" : "right-0",
+          )}
+          {...drag(clip.id, edge)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function Seam({ ms, durationMs }: { ms: number; durationMs: number }) {
+  return (
+    <div
+      className="pointer-events-none absolute top-2.5 grid size-5 -translate-x-1/2 place-items-center rounded-full bg-card text-muted-foreground"
+      style={{ left: `${percentAt(ms, durationMs)}%` }}
+    >
+      <Scissors className="size-3" />
+    </div>
+  );
+}
+
+function SkimLine({
+  ms,
+  durationMs,
+  isCutting,
+}: {
+  ms: number;
+  durationMs: number;
+  isCutting: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "pointer-events-none absolute inset-y-0 -ml-px w-0.5",
+        isCutting ? "bg-primary" : "bg-foreground/40",
+      )}
+      style={{ left: `${percentAt(ms, durationMs)}%` }}
+    >
+      {isCutting ? (
+        <div className="absolute top-2.5 left-1/2 grid size-5 -translate-x-1/2 place-items-center rounded-full bg-primary text-primary-foreground">
+          <Scissors className="size-3" />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function RegionItem({
   region,
   durationMs,
   isSelected,
-  dragProps,
+  drag,
 }: {
   region: Region;
   durationMs: number;
   isSelected: boolean;
-  dragProps: ReturnType<typeof useRegionDrag>;
+  drag: TimelineDrag["region"];
 }) {
   const { Icon, tone, selected, badge } = REGION_LOOKS[region.kind];
 
@@ -114,7 +253,7 @@ function RegionItem({
     <div
       data-selected={isSelected}
       className={cn(
-        "group absolute bottom-2 flex h-8 cursor-grab items-center gap-2 overflow-hidden rounded-sm border border-transparent px-3 active:cursor-grabbing",
+        "group absolute top-16.5 flex h-6 cursor-grab items-center gap-2 overflow-hidden rounded-sm border border-transparent px-3 active:cursor-grabbing",
         tone,
         selected,
       )}
@@ -122,7 +261,7 @@ function RegionItem({
         left: `${percentAt(region.startMs, durationMs)}%`,
         width: `${percentAt(region.endMs - region.startMs, durationMs)}%`,
       }}
-      {...dragProps(region.id, "move")}
+      {...drag(region.id, "move")}
     >
       <Icon className="size-4 shrink-0" />
       <span className="text-caption font-semibold">
@@ -136,37 +275,40 @@ function RegionItem({
       >
         {region.amount}×
       </span>
-      <Grip edge="start" id={region.id} dragProps={dragProps} />
-      <Grip edge="end" id={region.id} dragProps={dragProps} />
+      <Grip edge="start" {...drag(region.id, "start")} />
+      <Grip edge="end" {...drag(region.id, "end")} />
     </div>
   );
 }
 
 function Grip({
   edge,
-  id,
-  dragProps,
-}: {
-  edge: RegionDrag;
-  id: number;
-  dragProps: ReturnType<typeof useRegionDrag>;
-}) {
+  ...dragProps
+}: { edge: RegionDrag } & ReturnType<TimelineDrag["region"]>) {
   return (
     <div
       className={cn(
         "absolute inset-y-0 flex w-2 cursor-ew-resize items-center justify-center",
         edge === "start" ? "left-0" : "right-0",
       )}
-      {...dragProps(id, edge)}
+      {...dragProps}
     >
       <div className="h-3 w-0.5 rounded-full bg-current opacity-40 group-data-[selected=true]:opacity-80" />
     </div>
   );
 }
 
-function Playhead({ clock, durationMs }: { clock: Clock; durationMs: number }) {
+function Playhead({
+  clock,
+  durationMs,
+  heldMs,
+}: {
+  clock: Clock;
+  durationMs: number;
+  heldMs: number | null;
+}) {
   const left = useClockValue(clock, (seconds) =>
-    percentAt(seconds * 1000, durationMs),
+    percentAt(heldMs ?? seconds * 1000, durationMs),
   );
   return (
     <div

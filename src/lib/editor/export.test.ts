@@ -110,3 +110,21 @@ test("exportLayout sends the zoom track, and each speed region in seconds", () =
   expect(layout.zoom).toHaveLength(241);
   expect(layout.speed).toEqual([{ start: 2, end: 3.5, amount: 2 }]);
 });
+
+test("exportLayout sends each cut in seconds of the sped-up video", () => {
+  const regions: Region[] = [
+    { id: 1, kind: "speed", startMs: 0, endMs: 2000, amount: 2 },
+  ];
+  const clips = [
+    { id: 1, startMs: 0, endMs: 3000 },
+    { id: 2, startMs: 4000, endMs: 6000 },
+  ];
+  const layout = exportLayout(
+    DEFAULT_APPEARANCE,
+    { width: 1920, height: 1080 },
+    regions,
+    6000,
+    clips,
+  );
+  expect(layout.cuts).toEqual([{ start: 2, end: 3 }]);
+});

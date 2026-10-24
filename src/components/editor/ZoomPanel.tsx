@@ -88,7 +88,7 @@ export default function ZoomPanel({ edits }: { edits: Edits }) {
         <Button
           variant="secondary"
           className="w-full text-ui"
-          onClick={edits.removeRegion}
+          onClick={edits.remove}
         >
           Delete zoom
           <Kbd>⌫</Kbd>

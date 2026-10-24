@@ -1,13 +1,19 @@
 import type { Size } from "@/lib/geometry";
 import { type Appearance, DEFAULT_APPEARANCE, frameLayout } from "./appearance";
+import type { Clip } from "./clips";
 import { type Region, sourceAt } from "./regions";
 import { zoomAt } from "./zoom";
 
-export type Project = { appearance: Appearance; regions: Region[] };
+export type Project = {
+  appearance: Appearance;
+  regions: Region[];
+  clips: Clip[];
+};
 
 export const NEW_PROJECT: Project = {
   appearance: DEFAULT_APPEARANCE,
   regions: [],
+  clips: [],
 };
 
 export function editRegions(
@@ -16,6 +22,14 @@ export function editRegions(
 ): Project {
   const regions = edit(project.regions);
   return regions === project.regions ? project : { ...project, regions };
+}
+
+export function editClips(
+  project: Project,
+  edit: (clips: Clip[]) => Clip[],
+): Project {
+  const clips = edit(project.clips);
+  return clips === project.clips ? project : { ...project, clips };
 }
 
 export function changeAppearance(
