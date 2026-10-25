@@ -15,11 +15,7 @@ export default function ShortcutsSheet() {
     <Dialog>
       <DialogTrigger
         render={
-          <Button
-            variant="ghost"
-            size="icon-round"
-            aria-label="Keyboard shortcuts"
-          />
+          <Button variant="ghost" size="icon" aria-label="Keyboard shortcuts" />
         }
       >
         <Keyboard />

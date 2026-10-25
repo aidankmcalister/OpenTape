@@ -3,6 +3,7 @@ import { useClockValue, useVideoClock } from "@/hooks/useVideoClock";
 import { type Clip, cutEndAt } from "@/lib/editor/clips";
 import { amountAt, type Region } from "@/lib/editor/regions";
 import { frameStep } from "@/lib/editor/timeline";
+import { clamp } from "@/lib/geometry";
 import type { Size } from "@/lib/geometry";
 
 export function usePlayback(src: string) {
@@ -14,6 +15,7 @@ export function usePlayback(src: string) {
   const [ratio, setRatio] = useState(16 / 9);
   const [videoSize, setVideoSize] = useState<Size | null>(null);
   const [heldMs, setHeldMs] = useState<number | null>(null);
+  const [speed, setSpeed] = useState(1);
   const held = useRef<number | null>(null);
   const clock = useVideoClock(video, isPlaying, src);
 
@@ -64,8 +66,12 @@ export function usePlayback(src: string) {
     setRate: (rate: number) => {
       if (!video.current) return;
       video.current.preservesPitch = false;
-      video.current.playbackRate = rate;
+      video.current.playbackRate = rate * speed;
     },
+    speed,
+    setSpeed,
+    leap: (ms: number) =>
+      seek(clamp(clock.seconds() * 1000 + ms, 0, durationMs)),
     videoProps: {
       ref: video,
       preload: "auto",

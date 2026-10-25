@@ -1,15 +1,8 @@
 import { Blend, Image, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsIconTrigger, TabsList } from "@/components/ui/tabs";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { ToggleGroup } from "@/components/ui/toggle-group";
 import type { Edits } from "@/hooks/editor/useProject";
 import {
   AMOUNTS,
@@ -25,7 +18,13 @@ import {
 } from "@/lib/editor/appearance";
 import { changeAppearance, NEW_PROJECT } from "@/lib/editor/project";
 import FillPicker from "./FillPicker";
-import { PanelHeader, Section, ValueInput } from "./Panel";
+import {
+  PanelHeader,
+  Section,
+  SelectField,
+  Swatch,
+  ValueInput,
+} from "../Panel";
 
 const FILLS: { kind: Fill["kind"]; label: string; Icon: typeof Blend }[] = [
   { kind: "gradient", label: "Gradient", Icon: Blend },
@@ -88,11 +87,10 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
           }
         >
           {presets.map((_, preset) => (
-            <ToggleGroupItem
+            <Swatch
               key={preset}
               value={String(preset)}
               aria-label={`Preset ${preset + 1}`}
-              className="size-6 min-w-6 rounded-full p-0 transition-[box-shadow] aria-pressed:swatch-ring"
               style={{ background: fillCss({ ...appearance.fill, preset }) }}
             />
           ))}
@@ -108,34 +106,23 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
       ))}
       <Section title="Border">
         <ValueField amount="borderWidth" edits={edits} />
-        <Select
+        <SelectField
+          label="Color"
           value={appearance.borderColor}
-          onValueChange={(borderColor) =>
-            borderColor &&
+          options={(Object.keys(BORDER_COLORS) as BorderColor[]).map(
+            (color) => ({ value: color, label: BORDER_COLORS[color].label }),
+          )}
+          onChange={(color) =>
             edits.change((project) =>
-              changeAppearance(project, { borderColor }),
+              changeAppearance(project, { borderColor: color as BorderColor }),
             )
           }
-        >
-          <SelectTrigger className="h-8 w-full rounded-md border-hairline bg-secondary px-3 text-label">
-            <span>Color</span>
-            <SelectValue className="justify-end">
-              {(value: BorderColor) => BORDER_COLORS[value].label}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {(Object.keys(BORDER_COLORS) as BorderColor[]).map((color) => (
-              <SelectItem key={color} value={color}>
-                {BORDER_COLORS[color].label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        />
       </Section>
       <div className="mt-auto p-3">
         <Button
           variant="secondary"
-          className="w-full text-ui"
+          className="w-full"
           onClick={() => edits.change(() => NEW_PROJECT)}
         >
           Reset all
@@ -150,7 +137,6 @@ function ValueField({ amount, edits }: { amount: Amount; edits: Edits }) {
   const value = edits.project.appearance[amount];
   return (
     <Slider
-      variant="field"
       max={max}
       value={[value]}
       onValueChange={(next) =>

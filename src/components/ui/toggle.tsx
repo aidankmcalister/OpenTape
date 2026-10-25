@@ -17,6 +17,7 @@ const toggleVariants = cva(
         lg: "h-9 min-w-9 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
         /** The rounded controls on the app's pills. */
         pill: "h-10 gap-2 rounded-full px-4 text-ui",
+        icon: "size-8 min-w-8",
         "icon-sm": "size-6 min-w-6 rounded-md",
       },
     },

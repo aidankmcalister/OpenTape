@@ -2,6 +2,8 @@ export type EditorAction =
   | "togglePlay"
   | "stepBack"
   | "stepForward"
+  | "leapBack"
+  | "leapForward"
   | "toStart"
   | "toEnd"
   | "toggleLoop"
@@ -11,6 +13,9 @@ export type EditorAction =
   | "addSpeed"
   | "toggleCut"
   | "remove"
+  | "openAdd"
+  | "selectAll"
+  | "deselect"
   | "undo"
   | "redo";
 
@@ -25,8 +30,10 @@ export type Binding = {
 
 export const KEYMAP: Binding[] = [
   { action: "togglePlay", key: " " },
-  { action: "stepBack", key: "ArrowLeft", repeats: true },
-  { action: "stepForward", key: "ArrowRight", repeats: true },
+  { action: "stepBack", key: "ArrowLeft", shift: false, repeats: true },
+  { action: "stepForward", key: "ArrowRight", shift: false, repeats: true },
+  { action: "leapBack", key: "ArrowLeft", shift: true, repeats: true },
+  { action: "leapForward", key: "ArrowRight", shift: true, repeats: true },
   { action: "toStart", key: "ArrowLeft", alt: true },
   { action: "toEnd", key: "ArrowRight", alt: true },
   { action: "toggleLoop", key: "l" },
@@ -35,7 +42,10 @@ export const KEYMAP: Binding[] = [
   { action: "addZoom", key: "z" },
   { action: "addSpeed", key: "s" },
   { action: "toggleCut", key: "c" },
+  { action: "openAdd", key: "/" },
   { action: "remove", key: "Backspace" },
+  { action: "selectAll", key: "a", meta: true },
+  { action: "deselect", key: "Escape" },
   { action: "undo", key: "z", meta: true, shift: false },
   { action: "redo", key: "z", meta: true, shift: true },
 ];
@@ -48,7 +58,14 @@ export const SHORTCUTS: {
     group: "Playback",
     rows: [
       { label: "Play or pause", actions: ["togglePlay"] },
-      { label: "Step one frame", actions: ["stepBack", "stepForward"] },
+      {
+        label: "Step one frame, or nudge the selection",
+        actions: ["stepBack", "stepForward"],
+      },
+      {
+        label: "Step one second, or nudge the selection",
+        actions: ["leapBack", "leapForward"],
+      },
       { label: "Jump to start or end", actions: ["toStart", "toEnd"] },
       { label: "Loop", actions: ["toggleLoop"] },
       { label: "Mute", actions: ["toggleSound"] },
@@ -59,8 +76,11 @@ export const SHORTCUTS: {
     rows: [
       { label: "Add a zoom", actions: ["addZoom"] },
       { label: "Add a speed region", actions: ["addSpeed"] },
+      { label: "Search modifiers to add", actions: ["openAdd"] },
       { label: "Cut tool", actions: ["toggleCut"] },
       { label: "Delete selected", actions: ["remove"] },
+      { label: "Select every modifier", actions: ["selectAll"] },
+      { label: "Clear the selection", actions: ["deselect"] },
       { label: "Undo", actions: ["undo"] },
       { label: "Redo", actions: ["redo"] },
       { label: "Export", actions: ["export"] },
@@ -73,6 +93,7 @@ export const KEY_NAMES: Record<string, string> = {
   ArrowLeft: "←",
   ArrowRight: "→",
   Backspace: "⌫",
+  Escape: "Esc",
 };
 
 export function keyLabel(action: EditorAction): string {

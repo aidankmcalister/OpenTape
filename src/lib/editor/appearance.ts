@@ -30,8 +30,8 @@ export const BORDER_COLORS = {
 export type BorderColor = keyof typeof BORDER_COLORS;
 
 export const GRADIENTS: [string, string, string][] = [
+  ["#ffb074", "#e8680a", "#8a2e0a"],
   ["#0f4c5c", "#2a9d8f", "#e9c46a"],
-  ["#ff9a4d", "#e8680a", "#7a2e0b"],
   ["#1e3a8a", "#3b82f6", "#bfdbfe"],
   ["#27272a", "#52525b", "#a1a1aa"],
   ["#14532d", "#16a34a", "#bbf7d0"],
@@ -94,7 +94,7 @@ function presetGradient(kind: Fill["kind"], preset: number): ExportGradient {
   const [from, middle, to] = GRADIENTS[preset];
   const stops = [
     { color: from, at: 0 },
-    { color: middle, at: 0.55 },
+    { color: middle, at: 0.5 },
     { color: to, at: 1 },
   ];
   return { angle: 135, stops };
@@ -170,3 +170,14 @@ function borderCss(appearance: Appearance): string | null {
   if (!tint || appearance.borderWidth === 0) return null;
   return `color-mix(in srgb, ${tint.color} ${tint.opacity * 100}%, transparent)`;
 }
+
+export const MARK_COLORS = {
+  white: "#ffffff",
+  orange: "#ff7a1a",
+  yellow: "#facc15",
+  green: "#34c78c",
+  blue: "#3d9bff",
+  pink: "#f472b6",
+};
+
+export type MarkColor = keyof typeof MARK_COLORS;

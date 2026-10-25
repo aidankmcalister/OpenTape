@@ -1,8 +1,15 @@
-import type { ComponentProps, ReactNode } from "react";
+import {
+  useRef,
+  type ComponentProps,
+  type PointerEvent,
+  type ReactNode,
+} from "react";
+import { Move } from "lucide-react";
 import { useElementSize } from "@/hooks/useElementSize";
 import { useClockValue } from "@/hooks/useVideoClock";
 import { fillCss, frameLayout, type Appearance } from "@/lib/editor/appearance";
-import { zoomAt } from "@/lib/editor/zoom";
+import { focusAt, focusBox, zoomAt } from "@/lib/editor/zoom";
+import type { Point } from "@/lib/geometry";
 import { outputAt, type Region } from "@/lib/editor/regions";
 import type { Clock } from "@/lib/time";
 import Island from "./Island";
@@ -12,12 +19,14 @@ export default function Stage({
   ratio,
   clock,
   regions,
+  focus,
   ...props
 }: ComponentProps<"video"> & {
   appearance: Appearance;
   ratio: number;
   clock: Clock;
   regions: Region[];
+  focus: Focusing | null;
 }) {
   const { ref, size } = useElementSize<HTMLDivElement>();
   const { frame, recording, radius, shadow, border, video } = frameLayout(
@@ -41,7 +50,7 @@ export default function Stage({
               boxShadow: `0 ${shadow.offsetY}px ${shadow.blur}px ${shadow.color}`,
             }}
           >
-            <Zoom clock={clock} regions={regions}>
+            <Zoom clock={clock} regions={focus ? [] : regions}>
               <video
                 className="absolute max-w-none object-cover"
                 style={{
@@ -53,6 +62,7 @@ export default function Stage({
                 {...props}
               />
             </Zoom>
+            {focus ? <FocusBox {...focus} /> : null}
             {border.color ? (
               <div
                 className="pointer-events-none absolute inset-0"
@@ -91,6 +101,68 @@ function Zoom({
       style={{ transform: `scale(${scale})`, transformOrigin: origin }}
     >
       {children}
+    </div>
+  );
+}
+
+type Focusing = {
+  zoom: Region;
+  onMove: (center: Point) => void;
+  onDone: () => void;
+};
+
+function FocusBox({ zoom, onMove, onDone }: Focusing) {
+  const drag = useRef<{ x: number; y: number; width: number; height: number }>(
+    null,
+  );
+  const box = focusBox(zoom);
+  const move = (event: PointerEvent<HTMLElement>) => {
+    const from = drag.current;
+    if (!from || !event.currentTarget.hasPointerCapture(event.pointerId))
+      return;
+    onMove(
+      focusAt(
+        {
+          x: box.x + (event.clientX - from.x) / from.width,
+          y: box.y + (event.clientY - from.y) / from.height,
+        },
+        zoom.amount,
+      ),
+    );
+    drag.current = { ...from, x: event.clientX, y: event.clientY };
+  };
+  return (
+    <div data-keeps-editor className="absolute inset-0">
+      <div
+        className="absolute grid cursor-grab place-items-center rounded-sm border-2 border-highlight bg-highlight/16 active:cursor-grabbing"
+        style={{
+          left: `${box.x * 100}%`,
+          top: `${box.y * 100}%`,
+          width: `${box.size * 100}%`,
+          height: `${box.size * 100}%`,
+        }}
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          const area =
+            event.currentTarget.parentElement!.getBoundingClientRect();
+          drag.current = {
+            x: event.clientX,
+            y: event.clientY,
+            width: area.width,
+            height: area.height,
+          };
+        }}
+        onPointerMove={move}
+        onPointerUp={() => {
+          if (!drag.current) return;
+          drag.current = null;
+          onDone();
+        }}
+      >
+        <div className="grid size-6 place-items-center rounded-full bg-highlight text-primary-foreground">
+          <Move className="size-3.5" />
+        </div>
+      </div>
     </div>
   );
 }

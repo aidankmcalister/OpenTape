@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { hexToHsv, hsvToHex, isHex } from "./color";
+import { contrastRatio, hexToHsv, hsvToHex, isHex } from "./color";
 
 describe("color", () => {
   test.each([
@@ -21,6 +21,11 @@ describe("color", () => {
       expect(hsvToHex(hexToHsv(hex))).toBe(hex);
     },
   );
+
+  test("contrastRatio runs from 1:1 to 21:1", () => {
+    expect(contrastRatio([0, 0, 0], [255, 255, 255])).toBeCloseTo(21);
+    expect(contrastRatio([90, 90, 90], [90, 90, 90])).toBe(1);
+  });
 
   test("isHex wants a # and six hex digits", () => {
     expect(isHex("#2A9d8f")).toBe(true);

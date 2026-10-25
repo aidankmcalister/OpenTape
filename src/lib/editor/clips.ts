@@ -1,4 +1,4 @@
-import { dragRegion, MIN_REGION_MS } from "./regions";
+import { dragSpan, MIN_REGION_MS } from "./regions";
 
 export type Clip = { id: number; startMs: number; endMs: number };
 
@@ -54,7 +54,7 @@ export function trimClip(
   durationMs: number,
 ): Clip[] {
   const kept = keptClips(clips, durationMs);
-  const trimmed = dragRegion(kept, id, edge, deltaMs, durationMs);
+  const trimmed = dragSpan(kept, id, edge, deltaMs, durationMs);
   return trimmed === kept ? clips : trimmed;
 }
 

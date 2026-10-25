@@ -1,7 +1,7 @@
 import type { Size } from "@/lib/geometry";
 import { type Appearance, DEFAULT_APPEARANCE, frameLayout } from "./appearance";
 import type { Clip } from "./clips";
-import { type Region, sourceAt } from "./regions";
+import { closeRows, type Region, sourceAt } from "./regions";
 import { zoomAt } from "./zoom";
 
 export type Project = {
@@ -20,7 +20,7 @@ export function editRegions(
   project: Project,
   edit: (regions: Region[]) => Region[],
 ): Project {
-  const regions = edit(project.regions);
+  const regions = closeRows(edit(project.regions));
   return regions === project.regions ? project : { ...project, regions };
 }
 

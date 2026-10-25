@@ -5,16 +5,10 @@ import { cn } from "@/lib/utils"
 const PARTS = {
   default: {
     track:
-      "h-1 w-full rounded-full bg-muted data-vertical:h-full data-vertical:w-1",
+      "rounded-full bg-muted data-horizontal:h-1 data-horizontal:w-full data-vertical:h-full data-vertical:w-1",
     indicator: "bg-primary",
     thumb:
       "size-3 rounded-full border border-ring bg-white ring-ring/50 hover:ring-3 focus-visible:ring-3 active:ring-3",
-  },
-  field: {
-    track: "h-1 w-full rounded-full bg-accent",
-    indicator: "rounded-full bg-highlight",
-    thumb:
-      "size-4 rounded-full bg-primary-foreground shadow-md hover:ring-4 hover:ring-highlight/25 focus-visible:ring-4 focus-visible:ring-highlight/50 data-dragging:ring-4 data-dragging:ring-highlight/25",
   },
   hue: {
     track:
@@ -47,9 +41,11 @@ function Slider({
 
   return (
     <SliderPrimitive.Root
-      className={cn("flex flex-col gap-2 data-horizontal:w-full data-vertical:h-full", className)}
+      className={cn(
+        "flex flex-col gap-2 data-horizontal:w-full data-vertical:h-full",
+        className
+      )}
       data-slot="slider"
-      data-variant={variant}
       defaultValue={defaultValue}
       value={value}
       min={min}

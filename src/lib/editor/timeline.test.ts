@@ -1,10 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import {
+  blockContent,
   frameStep,
+  lengthLabel,
+  modifiersWindowPx,
   msAtX,
   percentAt,
+  regionsInBox,
+  rowAtY,
+  rowLayout,
   rulerLabel,
   rulerMarks,
+  parseTimeLabel,
+  timeLabel,
 } from "./timeline";
 
 describe("timeline", () => {
@@ -77,4 +85,82 @@ describe("ruler", () => {
   ])("rulerLabel(%p) rounds to the nearest second: %p", (ms, label) => {
     expect(rulerLabel(ms)).toBe(label);
   });
+});
+
+test.each([
+  [1, 24, 128],
+  [3, 80, 184],
+  [4, 108, 184],
+  [7, 192, 184],
+])(
+  "%p rows need %ppx, and a 184px limit makes a %ppx timeline",
+  (count, areaPx, timelinePx) => {
+    expect(rowLayout(count).areaPx).toBe(areaPx);
+    expect(modifiersWindowPx(count, 184) + 104).toBe(timelinePx);
+  },
+);
+
+test("a 240px limit shows five rows and scrolls past them", () => {
+  expect(modifiersWindowPx(5, 240) + 104).toBe(240);
+  expect(modifiersWindowPx(6, 240) + 104).toBe(240);
+});
+
+test("rowAtY finds the row under the pointer, or the next new one", () => {
+  const { rows } = rowLayout(3);
+  expect(rowAtY(rows, 10)).toBe(0);
+  expect(rowAtY(rows, 40)).toBe(1);
+  expect(rowAtY(rows, 200)).toBe(3);
+});
+
+test.each([
+  [140, "full"],
+  [100, "compact"],
+  [50, "icon"],
+  [40, "bar"],
+] as const)("a %ppx Zoom block shows %p", (width, content) => {
+  expect(blockContent(width, "Zoom", "1.5×")).toBe(content);
+});
+
+test("the stretch tip reads 4.0s, ends 0:09.0", () => {
+  expect(lengthLabel(4000)).toBe("4.0s");
+  expect(timeLabel(9000)).toBe("0:09.0");
+  expect(timeLabel(65_450)).toBe("1:05.5");
+  expect(parseTimeLabel("1:05.5")).toBe(65_500);
+  expect(parseTimeLabel("4.2")).toBe(4200);
+  expect(parseTimeLabel("soon")).toBeNaN();
+});
+
+test("regionsInBox picks the modifiers a box touches, by time and row", () => {
+  const regions = [
+    {
+      id: 1,
+      kind: "zoom" as const,
+      startMs: 0,
+      endMs: 2000,
+      amount: 1.5,
+      row: 0,
+    },
+    {
+      id: 2,
+      kind: "speed" as const,
+      startMs: 1000,
+      endMs: 3000,
+      amount: 2,
+      row: 1,
+    },
+    {
+      id: 3,
+      kind: "zoom" as const,
+      startMs: 6000,
+      endMs: 8000,
+      amount: 1.5,
+      row: 0,
+    },
+  ];
+  const box = { x0: 150, y0: 5, x1: 250, y1: 40 };
+  const { rows } = rowLayout(2);
+  expect(regionsInBox(regions, box, 1000, 10_000, rows)).toEqual([1, 2]);
+  expect(regionsInBox(regions, { ...box, y1: 10 }, 1000, 10_000, rows)).toEqual(
+    [1],
+  );
 });

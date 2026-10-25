@@ -1,7 +1,8 @@
 import {
+  Gauge,
+  MousePointer2,
   Pause,
   Play,
-  Plus,
   Repeat,
   Scissors,
   SkipBack,
@@ -13,84 +14,60 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Kbd } from "@/components/ui/kbd";
 import { Separator } from "@/components/ui/separator";
 import { Toggle } from "@/components/ui/toggle";
 import type { Playback } from "@/hooks/editor/usePlayback";
+import type { Edits } from "@/hooks/editor/useProject";
 import { useClockValue } from "@/hooks/useVideoClock";
-import { REGIONS, type RegionKind } from "@/lib/editor/regions";
 import { formatTime, type Clock } from "@/lib/time";
-import { cn } from "@/lib/utils";
-import { REGION_LOOKS } from "./Timeline";
+import type { RegionKind } from "@/lib/editor/regions";
+import AddMenu from "./AddMenu";
+
+const SPEEDS = [0.5, 1, 1.5, 2];
 
 export default function Transport({
   playback,
-  onAdd,
-  isCutting,
-  onToggleCut,
+  edits,
+  isAddOpen,
+  onAddOpenChange,
+  kinds,
 }: {
   playback: Playback;
-  onAdd: (kind: RegionKind) => void;
-  isCutting: boolean;
-  onToggleCut: () => void;
+  edits: Edits;
+  isAddOpen: boolean;
+  onAddOpenChange: (isOpen: boolean) => void;
+  kinds: RegionKind[];
 }) {
   return (
-    <div className="grid h-10 grid-cols-3 items-center border-b border-hairline px-2">
+    <div className="grid h-10.25 grid-cols-3 items-start px-1 pt-1 hairline-b">
       <div className="flex items-center gap-1">
         <Toggle
+          size="icon"
+          aria-label="Select tool"
+          pressed={!edits.isCutting}
+          onPressedChange={() => edits.setCutting(false)}
+        >
+          <MousePointer2 />
+        </Toggle>
+        <Toggle
+          size="icon"
           aria-label="Cut tool"
-          pressed={isCutting}
-          onPressedChange={onToggleCut}
+          pressed={edits.isCutting}
+          onPressedChange={() => edits.setCutting(true)}
         >
           <Scissors />
         </Toggle>
         <Separator orientation="vertical" className="mx-1 my-3" />
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Add at the playhead"
-              />
-            }
-          >
-            <Plus />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-52">
-            <DropdownMenuGroup>
-              <DropdownMenuLabel className="px-2">
-                Add at playhead
-              </DropdownMenuLabel>
-              {(Object.keys(REGIONS) as RegionKind[]).map((kind) => {
-                const { Icon, tone } = REGION_LOOKS[kind];
-                return (
-                  <DropdownMenuItem
-                    key={kind}
-                    className="h-10 gap-3"
-                    onClick={() => onAdd(kind)}
-                  >
-                    <span
-                      className={cn(
-                        "grid size-7 place-items-center rounded-md",
-                        tone,
-                      )}
-                    >
-                      <Icon />
-                    </span>
-                    <span className="font-semibold">{REGIONS[kind].label}</span>
-                    <Kbd className="ml-auto">{REGIONS[kind].key}</Kbd>
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <AddMenu
+          isOpen={isAddOpen}
+          onOpenChange={onAddOpenChange}
+          onAdd={edits.add}
+          kinds={kinds}
+        />
       </div>
       <div className="flex justify-center gap-1">
         <Button
@@ -119,7 +96,38 @@ export default function Transport({
         </Button>
       </div>
       <div className="flex items-center justify-end gap-1">
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant="ghost"
+                aria-label="Playback speed"
+                className="font-mono"
+              />
+            }
+          >
+            <Gauge data-icon="inline-start" />
+            {playback.speed}×
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-28">
+            <DropdownMenuRadioGroup
+              value={playback.speed}
+              onValueChange={(speed) => playback.setSpeed(Number(speed))}
+            >
+              {SPEEDS.map((speed) => (
+                <DropdownMenuRadioItem
+                  key={speed}
+                  value={speed}
+                  className="font-mono"
+                >
+                  {speed}×
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Toggle
+          size="icon"
           aria-label="Loop"
           pressed={playback.isLooping}
           onPressedChange={playback.toggleLoop}
@@ -127,6 +135,7 @@ export default function Transport({
           <Repeat />
         </Toggle>
         <Toggle
+          size="icon"
           aria-label="Mute"
           pressed={playback.isMuted}
           onPressedChange={playback.toggleSound}

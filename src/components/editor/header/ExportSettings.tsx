@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import {
   Popover,
   PopoverContent,
+  PopoverTitle,
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -34,7 +35,7 @@ export default function ExportSettings({
       </PopoverTrigger>
       <PopoverContent align="end" sideOffset={8} className="w-85 gap-0 p-0">
         <div className="flex flex-col gap-3 p-3">
-          <h3 className="text-ui font-semibold">Export settings</h3>
+          <PopoverTitle>Export settings</PopoverTitle>
           <div className="grid grid-cols-2 gap-3">
             <Choice<Settings["format"]>
               label="Format"
@@ -120,7 +121,7 @@ function Choice<Value extends string>({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex h-6 items-center justify-between">
-        <span className="text-ui text-muted-foreground">{label}</span>
+        <span className="text-label text-muted-foreground">{label}</span>
         <span className="font-mono text-caption text-muted-foreground">
           {aside}
         </span>

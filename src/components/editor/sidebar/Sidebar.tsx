@@ -1,4 +1,4 @@
-import { useState } from "react";
+import type { ReactNode } from "react";
 import {
   Captions,
   CircleHelp,
@@ -6,25 +6,27 @@ import {
   MousePointer2,
   SlidersHorizontal,
   Volume2,
-  ZoomIn,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { Edits } from "@/hooks/editor/useProject";
-import Island from "./Island";
-import ShortcutsSheet from "./ShortcutSheet";
+import Island from "../Island";
+import ShortcutsSheet from "./ShortcutsSheet";
 import AppearancePanel from "./AppearancePanel";
-import ZoomPanel from "./ZoomPanel";
 
 const PANELS = [
   { id: "background", label: "Background", Icon: Image },
   { id: "cursor", label: "Cursor", Icon: MousePointer2 },
-  { id: "zoom", label: "Zoom", Icon: ZoomIn },
   { id: "audio", label: "Audio", Icon: Volume2 },
   { id: "captions", label: "Captions", Icon: Captions },
 ];
 
-const BUILT = ["background", "zoom"];
+const BUILT = ["background"];
 
 const LINKS = [
   { label: "Help", Icon: CircleHelp },
@@ -33,51 +35,48 @@ const LINKS = [
 ];
 
 export default function Sidebar({ edits }: { edits: Edits }) {
-  const [panel, setPanel] = useState("background");
-  const [shownId, setShownId] = useState(edits.selectedId);
-
-  if (edits.selectedId !== shownId) {
-    setShownId(edits.selectedId);
-    if (edits.selected?.kind === "zoom") setPanel("zoom");
-  }
-
   return (
     <Island className="flex w-86 shrink-0">
-      <nav className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-hairline py-3">
+      <nav className="flex w-12 shrink-0 flex-col items-center gap-1 py-3 hairline-r">
         {PANELS.map(({ id, label, Icon }) => (
-          <Button
-            key={id}
-            variant={id === panel ? "selected" : "ghost"}
-            size="icon-round"
-            aria-label={label}
-            disabled={!BUILT.includes(id)}
-            onClick={() => setPanel(id)}
-          >
-            <Icon />
-          </Button>
+          <RailTip key={id} label={label}>
+            <Button
+              variant={id === "background" ? "selected" : "ghost"}
+              size="icon"
+              aria-label={label}
+              disabled={!BUILT.includes(id)}
+            >
+              <Icon />
+            </Button>
+          </RailTip>
         ))}
         <Separator className="mt-auto mb-1 w-6" />
-        <ShortcutsSheet />
+        <RailTip label="Keyboard shortcuts">
+          <ShortcutsSheet />
+        </RailTip>
         {LINKS.map(({ label, Icon }) => (
-          <Button
-            key={label}
-            variant="ghost"
-            size="icon-round"
-            aria-label={label}
-            disabled
-          >
-            <Icon />
-          </Button>
+          <RailTip key={label} label={label}>
+            <Button variant="ghost" size="icon" aria-label={label} disabled>
+              <Icon />
+            </Button>
+          </RailTip>
         ))}
       </nav>
       <div className="flex min-w-0 flex-1 flex-col">
-        {panel === "zoom" ? (
-          <ZoomPanel edits={edits} />
-        ) : (
-          <AppearancePanel edits={edits} />
-        )}
+        <AppearancePanel edits={edits} />
       </div>
     </Island>
+  );
+}
+
+function RailTip({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span className="inline-flex" />}>
+        {children}
+      </TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
   );
 }
 

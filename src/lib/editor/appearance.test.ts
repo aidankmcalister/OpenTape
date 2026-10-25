@@ -17,7 +17,7 @@ const fill = (change: Partial<Fill>): Fill => ({
 describe("appearance", () => {
   test("fillCss draws a gradient corner to corner, and a color as its middle stop", () => {
     expect(fillCss(fill({ kind: "gradient", preset: 0 }))).toBe(
-      "linear-gradient(135deg, #0f4c5c 0%, #2a9d8f 55%, #e9c46a 100%)",
+      "linear-gradient(135deg, #ffb074 0%, #e8680a 50%, #8a2e0a 100%)",
     );
     expect(fillCss(fill({ kind: "color", preset: 2 }))).toBe("#3b82f6");
   });
@@ -81,7 +81,7 @@ describe("appearance", () => {
   test("changeStop changes one stop and keeps the rest", () => {
     const { custom } = DEFAULT_APPEARANCE.fill;
     const changed = changeStop(custom, 1, { color: "#000000" });
-    expect(changed.stops[1]).toEqual({ color: "#000000", at: 0.55 });
+    expect(changed.stops[1]).toEqual({ color: "#000000", at: 0.5 });
     expect(changed.stops[0]).toBe(custom.stops[0]);
     expect(changed.angle).toBe(custom.angle);
   });

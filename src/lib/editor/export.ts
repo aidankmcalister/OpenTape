@@ -7,7 +7,7 @@ import type {
 } from "@/lib/bindings";
 import { type Appearance, BORDER_COLORS, fillGradient } from "./appearance";
 import { type Clip, cutSpans } from "./clips";
-import { outputAt, type Region } from "./regions";
+import { outputAt, type Region, resolveOverlaps } from "./regions";
 import { zoomTrack } from "./zoom";
 
 export function exportLayout(
@@ -52,13 +52,13 @@ export function exportLayout(
     },
     background: fillGradient(appearance.fill),
     zoom: zoomTrack(regions, durationMs),
-    speed: regions
-      .filter(({ kind }) => kind === "speed")
-      .map(({ startMs, endMs, amount }) => ({
+    speed: resolveOverlaps(regions, "speed").map(
+      ({ startMs, endMs, amount }) => ({
         start: startMs / 1000,
         end: endMs / 1000,
         amount,
-      })),
+      }),
+    ),
     cuts: cutSpans(clips, durationMs).map(({ startMs, endMs }) => ({
       start: outputAt(regions, startMs) / 1000,
       end: outputAt(regions, endMs) / 1000,

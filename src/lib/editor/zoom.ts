@@ -1,11 +1,11 @@
 import { type Point, clamp } from "@/lib/geometry";
 import type { ExportZoom } from "@/lib/bindings";
 import { FRAME_MS } from "./timeline";
-import { outputAt, type Region } from "./regions";
+import { outputAt, type Region, resolveOverlaps } from "./regions";
 
 export const ZOOM_EASE = { ms: 600, curve: [0.32, 0.72, 0, 1] } as const;
 
-export const MIDDLE = { x: 0.5, y: 0.5 };
+const MIDDLE = { x: 0.5, y: 0.5 };
 
 export function zoomAt(regions: Region[], outputMs: number) {
   let from = 1;
@@ -14,7 +14,7 @@ export function zoomAt(regions: Region[], outputMs: number) {
   let center: Point = MIDDLE;
   const scaleAt = (ms: number) =>
     from + (target - from) * ease((ms - since) / ZOOM_EASE.ms);
-  for (const region of regions.filter(({ kind }) => kind === "zoom")) {
+  for (const region of resolveOverlaps(regions, "zoom")) {
     for (const [edgeMs, scale] of [
       [region.startMs, region.amount],
       [region.endMs, 1],
@@ -30,11 +30,13 @@ export function zoomAt(regions: Region[], outputMs: number) {
   return { scale: scaleAt(outputMs), target, center };
 }
 
-export const ZOOM_AMOUNTS = { min: 1.1, max: 3, step: 0.1 };
+export function focusCenter(zoom: Region): Point {
+  return zoom.center ?? MIDDLE;
+}
 
 export function focusBox(zoom: Region) {
   const size = 1 / zoom.amount;
-  const { x, y } = zoom.center ?? MIDDLE;
+  const { x, y } = focusCenter(zoom);
   return { x: x * (1 - size), y: y * (1 - size), size };
 }
 

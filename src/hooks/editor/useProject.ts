@@ -1,9 +1,11 @@
 import { useState } from "react";
 import {
   addRegion,
-  removeRegion,
+  dragRegion,
   removeRegionAt,
+  removeRegions,
   type Region,
+  type RegionDrag,
   type RegionKind,
 } from "@/lib/editor/regions";
 import { type Clip, removeClip, splitClip } from "@/lib/editor/clips";
@@ -19,9 +21,10 @@ import type { Clock } from "@/lib/time";
 export function useProject(clock: Clock, durationMs: number) {
   const [history, setHistory] = useState(() => historyOf(NEW_PROJECT));
   const [draft, setDraft] = useState<Project | null>(null);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [selectedClipId, setSelectedClipId] = useState<number | null>(null);
   const [isCutting, setIsCutting] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const playheadMs = () => clock.seconds() * 1000;
   const change = (edit: (project: Project) => Project) =>
     setHistory((current) => record(current, edit(current.present)));
@@ -30,27 +33,49 @@ export function useProject(clock: Clock, durationMs: number) {
   const changeClips = (edit: (clips: Clip[]) => Clip[]) =>
     change((project) => editClips(project, edit));
   const project = draft ?? history.present;
+  const selectOnly = (ids: number[], clipId: number | null = null) => {
+    setSelectedIds(ids);
+    setSelectedClipId(clipId);
+    setEditingId(null);
+  };
   return {
     project,
-    selected:
-      project.regions.find((region) => region.id === selectedId) ?? null,
-    selectedId,
+    editingId: project.regions.some(({ id }) => id === editingId)
+      ? editingId
+      : null,
+    openEditor: setEditingId,
+    closeEditor: () => setEditingId(null),
+    selectedIds,
     selectedClipId,
-    select: (id: number | null) => {
-      setSelectedId(id);
-      setSelectedClipId(null);
+    select: (ids: number[]) => selectOnly(ids),
+    pick: (id: number, isAdding: boolean) => {
+      if (!isAdding) return selectOnly([id]);
+      selectOnly(
+        selectedIds.includes(id)
+          ? selectedIds.filter((other) => other !== id)
+          : [...selectedIds, id],
+      );
     },
-    selectClip: (id: number) => {
-      setSelectedClipId(id);
-      setSelectedId(null);
-    },
+    selectAll: () => selectOnly(project.regions.map((region) => region.id)),
+    selectClip: (id: number) => selectOnly([], id),
     change,
     add: (kind: RegionKind) => {
       const atMs = playheadMs();
       changeRegions((regions) => addRegion(regions, kind, atMs, durationMs));
     },
+    retime: (id: number, drag: RegionDrag, deltaMs: number) =>
+      changeRegions((regions) =>
+        dragRegion(regions, id, drag, deltaMs, durationMs),
+      ),
+    nudge: (deltaMs: number) =>
+      changeRegions((regions) =>
+        selectedIds.reduce(
+          (moved, id) => dragRegion(moved, id, "move", deltaMs, durationMs),
+          regions,
+        ),
+      ),
     isCutting,
-    toggleCut: () => setIsCutting((isOn) => !isOn),
+    setCutting: setIsCutting,
     split: (atMs: number) =>
       changeClips((clips) => splitClip(clips, atMs, durationMs)),
     remove: () => {
@@ -61,11 +86,11 @@ export function useProject(clock: Clock, durationMs: number) {
       }
       const atMs = playheadMs();
       changeRegions((regions) =>
-        selectedId === null
+        selectedIds.length === 0
           ? removeRegionAt(regions, atMs)
-          : removeRegion(regions, selectedId),
+          : removeRegions(regions, selectedIds),
       );
-      setSelectedId(null);
+      setSelectedIds([]);
     },
     preview: (edit: (project: Project) => Project) =>
       setDraft(edit(history.present)),
