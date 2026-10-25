@@ -59,9 +59,11 @@ describe("keymap", () => {
 describe("shortcuts sheet", () => {
   test("lists every binding exactly once", () => {
     const listed = SHORTCUTS.flatMap(({ rows }) =>
-      rows.flatMap(({ actions }) => actions),
+      rows.flatMap(({ actions = [] }) => actions),
     );
-    expect(listed.sort()).toEqual(KEYMAP.map(({ action }) => action).sort());
+    expect(listed.sort()).toEqual(
+      [...new Set(KEYMAP.map(({ action }) => action))].sort(),
+    );
   });
 
   test.each([

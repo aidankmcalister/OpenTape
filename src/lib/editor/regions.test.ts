@@ -6,8 +6,9 @@ import {
   blockValue,
   changeRegion,
   changeSetting,
-  closeRows,
-  dragRegion,
+  coveredStretches,
+  dragRegions,
+  laneKinds,
   outputAt,
   type Region,
   type RegionDrag,
@@ -15,9 +16,9 @@ import {
   removeRegions,
   removeRegionAt,
   REGIONS,
-  rowCount,
   resolveOverlaps,
   settingValue,
+  winnerAt,
 } from "./regions";
 import { contrastRatio, hueColors, rgbOf } from "./color";
 
@@ -30,9 +31,7 @@ describe("regions", () => {
     amount: 1.5,
   };
   const spans = (regions: Region[]) =>
-    regions
-      .map(({ startMs, endMs, row }) => `${startMs}-${endMs}@${row ?? 0}`)
-      .join(" ");
+    regions.map(({ startMs, endMs }) => `${startMs}-${endMs}`).join(" ");
 
   test("addRegion adds two seconds of the kind's amount at the playhead", () => {
     expect(addRegion([], "speed", 500, 10_000)[0]).toMatchObject({
@@ -44,15 +43,10 @@ describe("regions", () => {
   });
 
   test.each([
-    [5000, "1000-3000@0 5000-7000@0", "takes the first row when it has room"],
-    [2000, "1000-3000@0 2000-4000@1", "overlaps on a new row, of either kind"],
-    [3020, "1000-3000@0 3020-5020@1", "keeps 60ms from the next item in a row"],
-    [9000, "1000-3000@0 9000-10000@0", "ends at the end"],
-    [
-      9900,
-      "1000-3000@0 9750-10000@0",
-      "starts earlier to keep a quarter second",
-    ],
+    [5000, "1000-3000 5000-7000", "adds at the playhead"],
+    [2000, "1000-3000 2000-4000", "overlaps anything"],
+    [9000, "1000-3000 9000-10000", "ends at the end"],
+    [9900, "1000-3000 9800-10000", "starts earlier to keep 0.2s"],
   ])("addRegion at %p gives %p: %s", (atMs, expected) => {
     expect(spans(addRegion([ZOOM_1_TO_3], "speed", atMs, 10_000))).toBe(
       expected,
@@ -77,35 +71,34 @@ describe("regions", () => {
     startMs: 5000,
     endMs: 6000,
   };
-  const drag = (edge: RegionDrag, deltaMs: number) =>
-    spans(dragRegion([ZOOM_1_TO_3, ZOOM_5_TO_6], 1, edge, deltaMs, 10_000));
+  const drag = (ids: number[], edge: RegionDrag, deltaMs: number) =>
+    spans(dragRegions([ZOOM_1_TO_3, ZOOM_5_TO_6], ids, edge, deltaMs, 10_000));
 
   test.each([
-    ["move", 500, "1500-3500@0 5000-6000@0", "moves the whole region"],
+    [[1], "move", 520, "1500-3500 5000-6000", "moves to the 0.1s grid"],
+    [[1], "move", 3500, "4500-6500 5000-6000", "moves over another block"],
+    [[1], "move", -5000, "0-2000 5000-6000", "stops at the start"],
     [
+      [1, 2],
       "move",
-      3500,
-      "4500-6500@1 5000-6000@0",
-      "hops a row when it lands on one",
+      5000,
+      "5000-7000 9000-10000",
+      "moves a group until its last block hits the end",
     ],
-    ["move", -5000, "0-2000@0 5000-6000@0", "stops at the start"],
-    ["start", -400, "600-3000@0 5000-6000@0", "moves just the start"],
-    ["start", 5000, "2750-3000@0 5000-6000@0", "keeps a quarter second"],
-    ["end", 9000, "1000-10000@1 5000-6000@0", "stretches over the next one"],
-  ] as const)("dragRegion %p by %p gives %p: %s", (edge, deltaMs, expected) => {
-    expect(drag(edge, deltaMs)).toBe(expected);
-  });
-
-  test("dragRegion past the last region stops at the end", () => {
-    expect(spans(dragRegion([ZOOM_5_TO_6], 2, "end", 9000, 8000))).toBe(
-      "5000-8000@0",
-    );
-  });
+    [[1], "start", -440, "600-3000 5000-6000", "moves just the start"],
+    [[1], "start", 5000, "2800-3000 5000-6000", "keeps 0.2s"],
+    [[1, 2], "end", 400, "1000-3400 5000-6400", "stretches each selected end"],
+  ] as const)(
+    "dragRegions %p %p by %p gives %p: %s",
+    (ids, edge, deltaMs, expected) => {
+      expect(drag([...ids], edge, deltaMs)).toBe(expected);
+    },
+  );
 
   test("a drag that changes nothing, or a removal of nothing, returns the same regions", () => {
     const regions = [ZOOM_1_TO_3];
-    expect(dragRegion(regions, 1, "move", 0, 10_000)).toBe(regions);
-    expect(dragRegion(regions, 9, "move", 500, 10_000)).toBe(regions);
+    expect(dragRegions(regions, [1], "move", 0, 10_000)).toBe(regions);
+    expect(dragRegions(regions, [9], "move", 500, 10_000)).toBe(regions);
     expect(removeRegions(regions, [9])).toBe(regions);
     expect(removeRegions(regions, [1, 9])).toEqual([]);
   });
@@ -145,14 +138,17 @@ describe("regions", () => {
     expect(outputAt(regions, 4000)).toBe(500 + 250 + 1000);
   });
 
-  test("closeRows closes the rows nothing sits in", () => {
-    const regions = [
-      { ...ZOOM_1_TO_3, row: 0 },
-      { ...ZOOM_5_TO_6, row: 2 },
-    ];
-    expect(closeRows(regions).map(({ row }) => row)).toEqual([0, 1]);
-    expect(rowCount(closeRows(regions))).toBe(2);
-    expect(rowCount([])).toBe(1);
+  test("lanes follow the registry order, and the later start wins a lane", () => {
+    const speed: Region = { ...ZOOM_1_TO_3, id: 3, kind: "speed" };
+    const late = { ...ZOOM_5_TO_6, startMs: 2000, endMs: 4000 };
+    expect(laneKinds([speed, ZOOM_1_TO_3])).toEqual(["zoom", "speed"]);
+    expect(winnerAt([ZOOM_1_TO_3, late], "zoom", 2500)?.id).toBe(2);
+    expect(winnerAt([ZOOM_1_TO_3, late], "zoom", 1500)?.id).toBe(1);
+    expect(winnerAt([ZOOM_1_TO_3, late], "speed", 1500)).toBeUndefined();
+    expect(coveredStretches([ZOOM_1_TO_3, late], ZOOM_1_TO_3)).toEqual([
+      { startMs: 2000, endMs: 3000 },
+    ]);
+    expect(coveredStretches([ZOOM_1_TO_3, late], late)).toEqual([]);
   });
 
   test.each([
@@ -185,17 +181,6 @@ test.each(Object.entries(REGIONS))(
     expect(contrastRatio(onHue, rgbOf(hue))).toBeGreaterThanOrEqual(4.5);
   },
 );
-
-test("a drag can ask for a row, and lands on the first with room from there", () => {
-  const regions: Region[] = [
-    { id: 1, kind: "zoom", startMs: 0, endMs: 2000, amount: 1.5, row: 0 },
-    { id: 2, kind: "speed", startMs: 0, endMs: 2000, amount: 2, row: 1 },
-    { id: 3, kind: "zoom", startMs: 5000, endMs: 6000, amount: 1.5, row: 0 },
-  ];
-  const rowOf = (moved: Region[]) => moved.find(({ id }) => id === 3)?.row;
-  expect(rowOf(dragRegion(regions, 3, "move", 0, 10_000, 4))).toBe(4);
-  expect(rowOf(dragRegion(regions, 3, "move", -5000, 10_000, 1))).toBe(2);
-});
 
 test.each(ALL_KINDS)("a new %s block shows its default setting", (kind) => {
   const [region] = addRegion([], kind, 0, 10_000);

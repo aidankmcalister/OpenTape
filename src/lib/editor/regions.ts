@@ -19,7 +19,6 @@ export type Region = {
   endMs: number;
   amount: number;
   center?: Point;
-  row?: number;
   settings?: Record<string, SettingValue>;
 };
 
@@ -446,9 +445,9 @@ export const ALL_KINDS = Object.keys(REGIONS) as RegionKind[];
 
 export const KINDS = ALL_KINDS.filter((kind) => !REGIONS[kind].isPreview);
 
-export const MIN_REGION_MS = 250;
+export const MIN_REGION_MS = 200;
 
-const GAP_MS = 60;
+const SNAP_MS = 100;
 
 export type RegionDrag = "move" | "start" | "end";
 
@@ -461,28 +460,110 @@ export function addRegion(
   if (durationMs < MIN_REGION_MS) return regions;
   const endMs = Math.min(atMs + REGIONS[kind].lengthMs, durationMs);
   const startMs = Math.max(0, Math.min(atMs, endMs - MIN_REGION_MS));
-  const id = Math.max(0, ...regions.map((region) => region.id)) + 1;
-  const added = { id, kind, startMs, endMs, amount: REGIONS[kind].amount };
-  return [...regions, { ...added, row: freeRow(regions, added) }];
+  const amount = REGIONS[kind].amount;
+  return [...regions, { id: nextId(regions), kind, startMs, endMs, amount }];
 }
 
-export function dragRegion(
+export function nextId(regions: Region[]): number {
+  return Math.max(0, ...regions.map((region) => region.id)) + 1;
+}
+
+export function dragRegions(
   regions: Region[],
-  id: number,
+  ids: number[],
   drag: RegionDrag,
   deltaMs: number,
   durationMs: number,
-  toRow?: number,
 ): Region[] {
-  const region = regions.find((region) => region.id === id);
-  if (!region) return regions;
-  const [dragged] = dragSpan([region], id, drag, deltaMs, durationMs);
-  const wanted = { ...dragged, row: toRow ?? region.row };
-  if (dragged === region && wanted.row === region.row) return regions;
-  const others = regions.filter((other) => other !== region);
-  return regions.map((other) =>
-    other === region ? { ...dragged, row: freeRow(others, wanted) } : other,
+  const dragged = regions.filter((region) => ids.includes(region.id));
+  if (dragged.length === 0) return regions;
+  const spans = new Map(
+    dragged.map((region) => [
+      region.id,
+      drag === "move"
+        ? moved(dragged, region, deltaMs, durationMs)
+        : stretched(region, drag, deltaMs, durationMs),
+    ]),
   );
+  const changed = regions.map((region) => {
+    const span = spans.get(region.id);
+    return span &&
+      (span.startMs !== region.startMs || span.endMs !== region.endMs)
+      ? { ...region, ...span }
+      : region;
+  });
+  return changed.every((region, index) => region === regions[index])
+    ? regions
+    : changed;
+}
+
+function moved(
+  group: Region[],
+  region: Region,
+  deltaMs: number,
+  durationMs: number,
+) {
+  const first = Math.min(...group.map(({ startMs }) => startMs));
+  const last = Math.max(...group.map(({ endMs }) => endMs));
+  const shift = clamp(snap(first + deltaMs) - first, -first, durationMs - last);
+  return { startMs: region.startMs + shift, endMs: region.endMs + shift };
+}
+
+function stretched(
+  region: Region,
+  edge: "start" | "end",
+  deltaMs: number,
+  durationMs: number,
+) {
+  const { startMs, endMs } = region;
+  return edge === "start"
+    ? {
+        startMs: clamp(snap(startMs + deltaMs), 0, endMs - MIN_REGION_MS),
+        endMs,
+      }
+    : {
+        startMs,
+        endMs: clamp(
+          snap(endMs + deltaMs),
+          startMs + MIN_REGION_MS,
+          durationMs,
+        ),
+      };
+}
+
+function snap(ms: number): number {
+  return Math.round(ms / SNAP_MS) * SNAP_MS;
+}
+
+export function laneKinds(regions: Region[]): RegionKind[] {
+  return ALL_KINDS.filter((kind) =>
+    regions.some((region) => region.kind === kind),
+  );
+}
+
+export function winnerAt(
+  regions: Region[],
+  kind: RegionKind,
+  ms: number,
+): Region | undefined {
+  return regions
+    .filter((region) => region.kind === kind && covers(region, ms))
+    .sort((a, b) => b.startMs - a.startMs || b.id - a.id)[0];
+}
+
+export function coveredStretches(regions: Region[], region: Region) {
+  const shown = resolveOverlaps(regions, region.kind).filter(
+    ({ id }) => id === region.id,
+  );
+  const covered: { startMs: number; endMs: number }[] = [];
+  let atMs = region.startMs;
+  for (const piece of shown) {
+    if (piece.startMs > atMs)
+      covered.push({ startMs: atMs, endMs: piece.startMs });
+    atMs = Math.max(atMs, piece.endMs);
+  }
+  if (atMs < region.endMs) covered.push({ startMs: atMs, endMs: region.endMs });
+  return covered;
 }
 
 export function dragSpan<T extends Pick<Region, "id" | "startMs" | "endMs">>(
@@ -603,34 +684,4 @@ function covers(region: Region, ms: number): boolean {
 
 function speedRegions(regions: Region[]): Region[] {
   return resolveOverlaps(regions, "speed");
-}
-
-export function closeRows(regions: Region[]): Region[] {
-  const rows = [...new Set(regions.map(({ row }) => row ?? 0))].sort(
-    (a, b) => a - b,
-  );
-  return rows.every((row, index) => row === index)
-    ? regions
-    : regions.map((region) => ({
-        ...region,
-        row: rows.indexOf(region.row ?? 0),
-      }));
-}
-
-export function rowCount(regions: Region[]): number {
-  return Math.max(1, ...regions.map(({ row }) => (row ?? 0) + 1));
-}
-
-function freeRow(others: Region[], region: Region): number {
-  const fits = (row: number) =>
-    others.every(
-      (other) =>
-        (other.row ?? 0) !== row ||
-        other.endMs + GAP_MS <= region.startMs ||
-        region.endMs + GAP_MS <= other.startMs,
-    );
-  if (fits(region.row ?? 0)) return region.row ?? 0;
-  let row = 0;
-  while (!fits(row)) row++;
-  return row;
 }

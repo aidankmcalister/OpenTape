@@ -1,11 +1,9 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PopoverTitle } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ToggleGroup } from "@/components/ui/toggle-group";
 import {
   settingValue,
   type Region,
@@ -15,8 +13,14 @@ import {
 import { MARK_COLORS, type MarkColor } from "@/lib/editor/appearance";
 import { focusBox, focusCenter } from "@/lib/editor/zoom";
 import { clamp } from "@/lib/geometry";
-import ColorPicker, { CustomSwatch } from "../ColorPicker";
-import { NumberField, SelectField, Swatch, ValueInput } from "../Panel";
+import { ColorSwatches } from "../ColorPicker";
+import { NumberField, SelectField, ValueInput } from "../Panel";
+
+const MARK_OPTIONS = (Object.keys(MARK_COLORS) as MarkColor[]).map((mark) => ({
+  value: mark,
+  color: MARK_COLORS[mark],
+  label: mark,
+}));
 
 type Edit = {
   region: Region;
@@ -79,40 +83,18 @@ export default function SettingControl({
           </Tabs>
         </Row>
       );
-    case "color": {
-      const color = String(value(setting.key));
-      const isCustom = !(color in MARK_COLORS);
+    case "color":
       return (
         <Row label={setting.label}>
-          <ToggleGroup
-            spacing={1}
-            className="w-full justify-between"
-            value={[isCustom ? "custom" : color]}
-            onValueChange={([next]) =>
-              next && next !== "custom" && set(setting.key, next)
-            }
-          >
-            {(Object.keys(MARK_COLORS) as MarkColor[]).map((mark) => (
-              <Swatch
-                key={mark}
-                value={mark}
-                aria-label={mark}
-                style={{ background: MARK_COLORS[mark] }}
-              />
-            ))}
-            <CustomSwatch fill={isCustom ? color : null}>
-              <PopoverTitle>Custom color</PopoverTitle>
-              <ColorPicker
-                color={isCustom ? color : MARK_COLORS[color as MarkColor]}
-                onPreview={(hex) => edit.preview(setting.key, hex)}
-                onChange={(hex) => set(setting.key, hex)}
-                onCommit={edit.commit}
-              />
-            </CustomSwatch>
-          </ToggleGroup>
+          <ColorSwatches
+            options={MARK_OPTIONS}
+            value={String(value(setting.key))}
+            onChange={(color) => set(setting.key, color)}
+            onPreview={(color) => edit.preview(setting.key, color)}
+            onCommit={edit.commit}
+          />
         </Row>
       );
-    }
     case "switch":
       return (
         <label className="flex h-8 items-center justify-between text-label">

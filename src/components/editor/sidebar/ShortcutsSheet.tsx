@@ -39,15 +39,15 @@ export default function ShortcutsSheet() {
             <h3 className="flex h-8 items-center text-ui font-semibold">
               {group}
             </h3>
-            {rows.map(({ label, actions }) => (
+            {rows.map(({ label, actions, keys }) => (
               <div
                 key={label}
                 className="flex h-8 items-center justify-between text-ui"
               >
                 {label}
                 <span className="flex gap-1">
-                  {actions.map((action) => (
-                    <Kbd key={action}>{keyLabel(action)}</Kbd>
+                  {(actions?.map(keyLabel) ?? keys ?? []).map((key) => (
+                    <Kbd key={key}>{key}</Kbd>
                   ))}
                 </span>
               </div>

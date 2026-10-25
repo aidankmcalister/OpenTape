@@ -7,6 +7,7 @@ mod geometry;
 mod macos;
 mod picker;
 mod recording;
+mod settings;
 mod util;
 mod windows;
 
@@ -104,6 +105,10 @@ pub fn run() -> tauri::Result<()> {
                 downloads: path.download_dir()?,
                 copies: path.app_cache_dir()?.join("copies"),
             }));
+            app.manage(settings::AppSettings::load(
+                path.app_config_dir()?.join("settings.json"),
+            ));
+            settings::apply(app.handle());
             let bar = app
                 .get_webview_window(bar::LABEL)
                 .ok_or("the bar window is missing")?;
@@ -141,6 +146,9 @@ pub fn run() -> tauri::Result<()> {
             current_recording::commands::trash_recording,
             current_recording::commands::show_recording_in_finder,
             current_recording::commands::show_all_recordings,
+            settings::get_settings,
+            settings::set_settings,
+            settings::choose_save_folder,
             current_recording::commands::save_project,
             current_recording::commands::export_recording,
             current_recording::commands::show_export_in_finder,

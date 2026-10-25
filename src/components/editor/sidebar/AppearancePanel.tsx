@@ -6,31 +6,30 @@ import { ToggleGroup } from "@/components/ui/toggle-group";
 import type { Edits } from "@/hooks/editor/useProject";
 import {
   AMOUNTS,
-  BORDER_COLORS,
   clampAmount,
   COLORS,
   DEFAULT_APPEARANCE,
   fillCss,
   GRADIENTS,
   type Amount,
-  type BorderColor,
   type Fill,
 } from "@/lib/editor/appearance";
 import { changeAppearance, NEW_PROJECT } from "@/lib/editor/project";
+import { ColorSwatches } from "../ColorPicker";
+import { PanelHeader, Section, Swatch, ValueInput } from "../Panel";
 import FillPicker from "./FillPicker";
-import {
-  PanelHeader,
-  Section,
-  SelectField,
-  Swatch,
-  ValueInput,
-} from "../Panel";
 
 const FILLS: { kind: Fill["kind"]; label: string; Icon: typeof Blend }[] = [
   { kind: "gradient", label: "Gradient", Icon: Blend },
   { kind: "color", label: "Color", Icon: Palette },
   { kind: "image", label: "Image", Icon: Image },
 ];
+
+const BORDER_OPTIONS = COLORS.map((color, index) => ({
+  value: color,
+  color,
+  label: `Border color ${index + 1}`,
+}));
 
 const SECTIONS: { title: string; amounts: Amount[] }[] = [
   { title: "Frame", amounts: ["padding", "radius", "inset"] },
@@ -106,17 +105,21 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
       ))}
       <Section title="Border">
         <ValueField amount="borderWidth" edits={edits} />
-        <SelectField
-          label="Color"
+        <ValueField amount="borderOpacity" edits={edits} />
+        <ColorSwatches
+          options={BORDER_OPTIONS}
           value={appearance.borderColor}
-          options={(Object.keys(BORDER_COLORS) as BorderColor[]).map(
-            (color) => ({ value: color, label: BORDER_COLORS[color].label }),
-          )}
-          onChange={(color) =>
+          onChange={(borderColor) =>
             edits.change((project) =>
-              changeAppearance(project, { borderColor: color as BorderColor }),
+              changeAppearance(project, { borderColor }),
             )
           }
+          onPreview={(borderColor) =>
+            edits.preview((project) =>
+              changeAppearance(project, { borderColor }),
+            )
+          }
+          onCommit={edits.commit}
         />
       </Section>
       <div className="mt-auto p-3">

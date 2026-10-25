@@ -5,9 +5,8 @@ import {
   lengthLabel,
   msAtX,
   percentAt,
+  laneLayout,
   regionsInBox,
-  rowAtY,
-  rowLayout,
   rulerLabel,
   rulerMarks,
   parseTimeLabel,
@@ -86,27 +85,25 @@ describe("ruler", () => {
   });
 });
 
-test.each([
-  [1, 24],
-  [3, 80],
-  [7, 192],
-])("%p rows need %ppx", (count, areaPx) => {
-  expect(rowLayout(count).areaPx).toBe(areaPx);
-});
-
-test("rowAtY finds the row under the pointer, or the next new one", () => {
-  const { rows } = rowLayout(3);
-  expect(rowAtY(rows, 10)).toBe(0);
-  expect(rowAtY(rows, 40)).toBe(1);
-  expect(rowAtY(rows, 200)).toBe(3);
+test("lanes are 28px, 20px collapsed, inside 4px of padding, and 64px when empty", () => {
+  const { lanes, heightPx } = laneLayout(["zoom", "speed", "blur"], ["speed"]);
+  expect(lanes.map(({ top, height }) => [top, height])).toEqual([
+    [4, 28],
+    [32, 20],
+    [52, 28],
+  ]);
+  expect(heightPx).toBe(84);
+  expect(laneLayout(["zoom", "speed", "blur"], []).heightPx).toBe(92);
+  expect(laneLayout([], []).heightPx).toBe(64);
 });
 
 test.each([
   [140, "full"],
-  [100, "compact"],
-  [50, "icon"],
-  [40, "bar"],
-] as const)("a %ppx Zoom block shows %p", (width, content) => {
+  [112, "full"],
+  [111, "value"],
+  [74, "value"],
+  [73, "icon"],
+] as const)("a %ppx Zoom 1.5× block shows %p", (width, content) => {
   expect(blockContent(width, "Zoom", "1.5×")).toBe(content);
 });
 
@@ -119,37 +116,16 @@ test("the stretch tip reads 4.0s, ends 0:09.0", () => {
   expect(parseTimeLabel("soon")).toBeNaN();
 });
 
-test("regionsInBox picks the modifiers a box touches, by time and row", () => {
+test("regionsInBox picks the modifiers a box touches, by time and lane", () => {
   const regions = [
-    {
-      id: 1,
-      kind: "zoom" as const,
-      startMs: 0,
-      endMs: 2000,
-      amount: 1.5,
-      row: 0,
-    },
-    {
-      id: 2,
-      kind: "speed" as const,
-      startMs: 1000,
-      endMs: 3000,
-      amount: 2,
-      row: 1,
-    },
-    {
-      id: 3,
-      kind: "zoom" as const,
-      startMs: 6000,
-      endMs: 8000,
-      amount: 1.5,
-      row: 0,
-    },
+    { id: 1, kind: "zoom" as const, startMs: 0, endMs: 2000, amount: 1.5 },
+    { id: 2, kind: "speed" as const, startMs: 1000, endMs: 3000, amount: 2 },
+    { id: 3, kind: "zoom" as const, startMs: 6000, endMs: 8000, amount: 1.5 },
   ];
-  const box = { x0: 150, y0: 5, x1: 250, y1: 40 };
-  const { rows } = rowLayout(2);
-  expect(regionsInBox(regions, box, 1000, 10_000, rows)).toEqual([1, 2]);
-  expect(regionsInBox(regions, { ...box, y1: 10 }, 1000, 10_000, rows)).toEqual(
-    [1],
-  );
+  const box = { x0: 150, y0: 10, x1: 250, y1: 40 };
+  const { lanes } = laneLayout(["zoom", "speed"], []);
+  expect(regionsInBox(regions, box, 1000, 10_000, lanes)).toEqual([1, 2]);
+  expect(
+    regionsInBox(regions, { ...box, y1: 20 }, 1000, 10_000, lanes),
+  ).toEqual([1]);
 });

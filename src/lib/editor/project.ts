@@ -1,7 +1,12 @@
 import type { Size } from "@/lib/geometry";
-import { type Appearance, DEFAULT_APPEARANCE, frameLayout } from "./appearance";
+import {
+  type Appearance,
+  DEFAULT_APPEARANCE,
+  frameLayout,
+  readAppearance,
+} from "./appearance";
 import type { Clip } from "./clips";
-import { closeRows, type Region, sourceAt } from "./regions";
+import { type Region, sourceAt } from "./regions";
 import { zoomAt } from "./zoom";
 
 export type Project = {
@@ -26,7 +31,7 @@ export function readProject(json: string | null): Project {
   if (json === null) return NEW_PROJECT;
   const saved: Partial<Project> = JSON.parse(json);
   return {
-    appearance: { ...DEFAULT_APPEARANCE, ...saved.appearance },
+    appearance: readAppearance(saved.appearance),
     regions: saved.regions ?? [],
     clips: saved.clips ?? [],
   };
@@ -36,7 +41,7 @@ export function editRegions(
   project: Project,
   edit: (regions: Region[]) => Region[],
 ): Project {
-  const regions = closeRows(edit(project.regions));
+  const regions = edit(project.regions);
   return regions === project.regions ? project : { ...project, regions };
 }
 

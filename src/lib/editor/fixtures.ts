@@ -60,13 +60,12 @@ export const FIXTURES = {
 export function fixtureRegions(rows: Row[], durationMs: number): Region[] {
   const scale = durationMs / FIXTURE_SECONDS;
   return rows
-    .flatMap((row, rowIndex) =>
+    .flatMap((row) =>
       row.map(([kind, start, end, amount, settings]) => ({
         kind,
         startMs: start * scale,
         endMs: end * scale,
         amount,
-        row: rowIndex,
         settings,
       })),
     )

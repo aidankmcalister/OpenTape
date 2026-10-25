@@ -16,12 +16,10 @@ export default function DevPanel({
   dev,
   edits,
   durationMs,
-  mostRows,
 }: {
   dev: Dev;
   edits: Edits;
   durationMs: number;
-  mostRows: number;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   return (
@@ -75,9 +73,6 @@ export default function DevPanel({
             ))}
           </div>
         </div>
-        <span className="text-label text-muted-foreground">
-          Most overlapping rows this session: {mostRows}
-        </span>
       </PopoverContent>
     </Popover>
   );

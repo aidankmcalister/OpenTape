@@ -5,7 +5,7 @@ import type {
   ExportOptions,
   PixelRect,
 } from "@/lib/bindings";
-import { type Appearance, BORDER_COLORS, fillGradient } from "./appearance";
+import { type Appearance, fillGradient } from "./appearance";
 import { type Clip, cutSpans } from "./clips";
 import { outputAt, type Region, resolveOverlaps } from "./regions";
 import { zoomTrack } from "./zoom";
@@ -29,7 +29,6 @@ export function exportLayout(
     height: video.height,
   };
   const inset = appearance.inset * scale;
-  const { tint } = BORDER_COLORS[appearance.borderColor];
   return {
     width,
     height,
@@ -41,8 +40,12 @@ export function exportLayout(
       height: recording.height + inset * 2,
     },
     border:
-      tint && appearance.borderWidth > 0
-        ? { ...tint, width: appearance.borderWidth * scale }
+      appearance.borderWidth > 0
+        ? {
+            color: appearance.borderColor,
+            opacity: appearance.borderOpacity / 100,
+            width: appearance.borderWidth * scale,
+          }
         : null,
     radius: appearance.radius * scale,
     shadow: {

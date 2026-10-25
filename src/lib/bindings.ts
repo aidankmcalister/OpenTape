@@ -52,6 +52,8 @@ export type RecordingStatus = { phase: Phase, error: string | null, elapsedMs: n
 
 export type Session = { mode: Mode, sources: Sources, pinnedWindowId: number | null, areaDisplayId: number | null, };
 
+export type Settings = { saveFolder: string | null, deleteAfterDays: number | null, };
+
 export type Setup = { session: Session, cursor: Point | null, };
 
 export type ShownRecording = { videoPath: string, name: string, };

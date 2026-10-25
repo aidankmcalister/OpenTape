@@ -15,13 +15,11 @@ import Sidebar from "@/components/editor/sidebar/Sidebar";
 import { useExport } from "@/hooks/editor/useExport";
 import { useProject } from "@/hooks/editor/useProject";
 import { useSavedProject } from "@/hooks/editor/useSavedProject";
-import { useTimelineLimit } from "@/hooks/editor/useTimelineLimit";
-import ResizeThumb from "@/components/editor/timeline/ResizeThumb";
+import { useLanes } from "@/hooks/editor/useLanes";
 import ModifierEditor from "@/components/editor/timeline/ModifierEditor";
-import { useDevFlags, useMostRows } from "@/hooks/editor/useDevFlags";
+import { useDevFlags } from "@/hooks/editor/useDevFlags";
 import DevPanel from "@/components/editor/header/DevPanel";
-import { ALL_KINDS, KINDS, rowCount } from "@/lib/editor/regions";
-import { FRAME_MS } from "@/lib/editor/timeline";
+import { ALL_KINDS, KINDS, regionKindForKey } from "@/lib/editor/regions";
 import { changeRegion } from "@/lib/editor/regions";
 import { editRegions } from "@/lib/editor/project";
 
@@ -43,8 +41,8 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
   const dev = useDevFlags();
   const edits = useProject(playback.clock, playback.durationMs);
   useSavedProject(edits);
-  const mostRows = useMostRows(rowCount(edits.project.regions));
-  const timeline = useTimelineLimit();
+  const lanes = useLanes();
+  const kinds = dev.previewTypes ? ALL_KINDS : KINDS;
   const editing = edits.project.regions.find(
     ({ id }) => id === edits.editingId,
   );
@@ -55,32 +53,41 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
   useCuts(playback, clips);
   const exporting = useExport(edits.project, playback);
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const nudgeOr = (deltaMs: number, step: () => void) => () =>
-    edits.selectedIds.length > 0 ? edits.nudge(deltaMs) : step();
-  useKeymap({
-    togglePlay: playback.togglePlay,
-    stepBack: nudgeOr(-FRAME_MS, () => playback.step(-1)),
-    stepForward: nudgeOr(FRAME_MS, () => playback.step(1)),
-    leapBack: nudgeOr(-1000, () => playback.leap(-1000)),
-    leapForward: nudgeOr(1000, () => playback.leap(1000)),
-    toStart: playback.toStart,
-    toEnd: playback.toEnd,
-    toggleLoop: playback.toggleLoop,
-    toggleSound: playback.toggleSound,
-    export: () => exporting.start?.(),
-    addZoom: () => edits.add("zoom"),
-    addSpeed: () => edits.add("speed"),
-    toggleCut: () => edits.setCutting(!edits.isCutting),
-    openAdd: () => setIsAddOpen(true),
-    remove: edits.remove,
-    selectAll: edits.selectAll,
-    deselect: () => {
-      edits.select([]);
-      edits.setCutting(false);
+  const nudgeOr =
+    (drag: "move" | "end", deltaMs: number, step: () => void) => () =>
+      edits.selectedIds.length > 0 ? edits.nudge(drag, deltaMs) : step();
+  useKeymap(
+    {
+      togglePlay: playback.togglePlay,
+      stepBack: nudgeOr("move", -100, () => playback.step(-1)),
+      stepForward: nudgeOr("move", 100, () => playback.step(1)),
+      leapBack: nudgeOr("move", -1000, () => playback.leap(-1000)),
+      leapForward: nudgeOr("move", 1000, () => playback.leap(1000)),
+      toStart: nudgeOr("end", -100, playback.toStart),
+      toEnd: nudgeOr("end", 100, playback.toEnd),
+      toggleLoop: playback.toggleLoop,
+      toggleSound: playback.toggleSound,
+      export: () => exporting.start?.(),
+      addZoom: () => edits.add("zoom"),
+      addSpeed: () => edits.add("speed"),
+      toggleCut: () => edits.setCutting(!edits.isCutting),
+      openAdd: () => setIsAddOpen(true),
+      remove: edits.remove,
+      selectAll: edits.selectAll,
+      deselect: () => {
+        edits.select([]);
+        edits.setCutting(false);
+      },
+      undo: edits.undo,
+      redo: edits.redo,
     },
-    undo: edits.undo,
-    redo: edits.redo,
-  });
+    (key) => {
+      const kind = regionKindForKey(key);
+      if (!kind || !kinds.includes(kind)) return false;
+      edits.add(kind);
+      return true;
+    },
+  );
   return (
     <>
       <Header name={name}>
@@ -90,7 +97,6 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
               dev={dev}
               edits={edits}
               durationMs={playback.durationMs}
-              mostRows={mostRows}
             />
           ) : null}
           <Button
@@ -121,13 +127,17 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
       </Header>
       <main className="flex min-h-0 flex-1 gap-2 px-2 pb-2">
         <Sidebar edits={edits} />
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
           <Stage
             src={videoSrc}
             appearance={appearance}
             ratio={playback.ratio}
             clock={playback.clock}
-            regions={regions}
+            regions={
+              lanes.solo
+                ? regions.filter(({ kind }) => kind === lanes.solo)
+                : regions
+            }
             focus={
               focusedZoom && {
                 zoom: focusedZoom,
@@ -142,17 +152,13 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
             }
             {...playback.videoProps}
           />
-          <ResizeThumb
-            draggingPx={timeline.draggingPx}
-            thumbProps={timeline.thumbProps}
-          />
           <Island className="shrink-0">
             <Transport
               playback={playback}
               edits={edits}
               isAddOpen={isAddOpen}
               onAddOpenChange={setIsAddOpen}
-              kinds={dev.previewTypes ? ALL_KINDS : KINDS}
+              kinds={kinds}
             />
             <Timeline
               clock={playback.clock}
@@ -161,7 +167,8 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
               onSeek={playback.seek}
               heldMs={playback.heldMs}
               onSkim={playback.skim}
-              limitPx={timeline.limitPx}
+              lanes={lanes}
+              kinds={kinds}
             />
           </Island>
           <ModifierEditor edits={edits} />

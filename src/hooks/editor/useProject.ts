@@ -1,7 +1,8 @@
 import { useState } from "react";
 import {
   addRegion,
-  dragRegion,
+  dragRegions,
+  nextId,
   removeRegionAt,
   removeRegions,
   type Region,
@@ -49,6 +50,7 @@ export function useProject(clock: Clock, durationMs: number) {
     selectedClipId,
     select: (ids: number[]) => selectOnly(ids),
     pick: (id: number, isAdding: boolean) => {
+      if (!isAdding && selectedIds.includes(id)) return;
       if (!isAdding) return selectOnly([id]);
       selectOnly(
         selectedIds.includes(id)
@@ -62,17 +64,15 @@ export function useProject(clock: Clock, durationMs: number) {
     add: (kind: RegionKind) => {
       const atMs = playheadMs();
       changeRegions((regions) => addRegion(regions, kind, atMs, durationMs));
+      selectOnly([nextId(project.regions)]);
     },
     retime: (id: number, drag: RegionDrag, deltaMs: number) =>
       changeRegions((regions) =>
-        dragRegion(regions, id, drag, deltaMs, durationMs),
+        dragRegions(regions, [id], drag, deltaMs, durationMs),
       ),
-    nudge: (deltaMs: number) =>
+    nudge: (drag: "move" | "end", deltaMs: number) =>
       changeRegions((regions) =>
-        selectedIds.reduce(
-          (moved, id) => dragRegion(moved, id, "move", deltaMs, durationMs),
-          regions,
-        ),
+        dragRegions(regions, selectedIds, drag, deltaMs, durationMs),
       ),
     isCutting,
     setCutting: setIsCutting,

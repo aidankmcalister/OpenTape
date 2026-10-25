@@ -4,7 +4,6 @@ import {
   CircleHelp,
   Image,
   MousePointer2,
-  SlidersHorizontal,
   Volume2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,6 +15,7 @@ import {
 } from "@/components/ui/tooltip";
 import type { Edits } from "@/hooks/editor/useProject";
 import Island from "../Island";
+import SettingsDialog from "./SettingsDialog";
 import ShortcutsSheet from "./ShortcutsSheet";
 import AppearancePanel from "./AppearancePanel";
 
@@ -31,7 +31,6 @@ const BUILT = ["background"];
 const LINKS = [
   { label: "Help", Icon: CircleHelp },
   { label: "GitHub", Icon: GitHubMark },
-  { label: "Settings", Icon: SlidersHorizontal },
 ];
 
 export default function Sidebar({ edits }: { edits: Edits }) {
@@ -61,6 +60,9 @@ export default function Sidebar({ edits }: { edits: Edits }) {
             </Button>
           </RailTip>
         ))}
+        <RailTip label="Settings">
+          <SettingsDialog />
+        </RailTip>
       </nav>
       <div className="flex min-w-0 flex-1 flex-col">
         <AppearancePanel edits={edits} />

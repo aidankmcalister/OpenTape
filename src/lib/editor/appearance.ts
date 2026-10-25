@@ -16,18 +16,16 @@ export type Appearance = {
   shadowBlur: number;
   shadowOffsetY: number;
   borderWidth: number;
-  borderColor: BorderColor;
+  borderOpacity: number;
+  borderColor: string;
 };
 
 export type Amount = Exclude<keyof Appearance, "fill" | "borderColor">;
 
-export const BORDER_COLORS = {
-  none: { label: "None", tint: null },
-  light: { label: "Light", tint: { color: "#ffffff", opacity: 0.35 } },
-  dark: { label: "Dark", tint: { color: "#000000", opacity: 0.35 } },
+const OLD_BORDER_COLORS: Record<string, string> = {
+  light: "#ffffff",
+  dark: "#000000",
 };
-
-export type BorderColor = keyof typeof BORDER_COLORS;
 
 export const GRADIENTS: [string, string, string][] = [
   ["#ffb074", "#e8680a", "#8a2e0a"],
@@ -53,6 +51,7 @@ export const AMOUNTS: Record<
   shadowBlur: { label: "Blur", max: 100, unit: "px" },
   shadowOffsetY: { label: "Offset Y", max: 64, unit: "px" },
   borderWidth: { label: "Width", max: 8, unit: "px" },
+  borderOpacity: { label: "Opacity", max: 100, unit: "%" },
 };
 
 export const DEFAULT_APPEARANCE: Appearance = {
@@ -64,8 +63,18 @@ export const DEFAULT_APPEARANCE: Appearance = {
   shadowBlur: 48,
   shadowOffsetY: 16,
   borderWidth: 0,
-  borderColor: "none",
+  borderOpacity: 35,
+  borderColor: COLORS[6],
 };
+
+export function readAppearance(saved: Partial<Appearance> = {}): Appearance {
+  const appearance = { ...DEFAULT_APPEARANCE, ...saved };
+  const borderColor = appearance.borderColor.startsWith("#")
+    ? appearance.borderColor
+    : (OLD_BORDER_COLORS[appearance.borderColor] ??
+      DEFAULT_APPEARANCE.borderColor);
+  return { ...appearance, borderColor };
+}
 
 export function fillGradient(fill: Fill): ExportGradient {
   if (fill.preset !== "custom") return presetGradient(fill.kind, fill.preset);
@@ -166,9 +175,8 @@ export function frameLayout(
 }
 
 function borderCss(appearance: Appearance): string | null {
-  const { tint } = BORDER_COLORS[appearance.borderColor];
-  if (!tint || appearance.borderWidth === 0) return null;
-  return `color-mix(in srgb, ${tint.color} ${tint.opacity * 100}%, transparent)`;
+  if (appearance.borderWidth === 0) return null;
+  return `color-mix(in srgb, ${appearance.borderColor} ${appearance.borderOpacity}%, transparent)`;
 }
 
 export const MARK_COLORS = {

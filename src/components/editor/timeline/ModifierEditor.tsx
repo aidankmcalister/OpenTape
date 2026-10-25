@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTitle } from "@/components/ui/popover";
 import type { Edits } from "@/hooks/editor/useProject";
@@ -43,7 +43,11 @@ export default function ModifierEditor({ edits }: { edits: Edits }) {
         className="w-80 gap-0 p-0"
       >
         {modifier && count > 1 ? (
-          <Header title={`${count} selected`} onDelete={edits.remove} />
+          <Header
+            title={`${count} selected`}
+            onDelete={edits.remove}
+            onClose={edits.closeEditor}
+          />
         ) : null}
         {modifier && count <= 1 ? (
           <Settings modifier={modifier} edits={edits} />
@@ -71,7 +75,12 @@ function Settings({ modifier, edits }: { modifier: Region; edits: Edits }) {
   const lengthMs = modifier.endMs - modifier.startMs;
   return (
     <>
-      <Header title={label} kind={modifier.kind} onDelete={edits.remove} />
+      <Header
+        title={label}
+        kind={modifier.kind}
+        onDelete={edits.remove}
+        onClose={edits.closeEditor}
+      />
       <div className="flex flex-col gap-2 p-3">
         {settings.map((setting, index) => (
           <SettingControl key={index} setting={setting} edit={edit} />
@@ -84,6 +93,7 @@ function Settings({ modifier, edits }: { modifier: Region; edits: Edits }) {
           unit=""
           format={timeLabel}
           parse={parseTimeLabel}
+          step={100}
           onChange={(ms) =>
             edits.retime(modifier.id, "move", ms - modifier.startMs)
           }
@@ -93,6 +103,7 @@ function Settings({ modifier, edits }: { modifier: Region; edits: Edits }) {
           value={lengthMs / 1000}
           unit="s"
           format={(seconds) => seconds.toFixed(1)}
+          step={0.1}
           onChange={(seconds) =>
             edits.retime(modifier.id, "end", seconds * 1000 - lengthMs)
           }
@@ -106,10 +117,12 @@ function Header({
   title,
   kind,
   onDelete,
+  onClose,
 }: {
   title: string;
   kind?: RegionKind;
   onDelete: () => void;
+  onClose: () => void;
 }) {
   return (
     <header className="flex h-12 items-center gap-3 px-3 not-last:border-b not-last:border-hairline">
@@ -123,6 +136,15 @@ function Header({
         onClick={onDelete}
       >
         <Trash2 />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Close"
+        className="-ml-2"
+        onClick={onClose}
+      >
+        <X />
       </Button>
     </header>
   );

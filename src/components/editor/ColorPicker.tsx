@@ -4,9 +4,11 @@ import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
+  PopoverTitle,
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
+import { ToggleGroup } from "@/components/ui/toggle-group";
 import {
   hexToHsv,
   hsvToHex,
@@ -17,6 +19,50 @@ import {
 import { clamp } from "@/lib/geometry";
 import { cn } from "@/lib/utils";
 import { Swatch } from "./Panel";
+
+export type ColorOption = { value: string; color: string; label: string };
+
+export function ColorSwatches({
+  options,
+  value,
+  onChange,
+  onPreview,
+  onCommit,
+}: {
+  options: ColorOption[];
+  value: string;
+  onChange: (value: string) => void;
+  onPreview: (color: string) => void;
+  onCommit: () => void;
+}) {
+  const chosen = options.find((option) => option.value === value);
+  return (
+    <ToggleGroup
+      spacing={1}
+      className="w-full justify-between"
+      value={[chosen ? value : "custom"]}
+      onValueChange={([next]) => next && next !== "custom" && onChange(next)}
+    >
+      {options.map((option) => (
+        <Swatch
+          key={option.value}
+          value={option.value}
+          aria-label={option.label}
+          style={{ background: option.color }}
+        />
+      ))}
+      <CustomSwatch fill={chosen ? null : value}>
+        <PopoverTitle>Custom color</PopoverTitle>
+        <ColorPicker
+          color={chosen?.color ?? value}
+          onPreview={onPreview}
+          onChange={onChange}
+          onCommit={onCommit}
+        />
+      </CustomSwatch>
+    </ToggleGroup>
+  );
+}
 
 export function CustomSwatch({
   fill,

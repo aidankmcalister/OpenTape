@@ -29,6 +29,14 @@ describe("project", () => {
 
   test("no file starts a new project, and an older file fills what it lacks", () => {
     expect(readProject(null)).toBe(NEW_PROJECT);
+    const light = readProject(
+      JSON.stringify({ appearance: { borderColor: "light" } }),
+    );
+    expect(light.appearance.borderColor).toBe("#ffffff");
+    const none = readProject(
+      JSON.stringify({ appearance: { borderColor: "none" } }),
+    );
+    expect(none.appearance.borderColor).toBe(DEFAULT_APPEARANCE.borderColor);
     const older = readProject(JSON.stringify({ appearance: { padding: 12 } }));
     expect(older).toEqual({
       appearance: { ...DEFAULT_APPEARANCE, padding: 12 },

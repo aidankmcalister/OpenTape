@@ -77,21 +77,26 @@ describe("export", () => {
   });
 });
 
-test("exportLayout grows the video by the inset, and draws a border only with a color", () => {
-  const appearance = { ...DEFAULT_APPEARANCE, inset: 10, borderWidth: 4 };
+test("exportLayout grows the video by the inset, and draws a border only with a width", () => {
+  const appearance = { ...DEFAULT_APPEARANCE, inset: 10 };
   const plain = exportLayout(appearance, { width: 1920, height: 1080 }, []);
   const scale = plain.width / 1920;
   expect(plain.video.x).toBeCloseTo(plain.recording.x - 10 * scale, 5);
   expect(plain.video.width).toBeCloseTo(1920 + 20 * scale, 5);
   expect(plain.border).toBeNull();
-  const light = exportLayout(
-    { ...appearance, borderColor: "light" },
+  const bordered = exportLayout(
+    {
+      ...appearance,
+      borderWidth: 4,
+      borderColor: "#3d9bff",
+      borderOpacity: 60,
+    },
     { width: 1920, height: 1080 },
     [],
   );
-  expect(light.border).toEqual({
-    color: "#ffffff",
-    opacity: 0.35,
+  expect(bordered.border).toEqual({
+    color: "#3d9bff",
+    opacity: 0.6,
     width: 4 * scale,
   });
 });

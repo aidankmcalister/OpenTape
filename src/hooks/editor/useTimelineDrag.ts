@@ -1,26 +1,23 @@
 import { useRef, useState, type PointerEvent } from "react";
 import { keptClips, trimClip } from "@/lib/editor/clips";
-import { dragRegion, type RegionDrag } from "@/lib/editor/regions";
+import { dragRegions, type RegionDrag } from "@/lib/editor/regions";
 import { editClips, editRegions, type Project } from "@/lib/editor/project";
 import type { Edits } from "./useProject";
 
 type Stretching = {
   track: "region" | "clip";
   id: number;
-  edge: "start" | "end";
-  from: { startMs: number; endMs: number; row?: number };
+  edge: RegionDrag;
+  from: { startMs: number; endMs: number };
 };
 
-export function useTimelineDrag(
-  edits: Edits,
-  durationMs: number,
-  rowAt: (clientY: number) => number,
-) {
+export function useTimelineDrag(edits: Edits, durationMs: number) {
   const drag = useRef<{
     fromX: number;
     fromY: number;
     width: number;
     hasMoved: boolean;
+    stretch?: Stretching;
   } | null>(null);
   const [stretching, setStretching] = useState<Stretching | null>(null);
   const clips = keptClips(edits.project.clips, durationMs);
@@ -31,7 +28,7 @@ export function useTimelineDrag(
 
   const dragProps = (
     select: (event: PointerEvent<HTMLElement>) => void,
-    edit: (project: Project, deltaMs: number, clientY: number) => Project,
+    edit: (project: Project, deltaMs: number) => Project,
     stretch?: Stretching,
     onClick?: () => void,
   ) => ({
@@ -41,12 +38,12 @@ export function useTimelineDrag(
       const track = event.currentTarget.closest("[data-track]");
       if (!track?.clientWidth) return;
       select(event);
-      setStretching(stretch ?? null);
       drag.current = {
         fromX: event.clientX,
         fromY: event.clientY,
         width: track.clientWidth,
         hasMoved: false,
+        stretch,
       };
     },
     onPointerMove: (event: PointerEvent<HTMLElement>) => {
@@ -57,42 +54,49 @@ export function useTimelineDrag(
         Math.abs(event.clientX - current.fromX) +
         Math.abs(event.clientY - current.fromY);
       if (travel < 3 && !current.hasMoved) return;
-      if (!current.hasMoved) edits.closeEditor();
+      if (!current.hasMoved) {
+        edits.closeEditor();
+        setStretching(current.stretch ?? null);
+      }
       current.hasMoved = true;
       const deltaMs =
         ((event.clientX - current.fromX) / current.width) * durationMs;
-      edits.preview((project) => edit(project, deltaMs, event.clientY));
+      edits.preview((project) => edit(project, deltaMs));
     },
-    onPointerUp: () => {
-      if (!drag.current) return;
-      if (drag.current.hasMoved) edits.commit();
-      else onClick?.();
-      drag.current = null;
-      setStretching(null);
+    onPointerUp: (event: PointerEvent<HTMLElement>) => {
+      const isClick = drag.current?.hasMoved === false && !event.shiftKey;
+      end();
+      if (isClick) onClick?.();
     },
+    onLostPointerCapture: end,
   });
+
+  function end() {
+    if (!drag.current) return;
+    if (drag.current.hasMoved) edits.commit();
+    drag.current = null;
+    setStretching(null);
+  }
 
   return {
     stretch: stretching && now ? { ...stretching, now } : null,
     region: (id: number, edge: RegionDrag) => {
       const from = edits.project.regions.find((region) => region.id === id);
+      const ids =
+        edge === "move" && edits.selectedIds.includes(id)
+          ? edits.selectedIds
+          : [id];
       return dragProps(
         (event) => edits.pick(id, event.shiftKey),
-        (project, deltaMs, clientY) =>
+        (project, deltaMs) =>
           editRegions(project, (regions) =>
-            dragRegion(
-              regions,
-              id,
-              edge,
-              deltaMs,
-              durationMs,
-              edge === "move" ? rowAt(clientY) : undefined,
-            ),
+            dragRegions(regions, ids, edge, deltaMs, durationMs),
           ),
-        from && edge !== "move"
-          ? { track: "region", id, edge, from }
-          : undefined,
-        () => edits.openEditor(id),
+        from && { track: "region", id, edge, from },
+        () => {
+          edits.select([id]);
+          edits.openEditor(id);
+        },
       );
     },
     clip: (id: number, edge: "start" | "end") => {

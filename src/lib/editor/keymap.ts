@@ -44,6 +44,7 @@ export const KEYMAP: Binding[] = [
   { action: "toggleCut", key: "c" },
   { action: "openAdd", key: "/" },
   { action: "remove", key: "Backspace" },
+  { action: "remove", key: "Delete" },
   { action: "selectAll", key: "a", meta: true },
   { action: "deselect", key: "Escape" },
   { action: "undo", key: "z", meta: true, shift: false },
@@ -52,21 +53,24 @@ export const KEYMAP: Binding[] = [
 
 export const SHORTCUTS: {
   group: string;
-  rows: { label: string; actions: EditorAction[] }[];
+  rows: { label: string; actions?: EditorAction[]; keys?: string[] }[];
 }[] = [
   {
     group: "Playback",
     rows: [
       { label: "Play or pause", actions: ["togglePlay"] },
       {
-        label: "Step one frame, or nudge the selection",
+        label: "Step one frame, or nudge the selection 0.1s",
         actions: ["stepBack", "stepForward"],
       },
       {
-        label: "Step one second, or nudge the selection",
+        label: "Step one second, or nudge the selection 1s",
         actions: ["leapBack", "leapForward"],
       },
-      { label: "Jump to start or end", actions: ["toStart", "toEnd"] },
+      {
+        label: "Jump to start or end, or move the selection's end",
+        actions: ["toStart", "toEnd"],
+      },
       { label: "Loop", actions: ["toggleLoop"] },
       { label: "Mute", actions: ["toggleSound"] },
     ],
@@ -76,6 +80,9 @@ export const SHORTCUTS: {
     rows: [
       { label: "Add a zoom", actions: ["addZoom"] },
       { label: "Add a speed region", actions: ["addSpeed"] },
+      { label: "Open the focused modifier", keys: ["Enter"] },
+      { label: "Next or previous modifier", keys: ["Tab", "⇧Tab"] },
+      { label: "Modifier in the lane above or below", keys: ["↑", "↓"] },
       { label: "Search modifiers to add", actions: ["openAdd"] },
       { label: "Cut tool", actions: ["toggleCut"] },
       { label: "Delete selected", actions: ["remove"] },

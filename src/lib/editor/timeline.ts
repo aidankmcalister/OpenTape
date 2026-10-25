@@ -1,6 +1,6 @@
 import { twoDigits } from "@/lib/time";
 import { clamp } from "@/lib/geometry";
-import type { Region } from "./regions";
+import type { Region, RegionKind } from "./regions";
 
 export function percentAt(ms: number, durationMs: number): number {
   if (durationMs <= 0) return 0;
@@ -23,39 +23,48 @@ export function frameStep(
   return clamp((frame + 0.5) * FRAME_MS, 0, durationMs);
 }
 
-export type RowBox = { top: number; height: number };
+export const GUTTER_PX = 152;
+export const TRACKS_TOP_PX = 56;
 
-const ROW_PX = 24;
-const ROW_GAP_PX = 4;
+const LANE_PX = 28;
+const COLLAPSED_LANE_PX = 20;
+const LANES_PADDING_PX = 4;
+const EMPTY_LANES_PX = 64;
 
-export const MODIFIERS_TOP_PX = 60;
+export type Lane = {
+  kind: RegionKind;
+  top: number;
+  height: number;
+  isCollapsed: boolean;
+};
 
-export const TIMELINE_LIMIT_PX = { min: 156, initial: 184, chromePx: 104 };
-
-export function rowLayout(rowCount: number) {
-  const rows: RowBox[] = Array.from(
-    { length: Math.max(1, rowCount) },
-    (_, row) => ({ top: row * (ROW_PX + ROW_GAP_PX), height: ROW_PX }),
-  );
-  const last = rows[rows.length - 1];
-  return { rows, areaPx: last.top + last.height };
+export function laneLayout(kinds: RegionKind[], collapsed: RegionKind[]) {
+  let top = LANES_PADDING_PX;
+  const lanes = kinds.map((kind): Lane => {
+    const isCollapsed = collapsed.includes(kind);
+    const lane = {
+      kind,
+      top,
+      height: isCollapsed ? COLLAPSED_LANE_PX : LANE_PX,
+      isCollapsed,
+    };
+    top += lane.height;
+    return lane;
+  });
+  const heightPx = lanes.length ? top + LANES_PADDING_PX : EMPTY_LANES_PX;
+  return { lanes, heightPx };
 }
 
-export function rowAtY(rows: RowBox[], y: number): number {
-  const index = rows.findIndex(({ top, height }) => y < top + height + 2);
-  return index === -1 ? rows.length : index;
-}
-
-export type BlockContent = "full" | "compact" | "icon" | "bar";
+export type BlockContent = "full" | "value" | "icon";
 
 export function blockContent(
   widthPx: number,
   label: string,
   value: string,
 ): BlockContent {
-  if (widthPx < 48) return "bar";
-  if (widthPx >= 76 + 7 * (label.length + value.length)) return "full";
-  return widthPx >= 56 + 7 * value.length ? "compact" : "icon";
+  const withValue = 46 + 7 * value.length;
+  if (widthPx >= withValue + 10 + 7 * label.length) return "full";
+  return widthPx >= withValue ? "value" : "icon";
 }
 
 export function rulerMarks(durationMs: number) {
@@ -101,19 +110,19 @@ export function regionsInBox(
   box: Box,
   width: number,
   durationMs: number,
-  rows: RowBox[],
+  lanes: Lane[],
 ): number[] {
   const startMs = msAtX(Math.min(box.x0, box.x1), width, durationMs);
   const endMs = msAtX(Math.max(box.x0, box.x1), width, durationMs);
   const minY = Math.min(box.y0, box.y1);
   const maxY = Math.max(box.y0, box.y1);
-  const touched = rows.flatMap(({ top, height }, row) =>
-    top < maxY && top + height > minY ? [row] : [],
-  );
+  const touched = lanes
+    .filter(({ top, height }) => top < maxY && top + height > minY)
+    .map(({ kind }) => kind);
   return regions
     .filter(
-      ({ startMs: start, endMs: end, row = 0 }) =>
-        start < endMs && end > startMs && touched.includes(row),
+      ({ startMs: start, endMs: end, kind }) =>
+        start < endMs && end > startMs && touched.includes(kind),
     )
     .map(({ id }) => id);
 }

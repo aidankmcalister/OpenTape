@@ -282,3 +282,28 @@ fn a_recording_cut_off_before_it_was_kept_should_list_first_as_recovered() {
     assert!(recordings[0].is_recovered);
     assert!(recordings[1..].iter().all(|kept| !kept.is_recovered));
 }
+
+#[test]
+fn trash_older_than_should_move_only_closed_recordings_past_the_cutoff() {
+    let shell = FakeShell::answering(Choice::Cancel);
+    let (current, open) = keeping_one("older-than", &shell);
+    let old = stored_recording(&current, "old", true);
+    stored_recording(&current, "new", false);
+    let long_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(40 * 24 * 60 * 60);
+    for folder in [&old, &open] {
+        std::fs::File::open(folder)
+            .and_then(|dir| dir.set_modified(long_ago))
+            .expect("the temp folder's time can be set");
+    }
+    assert_eq!(current.trash_older_than(&shell, 30).expect("it reads"), 1);
+    assert_eq!(*shell.trashed.borrow(), [old]);
+}
+
+#[test]
+fn exports_should_go_to_the_chosen_folder_or_downloads() {
+    let shell = FakeShell::answering(Choice::Cancel);
+    let (current, _) = keeping_one("save-folder", &shell);
+    assert_eq!(current.output_folder(), current.folders.downloads);
+    current.set_save_folder(Some(PathBuf::from("/tmp/exports")));
+    assert_eq!(current.output_folder(), PathBuf::from("/tmp/exports"));
+}

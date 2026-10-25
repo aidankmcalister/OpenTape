@@ -56,6 +56,7 @@ pub(crate) struct Folders {
 
 pub(crate) struct CurrentRecording {
     folders: Folders,
+    save_folder: Mutex<Option<PathBuf>>,
     kept: Mutex<Option<Kept>>,
 }
 
@@ -79,8 +80,19 @@ impl CurrentRecording {
     pub(crate) fn new(folders: Folders) -> Self {
         Self {
             folders,
+            save_folder: Mutex::new(None),
             kept: Mutex::new(None),
         }
+    }
+
+    pub(crate) fn set_save_folder(&self, folder: Option<PathBuf>) {
+        *lock(&self.save_folder) = folder;
+    }
+
+    fn output_folder(&self) -> PathBuf {
+        lock(&self.save_folder)
+            .clone()
+            .unwrap_or_else(|| self.folders.downloads.clone())
     }
 
     pub(crate) fn new_folder(&self) -> Result<PathBuf> {
@@ -190,6 +202,24 @@ impl CurrentRecording {
         shell.trash(&path)
     }
 
+    pub(crate) fn trash_older_than(&self, shell: &impl Shell, days: u32) -> Result<usize> {
+        let cutoff = std::time::SystemTime::now()
+            - std::time::Duration::from_secs(u64::from(days) * 24 * 60 * 60);
+        let cutoff_ms = cutoff.duration_since(std::time::UNIX_EPOCH)?.as_millis() as f64;
+        let old: Vec<_> = self
+            .kept_recordings()?
+            .into_iter()
+            .filter(|kept| kept.modified_ms < cutoff_ms)
+            .collect();
+        let mut trashed = 0;
+        for kept in old {
+            if self.trash(shell, &kept.folder).is_ok() {
+                trashed += 1;
+            }
+        }
+        Ok(trashed)
+    }
+
     pub(crate) fn stored(&self, folder: &str) -> Result<PathBuf> {
         let is_name =
             !folder.is_empty() && !folder.contains(['/', '\\']) && folder != "." && folder != "..";
@@ -243,7 +273,7 @@ impl CurrentRecording {
             return Ok(saved_to);
         }
         let (video, export_name) = self.video()?;
-        let output = free_path(&self.folders.downloads, &export_name, "mp4", Path::exists);
+        let output = free_path(&self.output_folder(), &export_name, "mp4", Path::exists);
         to_mp4(&video, &output)?;
         if let Some(kept) = lock(&self.kept).as_mut() {
             kept.saved_to = Some(output.clone());
@@ -263,12 +293,7 @@ impl CurrentRecording {
             std::fs::create_dir_all(&self.folders.copies)?;
             self.folders.copies.join(file_name(&export_name, extension))
         } else {
-            free_path(
-                &self.folders.downloads,
-                &export_name,
-                extension,
-                Path::exists,
-            )
+            free_path(&self.output_folder(), &export_name, extension, Path::exists)
         };
         export::export(&video, &output, layout, options, progress)?;
         Ok(output)

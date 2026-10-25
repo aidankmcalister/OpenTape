@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 const KEY = "screen-recorder:dev-flags";
 
@@ -18,15 +18,6 @@ export function useDevFlags() {
 }
 
 export type Dev = ReturnType<typeof useDevFlags>;
-
-export function useMostRows(rows: number) {
-  const [mostRows, setMostRows] = useState(rows);
-  if (rows > mostRows) setMostRows(rows);
-  useEffect(() => {
-    console.info(`Most overlapping modifier rows this session: ${mostRows}`);
-  }, [mostRows]);
-  return mostRows;
-}
 
 function read(): boolean {
   try {

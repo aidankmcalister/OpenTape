@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
-import { RotateCcw } from "lucide-react";
+import { Minus, Plus, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -94,7 +94,7 @@ export function Swatch({
   return (
     <ToggleGroupItem
       className={cn(
-        "size-6 min-w-6 rounded-full p-0 transition-[box-shadow] aria-pressed:swatch-ring",
+        "size-6 min-w-6 rounded-full p-0 inset-ring inset-ring-hairline transition-[box-shadow] aria-pressed:swatch-ring",
         className,
       )}
       {...props}
@@ -102,11 +102,34 @@ export function Swatch({
   );
 }
 
-export function NumberField(props: Parameters<typeof ValueInput>[0]) {
+export function NumberField({
+  step,
+  ...props
+}: Parameters<typeof ValueInput>[0] & { step?: number }) {
   return (
-    <div className="flex h-8 items-center justify-between rounded-md bg-secondary px-3 text-label inset-ring inset-ring-hairline">
-      {props.label}
+    <div className="flex h-8 items-center gap-1 rounded-md bg-secondary pl-3 text-label inset-ring inset-ring-hairline has-[button]:pr-1 not-has-[button]:pr-3">
+      <span className="mr-auto">{props.label}</span>
       <ValueInput {...props} />
+      {step ? (
+        <>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`Less ${props.label.toLowerCase()}`}
+            onClick={() => props.onChange(props.value - step)}
+          >
+            <Minus />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`More ${props.label.toLowerCase()}`}
+            onClick={() => props.onChange(props.value + step)}
+          >
+            <Plus />
+          </Button>
+        </>
+      ) : null}
     </div>
   );
 }

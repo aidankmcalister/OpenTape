@@ -10,9 +10,17 @@ import { useClockValue } from "@/hooks/useVideoClock";
 import { fillCss, frameLayout, type Appearance } from "@/lib/editor/appearance";
 import { focusAt, focusBox, zoomAt } from "@/lib/editor/zoom";
 import type { Point } from "@/lib/geometry";
-import { outputAt, type Region } from "@/lib/editor/regions";
+import {
+  blockValue,
+  laneKinds,
+  outputAt,
+  REGIONS,
+  winnerAt,
+  type Region,
+} from "@/lib/editor/regions";
 import type { Clock } from "@/lib/time";
 import Island from "./Island";
+import { hueOf, REGION_ICONS } from "./timeline/kinds";
 
 export default function Stage({
   appearance,
@@ -36,7 +44,7 @@ export default function Stage({
   );
 
   return (
-    <Island className="min-h-0 flex-1 bg-canvas dot-grid">
+    <Island className="relative min-h-0 flex-1 bg-canvas dot-grid">
       <div ref={ref} className="grid size-full place-items-center">
         <div
           className="grid place-items-center rounded-lg shadow-stage"
@@ -75,7 +83,39 @@ export default function Stage({
           </div>
         </div>
       </div>
+      <InEffect clock={clock} regions={regions} />
     </Island>
+  );
+}
+
+function InEffect({ clock, regions }: { clock: Clock; regions: Region[] }) {
+  const ids = useClockValue(clock, (seconds) =>
+    laneKinds(regions)
+      .map((kind) => winnerAt(regions, kind, seconds * 1000)?.id)
+      .filter((id) => id !== undefined)
+      .join(","),
+  );
+  const winners = ids
+    .split(",")
+    .map((id) => regions.find((region) => String(region.id) === id))
+    .filter((region) => region !== undefined);
+  return (
+    <div className="pointer-events-none absolute top-3 right-3 flex flex-col items-end gap-1">
+      {winners.map((region) => {
+        const Icon = REGION_ICONS[region.kind];
+        return (
+          <span
+            key={region.id}
+            className="flex h-6 items-center gap-1.5 rounded-md bg-hue-fill px-2 text-label font-semibold text-hue-foreground"
+            style={hueOf(region.kind)}
+          >
+            <Icon className="size-4" />
+            {REGIONS[region.kind].label}
+            <span className="font-mono font-medium">{blockValue(region)}</span>
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
