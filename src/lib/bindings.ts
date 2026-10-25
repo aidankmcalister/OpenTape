@@ -72,4 +72,8 @@ export type Sources = { displays: Array<DisplayInfo>, windows: Array<WindowInfo>
 
 export type Target = { "kind": "display", displayId: number, } | { "kind": "window", windowId: number, } | { "kind": "area", displayId: number, x: number, y: number, width: number, height: number, };
 
+export type TypingSpot = { t: number, x: number, y: number, };
+
+export type TypingStretch = { start: number, end: number, };
+
 export type WindowInfo = { id: number, pid: number, app: string, frame: Frame, size: CaptureSize, displayId: number | null, };

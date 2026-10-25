@@ -101,10 +101,6 @@ export type CursorLook = {
   edge: string;
   edgeWidth: number;
   join: "miter" | "round";
-  shadow: string;
-  shadowX: number;
-  shadowY: number;
-  shadowBlur: number;
 };
 
 const OUTLINED: CursorLook = {
@@ -112,10 +108,6 @@ const OUTLINED: CursorLook = {
   edge: "#ffffff",
   edgeWidth: 3,
   join: "round",
-  shadow: "#00000073",
-  shadowX: 0,
-  shadowY: 1,
-  shadowBlur: 1,
 };
 
 export const CURSOR_STYLES: Record<

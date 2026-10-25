@@ -48,7 +48,7 @@ export function editRegions(
 
 export function suggest(
   project: Project,
-  track: Pick<CursorTrack, "clicks" | "keys" | "moves">,
+  track: Pick<CursorTrack, "clicks" | "keys" | "moves" | "typed">,
   durationMs: number,
 ): Project {
   if (project.suggestionsMade) return project;

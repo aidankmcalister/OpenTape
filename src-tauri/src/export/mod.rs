@@ -18,6 +18,7 @@ use ts_rs::TS;
 mod cursor;
 mod cutout;
 mod rings;
+pub(crate) mod typing;
 mod writers;
 
 pub(crate) use cursor::ExportCursor;

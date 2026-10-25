@@ -1,11 +1,17 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useInvokeOnMount, useRustValue } from "@/hooks/useTauri";
-import type { CursorImage, CursorLog, ShownRecording } from "@/lib/bindings";
+import type {
+  CursorImage,
+  CursorLog,
+  ShownRecording,
+  TypingSpot,
+} from "@/lib/bindings";
 import {
   type CursorTrack,
   NO_CURSOR,
   readCursor,
+  typingStretches,
   visibleBox,
 } from "@/lib/editor/cursor";
 import type { Appearance } from "@/lib/editor/appearance";
@@ -241,7 +247,25 @@ export function useCursor(): CursorTrack {
   const [track, setTrack] = useState(NO_CURSOR);
   const [images, setImages] = useState<CursorImage[]>([]);
   useInvokeOnMount<CursorLog | null>("cursor_log", (log) => {
-    if (log) setTrack(readCursor(log.meta, log.events));
+    if (!log) return;
+    const read = readCursor(log.meta, log.events);
+    const stretches = typingStretches(read.keys).map(({ startMs, endMs }) => ({
+      start: startMs / 1000,
+      end: endMs / 1000,
+    }));
+    const withTyped = (spots: TypingSpot[]) =>
+      setTrack({
+        ...read,
+        typed: spots.map(({ t, x, y }) => ({ ms: t * 1000, x, y })),
+      });
+    if (stretches.length === 0) return withTyped([]);
+    invoke<TypingSpot[]>("typing_spots", { stretches }).then(
+      withTyped,
+      (error) => {
+        console.error(error);
+        withTyped([]);
+      },
+    );
   });
   useInvokeOnMount<CursorImage[]>("cursor_images", setImages);
   return useMemo(() => ({ ...track, images }), [track, images]);

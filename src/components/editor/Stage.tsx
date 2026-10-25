@@ -96,17 +96,15 @@ export default function Stage({
               ) : null}
             </div>
             <div className="pointer-events-none absolute inset-0">
-              <Zoom clock={clock} regions={focus ? [] : regions}>
-                <Cursor
-                  clock={clock}
-                  track={cursor}
-                  settings={appearance.cursor}
-                  durationMs={durationMs}
-                  video={video}
-                  size={recording}
-                  regions={focus ? [] : regions}
-                />
-              </Zoom>
+              <Cursor
+                clock={clock}
+                track={cursor}
+                settings={appearance.cursor}
+                durationMs={durationMs}
+                video={video}
+                size={recording}
+                regions={focus ? [] : regions}
+              />
             </div>
           </div>
         </div>
@@ -180,25 +178,27 @@ function Cursor({
     () => cursorPictures(track.images, plainOr(settings).style),
     [track.images, settings],
   );
-  const spot = useClockValue(clock, (seconds) => {
-    const at = spotAt(seconds * 1000);
-    const zoom = zoomAt(regions, outputAt(regions, seconds * 1000));
-    const shown = (tip: number, center: number, length: number) => {
-      const seen = center * length + (tip - center * length) * zoom.scale;
-      return seen >= 0 && seen <= length;
+  const seen = useClockValue(clock, (seconds) => {
+    const spot = spotAt(seconds * 1000);
+    if (!spot) return null;
+    const { scale, center } = zoomAt(
+      regions,
+      outputAt(regions, seconds * 1000),
+    );
+    const zoomed = (at: number, share: number, length: number) =>
+      share * length + (at - share * length) * scale;
+    const tip = {
+      x: zoomed(video.x + spot.x * video.width, center.x, size.width),
+      y: zoomed(video.y + spot.y * video.height, center.y, size.height),
     };
     const isInside =
-      at &&
-      shown(video.x + at.x * video.width, zoom.center.x, size.width) &&
-      shown(video.y + at.y * video.height, zoom.center.y, size.height);
-    return isInside ? at : null;
+      tip.x >= 0 && tip.x <= size.width && tip.y >= 0 && tip.y <= size.height;
+    return isInside ? { spot, tip, scale } : null;
   });
-  if (!spot || spot.alpha === 0) return null;
-  const px = cursorUnit(track, settings) * video.width * spot.scale;
-  const tip = {
-    x: video.x + spot.x * video.width,
-    y: video.y + spot.y * video.height,
-  };
+  if (!seen || seen.spot.alpha === 0) return null;
+  const { spot, tip } = seen;
+  const px =
+    cursorUnit(track, settings) * video.width * spot.scale * seen.scale;
   if (plainOr(settings).style === "Dot") {
     const side = DOT_POINTS * px;
     return (

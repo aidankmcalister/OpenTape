@@ -58,6 +58,7 @@ export type CursorTrack = {
   presses: Moment<{ untilMs: number }>[];
   kinds: Moment<{ kind: string }>[];
   keys: number[];
+  typed: CursorMove[];
   pointShare: number;
   aspect: number;
   images: CursorImage[];
@@ -69,6 +70,7 @@ export const NO_CURSOR: CursorTrack = {
   presses: [],
   kinds: [],
   keys: [],
+  typed: [],
   pointShare: 0,
   aspect: 1,
   images: [],
@@ -87,7 +89,7 @@ const PRESS_DIP = 0.15;
 const SWING = { stiffness: 140, damping: 9 };
 const TILT_PER_SPEED = 18;
 const MAX_TILT = 30;
-const CURSOR_SCALE = 4.5;
+const CURSOR_SCALE = 3.375;
 export const DOT_POINTS = 14;
 
 export const CURSOR_MODES: Record<CursorMode, string> = {
@@ -265,6 +267,7 @@ export function readCursor(meta: string, events: string): CursorTrack {
       .filter(({ type }) => type === "cursor")
       .map(({ ms, kind }) => ({ ms, kind })),
     keys: logged.filter(({ type }) => type === "key").map(({ ms }) => ms),
+    typed: [],
     pointShare: 1 / screen_rect.width,
     aspect: screen_rect.height / screen_rect.width,
     images: [],
@@ -351,10 +354,7 @@ function shapePicture(
     `stroke="${look.edge}" stroke-width="${strokeWidth}" stroke-linejoin="${look.join}" stroke-linecap="round"`;
   const svg = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width * SHAPE_RASTER}" height="${height * SHAPE_RASTER}" viewBox="0 0 ${width} ${height}">`,
-    `<filter id="shade" x="-50%" y="-50%" width="200%" height="200%">`,
-    `<feDropShadow dx="${look.shadowX}" dy="${look.shadowY}" stdDeviation="${look.shadowBlur}" flood-color="${look.shadow}"/>`,
-    `</filter>`,
-    `<g transform="translate(${SHAPE_PAD} ${SHAPE_PAD}) scale(${SHAPE_SCALE})" filter="url(#shade)">`,
+    `<g transform="translate(${SHAPE_PAD} ${SHAPE_PAD}) scale(${SHAPE_SCALE})">`,
     `<path d="${shape.path}" fill="${look.fill}" ${stroke(look.edgeWidth / SHAPE_SCALE)} paint-order="stroke"/>`,
     shape.lines
       ? `<path d="${shape.lines}" fill="none" ${stroke(look.edgeWidth / 2 / SHAPE_SCALE)}/>`
@@ -621,9 +621,13 @@ const ZOOM_LEAD_MS = 600;
 const ZOOM_HOLD_MS = 1500;
 const TYPING_GAP_MS = 1500;
 const TYPING_MIN_MS = 3000;
+const MIN_PAN_SHARE = 0.08;
+const STRAY_SHARE = 0.2;
+
+type SuggestionTrack = Pick<CursorTrack, "clicks" | "keys" | "moves" | "typed">;
 
 export function withSuggestions(
-  track: Pick<CursorTrack, "clicks" | "keys" | "moves">,
+  track: SuggestionTrack,
   regions: Region[],
   durationMs: number,
 ): Region[] {
@@ -634,7 +638,7 @@ export function withSuggestions(
   );
 }
 
-function typingStretches(keys: number[]): Span[] {
+export function typingStretches(keys: number[]): Span[] {
   const stretches: Span[] = [];
   for (const ms of keys) {
     const stretch = stretches[stretches.length - 1];
@@ -678,8 +682,22 @@ export function suggestedSpeeds(
   return added.length === 0 ? regions : [...regions, ...added];
 }
 
+export function steadySpots(spots: CursorMove[]): CursorMove[] {
+  if (spots.length === 1) return spots;
+  return spots.filter((spot, at) =>
+    [-2, -1, 1, 2].some((step) => {
+      const other = spots[at + step];
+      return (
+        other !== undefined &&
+        Math.max(Math.abs(spot.x - other.x), Math.abs(spot.y - other.y)) <
+          STRAY_SHARE
+      );
+    }),
+  );
+}
+
 export function suggestedZooms(
-  { clicks, keys, moves }: Pick<CursorTrack, "clicks" | "keys" | "moves">,
+  { clicks, keys, moves, typed }: SuggestionTrack,
   regions: Region[],
   durationMs: number,
 ): Region[] {
@@ -688,11 +706,17 @@ export function suggestedZooms(
     lefts.filter((click) => click.ms <= ms).pop() ?? positionAt(moves, ms);
   const moments = [
     ...lefts.map(({ ms, x, y }) => ({ startMs: ms, endMs: ms, x, y })),
-    ...typingStretches(keys).map((typed) => ({
-      ...typed,
-      x: typingAt(typed.startMs).x,
-      y: typingAt(typed.startMs).y,
-    })),
+    ...typingStretches(keys).flatMap((stretch) => {
+      const [first = typingAt(stretch.startMs), ...rest] = steadySpots(
+        typed.filter(
+          ({ ms }) => ms > stretch.startMs - 1000 && ms < stretch.endMs + 1000,
+        ),
+      );
+      return [
+        { ...stretch, x: first.x, y: first.y },
+        ...rest.map(({ ms, x, y }) => ({ startMs: ms, endMs: ms, x, y })),
+      ];
+    }),
   ].sort((a, b) => a.startMs - b.startMs);
   const groups: { endMs: number; moments: typeof moments }[] = [];
   for (const moment of moments) {
@@ -716,17 +740,25 @@ export function suggestedZooms(
       endMs: Math.min(durationMs, lastMs + ZOOM_HOLD_MS),
     };
     if (!isFree(regions, "zoom", span)) continue;
+    const center = { x: aim(first.x), y: aim(first.y) };
+    const path: NonNullable<Region["path"]> = [];
+    for (const { startMs: ms, x, y } of rest) {
+      const from = path[path.length - 1] ?? center;
+      const to = { x: aim(x), y: aim(y) };
+      if (
+        Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y)) <
+        MIN_PAN_SHARE
+      )
+        continue;
+      path.push({ afterMs: ms - startMs, ...to });
+    }
     added.push({
       id: nextId([...regions, ...added]),
       kind: "zoom",
       ...span,
       amount,
-      center: { x: aim(first.x), y: aim(first.y) },
-      path: rest.map(({ startMs: ms, x, y }) => ({
-        afterMs: ms - startMs,
-        x: aim(x),
-        y: aim(y),
-      })),
+      center,
+      path,
       isSuggested: true,
     });
   }

@@ -6,6 +6,7 @@ use tauri::{AppHandle, Manager, State};
 
 use super::{CurrentRecording, CursorLog, Shell, ShownRecording, Window};
 use crate::PageEvent;
+use crate::export::typing::{TypingSpot, TypingStretch};
 use crate::export::{ExportLayout, ExportOptions};
 use crate::macos::{self, Alert, Choice};
 use crate::util::{CmdResult, run_blocking};
@@ -121,6 +122,15 @@ pub(crate) fn edit_recording(app: AppHandle, current: State<'_, CurrentRecording
 #[tauri::command]
 pub(crate) async fn cursor_log(app: AppHandle) -> CmdResult<Option<CursorLog>> {
     Ok(run_blocking(move || app.state::<CurrentRecording>().cursor_log()).await?)
+}
+
+#[tauri::command]
+pub(crate) async fn typing_spots(
+    app: AppHandle,
+    stretches: Vec<TypingStretch>,
+) -> CmdResult<Vec<TypingSpot>> {
+    let (video, _) = app.state::<CurrentRecording>().video()?;
+    Ok(run_blocking(move || crate::export::typing::typing_spots(&video, &stretches)).await?)
 }
 
 #[tauri::command]

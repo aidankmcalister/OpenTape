@@ -152,6 +152,7 @@ pub fn run() -> tauri::Result<()> {
             current_recording::commands::load_project,
             current_recording::commands::cursor_log,
             current_recording::commands::cursor_images,
+            current_recording::commands::typing_spots,
             settings::get_settings,
             settings::set_settings,
             settings::choose_save_folder,
