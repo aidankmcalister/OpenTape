@@ -10,8 +10,10 @@ use objc2_core_graphics::{
 };
 use objc2_core_image::CIImage;
 
-pub(super) fn cutout(layout: &ExportLayout) -> Result<Retained<CIImage>> {
-    let (width, height) = (layout.width as usize, layout.height as usize);
+pub(super) fn canvas(
+    width: usize,
+    height: usize,
+) -> Result<(CFRetained<CGColorSpace>, CFRetained<CGContext>)> {
     let srgb = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB }))
         .context("macOS has no sRGB color space")?;
     let context = unsafe {
@@ -25,7 +27,13 @@ pub(super) fn cutout(layout: &ExportLayout) -> Result<Retained<CIImage>> {
             CGImageAlphaInfo::PremultipliedLast.0,
         )
     }
-    .context("could not make a picture to draw the appearance in")?;
+    .context("could not make a picture to draw in")?;
+    Ok((srgb, context))
+}
+
+pub(super) fn cutout(layout: &ExportLayout) -> Result<Retained<CIImage>> {
+    let (width, height) = (layout.width as usize, layout.height as usize);
+    let (srgb, context) = canvas(width, height)?;
     let context = Some(&*context);
 
     let gradient = gradient(&srgb, &layout.background)?;

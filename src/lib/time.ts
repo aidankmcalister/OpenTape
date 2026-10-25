@@ -1,3 +1,5 @@
+export const EASE = [0.32, 0.72, 0, 1] as const;
+
 export function formatTime(ms: number): string {
   const totalHundredths = Math.floor(ms / 10);
   const minutes = Math.floor(totalHundredths / 6000);

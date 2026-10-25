@@ -6,6 +6,8 @@ import {
   fillCss,
   fillGradient,
   frameLayout,
+  gradientCss,
+  readAppearance,
   type Fill,
 } from "./appearance";
 
@@ -85,4 +87,27 @@ describe("appearance", () => {
     expect(changed.stops[0]).toBe(custom.stops[0]);
     expect(changed.angle).toBe(custom.angle);
   });
+});
+
+test("gradientCss sorts its stops and rounds them to whole percents", () => {
+  expect(
+    gradientCss({
+      angle: 90,
+      stops: [
+        { color: "#ffffff", at: 1 },
+        { color: "#000000", at: 0.333 },
+      ],
+    }),
+  ).toBe("linear-gradient(90deg, #000000 33%, #ffffff 100%)");
+});
+
+test("readAppearance fills in defaults and turns old border color names into hex", () => {
+  expect(readAppearance()).toEqual(DEFAULT_APPEARANCE);
+  expect(readAppearance({ borderColor: "#123456" }).borderColor).toBe(
+    "#123456",
+  );
+  expect(readAppearance({ borderColor: "light" }).borderColor).toBe("#ffffff");
+  expect(readAppearance({ borderColor: "no-such-name" }).borderColor).toBe(
+    DEFAULT_APPEARANCE.borderColor,
+  );
 });

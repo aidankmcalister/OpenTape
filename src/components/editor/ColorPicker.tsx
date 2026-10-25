@@ -19,6 +19,7 @@ import {
 import { clamp } from "@/lib/geometry";
 import { cn } from "@/lib/utils";
 import { Swatch } from "./Panel";
+import { followPointer } from "@/hooks/usePointerHover";
 
 export type ColorOption = { value: string; color: string; label: string };
 
@@ -28,12 +29,14 @@ export function ColorSwatches({
   onChange,
   onPreview,
   onCommit,
+  custom,
 }: {
   options: ColorOption[];
   value: string;
   onChange: (value: string) => void;
-  onPreview: (color: string) => void;
-  onCommit: () => void;
+  onPreview?: (color: string) => void;
+  onCommit?: () => void;
+  custom?: ReactNode;
 }) {
   const chosen = options.find((option) => option.value === value);
   return (
@@ -51,15 +54,17 @@ export function ColorSwatches({
           style={{ background: option.color }}
         />
       ))}
-      <CustomSwatch fill={chosen ? null : value}>
-        <PopoverTitle>Custom color</PopoverTitle>
-        <ColorPicker
-          color={chosen?.color ?? value}
-          onPreview={onPreview}
-          onChange={onChange}
-          onCommit={onCommit}
-        />
-      </CustomSwatch>
+      {custom ?? (
+        <CustomSwatch fill={chosen ? null : value}>
+          <PopoverTitle>Custom color</PopoverTitle>
+          <ColorPicker
+            color={chosen?.color ?? value}
+            onPreview={onPreview ?? onChange}
+            onChange={onChange}
+            onCommit={onCommit ?? (() => {})}
+          />
+        </CustomSwatch>
+      )}
     </ToggleGroup>
   );
 }
@@ -160,27 +165,23 @@ function ColorPlane({
   onChange: (hsv: Hsv) => void;
   onDone: () => void;
 }) {
-  const pick = (event: PointerEvent<HTMLElement>) => {
+  const start = (event: PointerEvent<HTMLElement>) => {
     const { left, top, width, height } =
       event.currentTarget.getBoundingClientRect();
-    onChange({
-      ...hsv,
-      s: clamp((event.clientX - left) / width, 0, 1),
-      v: 1 - clamp((event.clientY - top) / height, 0, 1),
-    });
+    const pick = ({ clientX, clientY }: { clientX: number; clientY: number }) =>
+      onChange({
+        ...hsv,
+        s: clamp((clientX - left) / width, 0, 1),
+        v: 1 - clamp((clientY - top) / height, 0, 1),
+      });
+    pick(event);
+    followPointer(pick, onDone);
   };
   return (
     <div
       className="relative h-34 cursor-crosshair touch-none rounded-md"
       style={{ background: planeCss(hsv.h) }}
-      onPointerDown={(event) => {
-        event.currentTarget.setPointerCapture(event.pointerId);
-        pick(event);
-      }}
-      onPointerMove={(event) => {
-        if (event.currentTarget.hasPointerCapture(event.pointerId)) pick(event);
-      }}
-      onPointerUp={onDone}
+      onPointerDown={start}
     >
       <div
         className="pointer-events-none absolute size-4 -translate-1/2 rounded-full border-2 border-primary-foreground shadow-md"

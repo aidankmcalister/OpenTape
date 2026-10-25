@@ -1,9 +1,8 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, type ReactNode, type RefObject } from "react";
 import { Film, Scissors } from "lucide-react";
 import { useClockValue } from "@/hooks/useVideoClock";
-import { useElementSize } from "@/hooks/useElementSize";
 import { useReflow } from "@/hooks/useMorph";
-import type { Lanes } from "@/hooks/editor/useLanes";
+import type { Lanes } from "@/hooks/editor/useProject";
 import { useTimelineDrag } from "@/hooks/editor/useTimelineDrag";
 import type { Edits } from "@/hooks/editor/useProject";
 import { useScrub, useSkim } from "@/hooks/editor/useScrub";
@@ -11,7 +10,8 @@ import {
   GUTTER_PX,
   laneLayout,
   percentAt,
-  rulerLabel,
+  isUnderChip,
+  rulerLabels,
   rulerMarks,
   timeLabel,
   TRACK_INSET_PX,
@@ -31,6 +31,8 @@ export default function Timeline({
   heldMs,
   onSkim,
   lanes: laneState,
+  trackRef,
+  trackWidth,
 }: {
   clock: Clock;
   durationMs: number;
@@ -39,14 +41,15 @@ export default function Timeline({
   heldMs: number | null;
   onSkim: (ms: number | null) => void;
   lanes: Lanes;
+  trackRef: RefObject<HTMLDivElement | null>;
+  trackWidth: number;
 }) {
   const { time, shown } = edits;
   const { lengthMs, at } = time;
   const scrubProps = useScrub(lengthMs, (ms) => onSeek(time.source(ms)));
-  const { ref: trackRef, size: track } = useElementSize<HTMLDivElement>();
   const { regions } = edits.project;
   const { lanes, heightPx } = laneLayout(laneKinds(shown), laneState.collapsed);
-  const drag = useTimelineDrag(edits, durationMs);
+  const drag = useTimelineDrag(edits);
   const isReflowing = useReflow(
     [
       lengthMs,
@@ -93,7 +96,6 @@ export default function Timeline({
           ref={trackRef}
           data-track
           className="absolute inset-x-3 inset-y-0 select-none"
-          {...scrubProps}
           onPointerDown={(event) => {
             edits.select([]);
             scrubProps.onPointerDown(event);
@@ -103,7 +105,7 @@ export default function Timeline({
             <>
               <Ruler
                 durationMs={lengthMs}
-                width={track.width}
+                width={trackWidth}
                 playheadMs={(seconds) => at(heldMs ?? seconds * 1000)}
                 clock={clock}
                 skimMs={skim.hoverMs}
@@ -118,9 +120,8 @@ export default function Timeline({
                 edits={edits}
                 lanes={lanes}
                 heightPx={heightPx}
-                top={TRACKS_TOP_PX}
                 durationMs={lengthMs}
-                trackWidth={track.width}
+                trackWidth={trackWidth}
                 clock={clock}
                 drag={drag}
                 solo={laneState.solo}
@@ -154,9 +155,6 @@ export default function Timeline({
   );
 }
 
-const LABEL_GAP_PX = 6;
-const CHIP_HALF_PX = 30;
-
 function Ruler({
   durationMs,
   width,
@@ -170,34 +168,20 @@ function Ruler({
   clock: Clock;
   skimMs: number | null;
 }) {
-  const marks = rulerMarks(durationMs, width);
   const xOf = (ms: number) => (percentAt(ms, durationMs) / 100) * width;
-  const labelPx = (ms: number) => rulerLabel(ms).length * 7;
-  const flips = (ms: number) => xOf(ms) + LABEL_GAP_PX + labelPx(ms) > width;
-  const spanOf = (ms: number) =>
-    flips(ms)
-      ? [xOf(ms) - LABEL_GAP_PX - labelPx(ms), xOf(ms) - LABEL_GAP_PX]
-      : [xOf(ms) + LABEL_GAP_PX, xOf(ms) + LABEL_GAP_PX + labelPx(ms)];
-  const majors = marks.filter(({ isMajor }) => isMajor);
-  const crowded = majors.filter(({ ms }, index) => {
-    const before = majors[index - 1];
-    return before && spanOf(ms)[0] < spanOf(before.ms)[1] + LABEL_GAP_PX;
-  });
-  const underChip = (atMs: number | null) =>
-    majors.filter(({ ms }) => {
-      if (atMs === null) return false;
-      const [from, to] = spanOf(ms);
-      const at = xOf(atMs);
-      return to > at - CHIP_HALF_PX && from < at + CHIP_HALF_PX;
-    });
-  const hidden = useClockValue(clock, (seconds) =>
-    underChip(playheadMs(seconds))
-      .map(({ ms }) => ms)
-      .join(","),
-  )
-    .split(",")
-    .concat([...crowded, ...underChip(skimMs)].map(({ ms }) => String(ms)));
-  return marks.map(({ ms, isMajor }) => {
+  const labels = rulerLabels(durationMs, width);
+  const atPlayhead = useClockValue(clock, (seconds) =>
+    labels
+      .filter((label) => isUnderChip(label, xOf(playheadMs(seconds))))
+      .map(({ ms }) => ms),
+  );
+  const shown = labels.filter(
+    (label) =>
+      !label.isCrowded &&
+      !atPlayhead.includes(label.ms) &&
+      (skimMs === null || !isUnderChip(label, xOf(skimMs))),
+  );
+  return rulerMarks(durationMs, width).map(({ ms, isMajor }) => {
     const left = `${percentAt(ms, durationMs)}%`;
     if (!isMajor) {
       return (
@@ -216,20 +200,18 @@ function Ruler({
           className="pointer-events-none absolute top-2 h-4 w-px bg-foreground/30"
           style={{ left }}
         />
-        {hidden.includes(String(ms)) ? null : (
-          <span
-            data-flow
-            className={cn(
-              "pointer-events-none absolute top-2 font-mono text-caption leading-4 text-muted-foreground",
-              flips(ms) && "-translate-x-full",
-            )}
-            style={{
-              left: `calc(${left} ${flips(ms) ? "-" : "+"} ${LABEL_GAP_PX}px)`,
-            }}
-          >
-            {rulerLabel(ms)}
-          </span>
-        )}
+        {shown
+          .filter((label) => label.ms === ms)
+          .map(({ from, text }) => (
+            <span
+              key={text}
+              data-flow
+              className="pointer-events-none absolute top-2 font-mono text-caption leading-4 text-muted-foreground"
+              style={{ left: from }}
+            >
+              {text}
+            </span>
+          ))}
       </Fragment>
     );
   });

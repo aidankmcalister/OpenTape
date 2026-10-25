@@ -8,6 +8,9 @@ import {
   changeSetting,
   coveredStretches,
   dragRegions,
+  nextId,
+  touchingSides,
+  winnersAt,
   laneKinds,
   outputAt,
   type Region,
@@ -20,7 +23,6 @@ import {
   settingValue,
   winnerAt,
 } from "./regions";
-import { contrastRatio, hueColors, rgbOf } from "./color";
 
 describe("regions", () => {
   const ZOOM_1_TO_3: Region = {
@@ -231,4 +233,118 @@ test("a zoom isn't added when its lane has no room", () => {
     amount: 1.5,
   };
   expect(addRegion([full], "zoom", 5000, 10_000)).toEqual([full]);
+});
+
+test("contrastRatio runs from 1:1 to 21:1", () => {
+  expect(contrastRatio([0, 0, 0], [255, 255, 255])).toBeCloseTo(21);
+  expect(contrastRatio([90, 90, 90], [90, 90, 90])).toBe(1);
+});
+
+type Rgb = [number, number, number];
+
+function rgbOf(hue: string): Rgb {
+  const [r, g, b] = hue.split(" ").map(Number);
+  return [r, g, b];
+}
+
+function hueColors(hue: Rgb) {
+  const track: Rgb = [31, 31, 34];
+  return {
+    rest: mixRgb(hue, track, 0.18),
+    hover: mixRgb(hue, track, 0.3),
+    text: mixRgb(hue, [255, 255, 255], 0.65),
+    onHue: [13, 13, 15] as Rgb,
+  };
+}
+
+function contrastRatio(a: Rgb, b: Rgb): number {
+  const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (light + 0.05) / (dark + 0.05);
+}
+
+function mixRgb(a: Rgb, b: Rgb, share: number): Rgb {
+  const [r, g, bl] = a.map((value, i) => value * share + b[i] * (1 - share));
+  return [r, g, bl];
+}
+
+function luminance(rgb: Rgb): number {
+  const [r, g, b] = rgb.map((value) => {
+    const c = value / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+describe("block length rules", () => {
+  const zoom = (id: number, startMs: number, endMs: number): Region => ({
+    id,
+    kind: "zoom",
+    startMs,
+    endMs,
+    amount: 1.5,
+  });
+
+  test("a block shorter than the minimum can grow from its start but never onto its neighbor", () => {
+    const regions = [zoom(1, 0, 2000), zoom(2, 2000, 2300)];
+    const nudged = dragRegions(regions, [2], "start", 100, 10_000, 800);
+    expect(nudged[1]).toMatchObject({ startMs: 2000, endMs: 2300 });
+    const pulled = dragRegions(regions, [2], "start", -500, 10_000, 800);
+    expect(pulled[1].startMs).toBe(2000);
+  });
+
+  test("a block shorter than the minimum can grow from its end but not shrink", () => {
+    const regions = [zoom(1, 1000, 1300)];
+    expect(dragRegions(regions, [1], "end", -100, 10_000, 800)[0].endMs).toBe(
+      1300,
+    );
+    expect(dragRegions(regions, [1], "end", 400, 10_000, 800)[0].endMs).toBe(
+      1700,
+    );
+  });
+
+  test("a new block needs a gap of at least the minimum", () => {
+    const regions = [zoom(1, 0, 2000), zoom(2, 2250, 5000)];
+    const [, , added] = addRegion(regions, "zoom", 2100, 10_000, 800);
+    expect(added.startMs).toBeGreaterThanOrEqual(5000);
+  });
+});
+
+describe("who wins and who touches", () => {
+  const zoom = (id: number, startMs: number, endMs: number): Region => ({
+    id,
+    kind: "zoom",
+    startMs,
+    endMs,
+    amount: 1.5,
+  });
+  const regions = [
+    zoom(1, 0, 1000),
+    zoom(2, 1000, 2000),
+    { ...zoom(3, 500, 1500), kind: "speed" } satisfies Region,
+  ];
+
+  test("winnersAt gives one modifier per type at a moment", () => {
+    expect(winnersAt(regions, 1200).map(({ id }) => id)).toEqual([2, 3]);
+    expect(winnersAt(regions, 2500)).toEqual([]);
+  });
+
+  test("touchingSides finds same-type neighbors that share an edge", () => {
+    expect(touchingSides(regions, regions[0])).toEqual({
+      start: false,
+      end: true,
+    });
+    expect(touchingSides(regions, regions[1])).toEqual({
+      start: true,
+      end: false,
+    });
+    expect(touchingSides(regions, regions[2])).toEqual({
+      start: false,
+      end: false,
+    });
+  });
+
+  test("nextId is one past the highest id", () => {
+    expect(nextId([])).toBe(1);
+    expect(nextId(regions)).toBe(4);
+  });
 });

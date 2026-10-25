@@ -7,17 +7,18 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { Lanes } from "@/hooks/editor/useLanes";
+import type { Lanes } from "@/hooks/editor/useProject";
 import type { Edits } from "@/hooks/editor/useProject";
 import { useMarquee } from "@/hooks/editor/useScrub";
 import type { TimelineDrag } from "@/hooks/editor/useTimelineDrag";
 import { useClockValue } from "@/hooks/useVideoClock";
 import {
-  ALL_KINDS,
   KINDS,
   blockValue,
+  covers,
   coveredStretches,
   REGIONS,
+  touchingSides,
   winnerAt,
   type Region,
   type RegionDrag,
@@ -28,7 +29,10 @@ import {
   msAtX,
   percentAt,
   regionsInBox,
+  blockOrder,
+  nextBlock,
   timeLabel,
+  TRACKS_TOP_PX,
   type Lane,
 } from "@/lib/editor/timeline";
 import type { Clock } from "@/lib/time";
@@ -142,7 +146,6 @@ export function LaneTracks({
   edits,
   lanes,
   heightPx,
-  top,
   durationMs,
   trackWidth,
   clock,
@@ -153,7 +156,6 @@ export function LaneTracks({
   edits: Edits;
   lanes: Lane[];
   heightPx: number;
-  top: number;
   durationMs: number;
   trackWidth: number;
   clock: Clock;
@@ -170,17 +172,12 @@ export function LaneTracks({
       onSeek(msAtX(x, width, durationMs));
     },
   );
-  const order = [...regions].sort(
-    (a, b) =>
-      a.startMs - b.startMs ||
-      ALL_KINDS.indexOf(a.kind) - ALL_KINDS.indexOf(b.kind),
-  );
+  const order = blockOrder(regions);
   const focusStop =
     [...edits.selectedIds]
       .reverse()
       .find((id) => regions.some(({ id: at }) => at === id)) ?? order[0]?.id;
   const open = (id: number) => {
-    edits.select([id]);
     edits.openEditor(id);
   };
   const focusBlock = (id: number) => {
@@ -190,24 +187,16 @@ export function LaneTracks({
 
   function onBlockKey(event: KeyboardEvent<HTMLElement>, region: Region) {
     if (event.metaKey || event.ctrlKey) return;
-    if (event.key === "Tab") {
-      const at = order.findIndex(({ id }) => id === region.id);
-      const next = order[at + (event.shiftKey ? -1 : 1)];
-      if (!next) return;
+    const step = {
+      Tab: event.shiftKey ? "previous" : "next",
+      ArrowUp: "up",
+      ArrowDown: "down",
+    }[event.key] as Parameters<typeof nextBlock>[3] | undefined;
+    if (step) {
+      const target = nextBlock(regions, lanes, region, step);
+      if (!target && event.key === "Tab") return;
       event.preventDefault();
-      focusBlock(next.id);
-    } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-      const at = lanes.findIndex(({ kind }) => kind === region.kind);
-      const lane = lanes[at + (event.key === "ArrowDown" ? 1 : -1)];
-      const nearest = regions
-        .filter(({ kind }) => kind === lane?.kind)
-        .sort(
-          (a, b) =>
-            Math.abs(a.startMs - region.startMs) -
-            Math.abs(b.startMs - region.startMs),
-        )[0];
-      event.preventDefault();
-      if (nearest) focusBlock(nearest.id);
+      if (target) focusBlock(target.id);
     } else if (event.key === "Enter" || event.key.toLowerCase() === "e") {
       event.preventDefault();
       event.stopPropagation();
@@ -218,7 +207,7 @@ export function LaneTracks({
   return (
     <div
       className="absolute inset-x-0"
-      style={{ top, height: heightPx }}
+      style={{ top: TRACKS_TOP_PX, height: heightPx }}
       {...marqueeProps}
     >
       {lanes.length === 0 ? <EmptyLanes /> : null}
@@ -236,7 +225,7 @@ export function LaneTracks({
             rank={order.indexOf(region)}
             isSelected={edits.selectedIds.includes(region.id)}
             isFocusStop={region.id === focusStop}
-            touches={touching(regions, region)}
+            touches={touchingSides(regions, region)}
             isDimmed={solo !== null && solo !== region.kind}
             stretchEdge={
               drag.stretch?.track === "region" && drag.stretch.id === region.id
@@ -324,10 +313,8 @@ function Block({
     label,
     value,
   );
-  const isActive = useClockValue(
-    clock,
-    (seconds) =>
-      at(seconds * 1000) >= region.startMs && at(seconds * 1000) < region.endMs,
+  const isActive = useClockValue(clock, (seconds) =>
+    covers(region, at(seconds * 1000)),
   );
   const span = `${timeLabel(region.startMs)} to ${timeLabel(region.endMs)}`;
   const place = {
@@ -438,14 +425,4 @@ function Grip({
       />
     </div>
   );
-}
-
-function touching(regions: Region[], region: Region) {
-  const sameKind = regions.filter(
-    (other) => other.kind === region.kind && other.id !== region.id,
-  );
-  return {
-    start: sameKind.some(({ endMs }) => endMs === region.startMs),
-    end: sameKind.some(({ startMs }) => startMs === region.endMs),
-  };
 }

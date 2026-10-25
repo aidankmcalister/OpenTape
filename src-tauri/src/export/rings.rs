@@ -1,18 +1,13 @@
-use std::ptr::null_mut;
-
 use anyhow::{Context, Result};
 use objc2::rc::Retained;
 use objc2_core_foundation::{CGAffineTransform, CGPoint, CGRect, CGSize};
-use objc2_core_graphics::{
-    CGBitmapContextCreate, CGBitmapContextCreateImage, CGColor, CGColorSpace, CGContext,
-    CGImageAlphaInfo, kCGColorSpaceSRGB,
-};
+use objc2_core_graphics::{CGBitmapContextCreateImage, CGColor, CGContext};
 use objc2_core_image::CIImage;
 use serde::Deserialize;
 use ts_rs::TS;
 
 use super::PixelRect;
-use super::cutout::rgb;
+use super::cutout::{canvas, rgb};
 
 const RING_SECONDS: f64 = 0.5;
 
@@ -80,20 +75,7 @@ impl ExportRing {
         let side = (size + 8.0).ceil();
         let center = side / 2.0;
         let [red, green, blue] = rgb(&self.color)?;
-        let srgb = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB }))
-            .context("macOS has no sRGB color space")?;
-        let context = unsafe {
-            CGBitmapContextCreate(
-                null_mut(),
-                side as usize,
-                side as usize,
-                8,
-                0,
-                Some(&srgb),
-                CGImageAlphaInfo::PremultipliedLast.0,
-            )
-        }
-        .context("could not make a picture to draw a click ring in")?;
+        let (_, context) = canvas(side as usize, side as usize)?;
         let context = Some(&*context);
         CGContext::set_line_width(context, (size * 0.08).max(2.0));
         for circle in circles(self.style, (now - self.t) / RING_SECONDS, size) {

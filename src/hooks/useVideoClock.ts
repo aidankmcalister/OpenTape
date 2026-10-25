@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState,
   useSyncExternalStore,
   type RefObject,
@@ -63,5 +64,12 @@ export function useClockValue<T>(
   clock: Clock,
   select: (seconds: number) => T,
 ): T {
-  return useSyncExternalStore(clock.subscribe, () => select(clock.seconds()));
+  const last = useRef<{ value: T; json: string } | null>(null);
+  return useSyncExternalStore(clock.subscribe, () => {
+    const value = select(clock.seconds());
+    const json = JSON.stringify(value);
+    if (last.current?.json === json) return last.current.value;
+    last.current = { value, json };
+    return value;
+  });
 }

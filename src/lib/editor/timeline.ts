@@ -1,6 +1,6 @@
 import { twoDigits } from "@/lib/time";
 import { clamp } from "@/lib/geometry";
-import type { Region, RegionKind } from "./regions";
+import { ALL_KINDS, type Region, type RegionKind } from "./regions";
 
 export function percentAt(ms: number, durationMs: number): number {
   if (durationMs <= 0) return 0;
@@ -63,8 +63,8 @@ export function blockContent(
   label: string,
   value: string,
 ): BlockContent {
-  const withValue = 46 + 7 * value.length;
-  if (widthPx >= withValue + 10 + 7 * label.length) return "full";
+  const withValue = 46 + CHAR_PX * value.length;
+  if (widthPx >= withValue + 10 + CHAR_PX * label.length) return "full";
   return widthPx >= withValue ? "value" : "icon";
 }
 
@@ -87,6 +87,61 @@ export function rulerMarks(durationMs: number, widthPx: number) {
 export function rulerLabel(ms: number): string {
   const totalSeconds = Math.round(ms / 1000);
   return `${Math.floor(totalSeconds / 60)}:${twoDigits(totalSeconds % 60)}`;
+}
+
+const CHAR_PX = 7;
+const LABEL_GAP_PX = 6;
+const CHIP_HALF_PX = 30;
+
+export type RulerLabel = ReturnType<typeof rulerLabels>[number];
+
+export function rulerLabels(durationMs: number, widthPx: number) {
+  let shownEnd = -Infinity;
+  return rulerMarks(durationMs, widthPx)
+    .filter(({ isMajor }) => isMajor)
+    .map(({ ms }) => {
+      const x = (percentAt(ms, durationMs) / 100) * widthPx;
+      const text = rulerLabel(ms);
+      const textPx = CHAR_PX * text.length;
+      const flips = x + LABEL_GAP_PX + textPx > widthPx;
+      const from = flips ? x - LABEL_GAP_PX - textPx : x + LABEL_GAP_PX;
+      const isCrowded = from < shownEnd + LABEL_GAP_PX;
+      if (!isCrowded) shownEnd = from + textPx;
+      return { ms, text, flips, from, to: from + textPx, isCrowded };
+    });
+}
+
+export function isUnderChip(label: RulerLabel, chipX: number): boolean {
+  return label.to > chipX - CHIP_HALF_PX && label.from < chipX + CHIP_HALF_PX;
+}
+
+export function nextBlock(
+  regions: Region[],
+  lanes: Lane[],
+  region: Region,
+  step: "next" | "previous" | "up" | "down",
+): Region | undefined {
+  if (step === "next" || step === "previous") {
+    const order = blockOrder(regions);
+    return order[order.indexOf(region) + (step === "next" ? 1 : -1)];
+  }
+  const at = lanes.findIndex(({ kind }) => kind === region.kind);
+  const lane = lanes[at + (step === "down" ? 1 : -1)];
+  return regions
+    .filter(({ kind }) => kind === lane?.kind)
+    .sort(
+      (a, b) =>
+        Math.abs(a.startMs - region.startMs) -
+        Math.abs(b.startMs - region.startMs),
+    )[0];
+}
+
+export function blockOrder(regions: Region[]): Region[] {
+  return [...regions].sort(
+    (a, b) =>
+      a.startMs - b.startMs ||
+      ALL_KINDS.indexOf(a.kind) - ALL_KINDS.indexOf(b.kind),
+  );
 }
 
 export function lengthLabel(ms: number): string {

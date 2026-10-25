@@ -1,27 +1,22 @@
-import {
-  useRef,
-  type ComponentProps,
-  type PointerEvent,
-  type ReactNode,
-} from "react";
+import { type ComponentProps, type ReactNode } from "react";
 import { Move } from "lucide-react";
 import { useElementSize } from "@/hooks/useElementSize";
 import { useClockValue } from "@/hooks/useVideoClock";
 import { fillCss, frameLayout, type Appearance } from "@/lib/editor/appearance";
 import { type RingEvent, ringsAt } from "@/lib/editor/cursor";
-import { focusAt, focusBox, zoomAt } from "@/lib/editor/zoom";
-import type { Point } from "@/lib/geometry";
+import { focusAt, focusBox, focusBoxStyle, zoomAt } from "@/lib/editor/zoom";
+import { type Point, rectStyle } from "@/lib/geometry";
 import {
   blockValue,
-  laneKinds,
   outputAt,
   REGIONS,
-  winnerAt,
+  winnersAt,
   type Region,
 } from "@/lib/editor/regions";
 import type { Clock } from "@/lib/time";
 import Island from "./Island";
 import { hueOf, REGION_ICONS } from "./timeline/kinds";
+import { followPointer } from "@/hooks/usePointerHover";
 
 export default function Stage({
   appearance,
@@ -61,12 +56,7 @@ export default function Stage({
             <Zoom clock={clock} regions={focus ? [] : regions}>
               <video
                 className="absolute max-w-none object-cover"
-                style={{
-                  left: video.x,
-                  top: video.y,
-                  width: video.width,
-                  height: video.height,
-                }}
+                style={rectStyle(video)}
                 {...props}
               />
               <ClickRings
@@ -105,10 +95,8 @@ function ClickRings({
   video: { x: number; y: number; width: number; height: number };
   scale: number;
 }) {
-  const shown: ReturnType<typeof ringsAt> = JSON.parse(
-    useClockValue(clock, (seconds) =>
-      JSON.stringify(ringsAt(rings, seconds * 1000)),
-    ),
+  const shown = useClockValue(clock, (seconds) =>
+    ringsAt(rings, seconds * 1000),
   );
   return shown.flatMap((ring, at) =>
     ring.circles.map((circle, index) => {
@@ -136,16 +124,9 @@ function ClickRings({
 }
 
 function InEffect({ clock, regions }: { clock: Clock; regions: Region[] }) {
-  const ids = useClockValue(clock, (seconds) =>
-    laneKinds(regions)
-      .map((kind) => winnerAt(regions, kind, seconds * 1000)?.id)
-      .filter((id) => id !== undefined)
-      .join(","),
+  const winners = useClockValue(clock, (seconds) =>
+    winnersAt(regions, seconds * 1000),
   );
-  const winners = ids
-    .split(",")
-    .map((id) => regions.find((region) => String(region.id) === id))
-    .filter((region) => region !== undefined);
   return (
     <div className="pointer-events-none absolute top-3 right-3 flex flex-col items-end gap-1">
       {winners.map((region) => {
@@ -199,51 +180,29 @@ type Focusing = {
 };
 
 function FocusBox({ zoom, onMove, onDone }: Focusing) {
-  const drag = useRef<{ x: number; y: number; width: number; height: number }>(
-    null,
-  );
   const box = focusBox(zoom);
-  const move = (event: PointerEvent<HTMLElement>) => {
-    const from = drag.current;
-    if (!from || !event.currentTarget.hasPointerCapture(event.pointerId))
-      return;
-    onMove(
-      focusAt(
-        {
-          x: box.x + (event.clientX - from.x) / from.width,
-          y: box.y + (event.clientY - from.y) / from.height,
-        },
-        zoom.amount,
-      ),
-    );
-    drag.current = { ...from, x: event.clientX, y: event.clientY };
-  };
   return (
     <div data-keeps-editor className="absolute inset-0">
       <div
         className="absolute grid cursor-grab place-items-center rounded-sm border-2 border-highlight bg-highlight/16 active:cursor-grabbing"
-        style={{
-          left: `${box.x * 100}%`,
-          top: `${box.y * 100}%`,
-          width: `${box.size * 100}%`,
-          height: `${box.size * 100}%`,
-        }}
+        style={focusBoxStyle(zoom)}
         onPointerDown={(event) => {
-          event.currentTarget.setPointerCapture(event.pointerId);
-          const area =
+          const { width, height } =
             event.currentTarget.parentElement!.getBoundingClientRect();
-          drag.current = {
-            x: event.clientX,
-            y: event.clientY,
-            width: area.width,
-            height: area.height,
-          };
-        }}
-        onPointerMove={move}
-        onPointerUp={() => {
-          if (!drag.current) return;
-          drag.current = null;
-          onDone();
+          const { clientX: x, clientY: y } = event;
+          followPointer(
+            (moved) =>
+              onMove(
+                focusAt(
+                  {
+                    x: box.x + (moved.clientX - x) / width,
+                    y: box.y + (moved.clientY - y) / height,
+                  },
+                  zoom.amount,
+                ),
+              ),
+            onDone,
+          );
         }}
       >
         <div className="grid size-6 place-items-center rounded-full bg-highlight text-primary-foreground">

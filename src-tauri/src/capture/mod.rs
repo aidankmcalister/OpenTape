@@ -26,6 +26,8 @@ use self::writer::{Recorder, create_recorder, finish_writing};
 use crate::util::lock;
 
 const VIDEO_FILE: &str = "recording.mov";
+pub(crate) const EVENTS_FILE: &str = "events.jsonl";
+pub(crate) const META_FILE: &str = "meta.json";
 
 #[derive(Debug)]
 pub(crate) struct SavedRecording {
@@ -136,7 +138,7 @@ impl ActiveCapture {
         stream
             .add_stream_output(recorder.as_ref(), sc::OutputType::Screen, Some(&queue))
             .map_err(|err| anyhow!("could not add stream output: {err:?}"))?;
-        let cursor = CursorLogger::start(&folder.join("events.jsonl"))?;
+        let cursor = CursorLogger::start(&folder.join(EVENTS_FILE))?;
         pollster::block_on(stream.start())
             .map_err(|err| anyhow!("could not start capture: {err:?}"))?;
         *lock(&timeline) = Timeline::new(host_time_now());
@@ -179,7 +181,7 @@ impl ActiveCapture {
             rect.size.width,
             rect.size.height
         );
-        std::fs::write(self.folder.join("meta.json"), meta).context("could not write meta.json")?;
+        std::fs::write(self.folder.join(META_FILE), meta).context("could not write meta.json")?;
         Ok(SavedRecording {
             video_path: self.folder.join(VIDEO_FILE).display().to_string(),
         })

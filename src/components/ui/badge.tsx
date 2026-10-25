@@ -9,20 +9,6 @@ const badgeVariants = cva(
     variants: {
       variant: {
         default: "bg-primary text-primary-foreground [a]:hover:bg-primary/80",
-        secondary:
-          "bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80",
-        destructive:
-          "bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20",
-        outline:
-          "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground",
-        ghost:
-          "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
-        link: "text-primary underline-offset-4 hover:underline",
-        /** A number on a dark surface, like a clip's length. */
-        mono: "bg-secondary font-mono text-caption text-secondary-foreground",
-        /** A zoom or speed region's amount, in the region's own color. */
-        zoom: "bg-highlight/30 font-mono text-caption text-highlight-foreground",
-        speed: "bg-speed/30 font-mono text-caption text-speed-foreground",
         /** On top of a video: the same glass as the bars, blurred, readable on any frame. */
         overlay:
           "h-7 border-glass-border bg-glass px-2.5 font-mono text-foreground backdrop-blur-md",

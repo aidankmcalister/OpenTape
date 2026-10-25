@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Animation } from "@/lib/bindings";
 import type { Size } from "@/lib/geometry";
+import { EASE } from "@/lib/time";
 
-const MORPH: Animation = { durationMs: 400, ease: [0.32, 0.72, 0, 1] };
+const MORPH: Animation = { durationMs: 400, ease: [...EASE] };
 
 export function useMorph<Key extends string>(
   active: Key,

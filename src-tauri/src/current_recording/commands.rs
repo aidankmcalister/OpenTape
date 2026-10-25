@@ -95,12 +95,16 @@ pub(crate) async fn show_export_in_finder(path: String) -> CmdResult {
 }
 
 fn reveal(path: &Path) -> Result<()> {
+    finder(path, true)
+}
+
+fn finder(path: &Path, select: bool) -> Result<()> {
     ensure!(path.exists(), "{} isn't there any more", path.display());
-    let status = Command::new("/usr/bin/open")
-        .arg("-R")
-        .arg(path)
-        .status()
-        .context("could not open Finder")?;
+    let mut open = Command::new("/usr/bin/open");
+    if select {
+        open.arg("-R");
+    }
+    let status = open.arg(path).status().context("could not open Finder")?;
     ensure!(status.success(), "Finder could not show {}", path.display());
     Ok(())
 }
@@ -146,16 +150,7 @@ pub(crate) async fn show_all_recordings(app: AppHandle) -> CmdResult {
     let storage = app.state::<CurrentRecording>().folders.storage.clone();
     run_blocking(move || {
         std::fs::create_dir_all(&storage)?;
-        let status = Command::new("/usr/bin/open")
-            .arg(&storage)
-            .status()
-            .context("could not open Finder")?;
-        ensure!(
-            status.success(),
-            "Finder could not open {}",
-            storage.display()
-        );
-        Ok(())
+        finder(&storage, false)
     })
     .await?;
     Ok(())

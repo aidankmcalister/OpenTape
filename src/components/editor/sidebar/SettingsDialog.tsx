@@ -1,13 +1,6 @@
-import type { ReactNode } from "react";
-import { SlidersHorizontal, X } from "lucide-react";
+import { SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { DialogPanel, DialogSection } from "../Panel";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAppSettings } from "@/hooks/useAppSettings";
 
@@ -19,26 +12,13 @@ const KEEP_FOR = [
 
 export default function SettingsDialog() {
   return (
-    <Dialog>
-      <DialogTrigger
-        render={<Button variant="ghost" size="icon" aria-label="Settings" />}
-      >
-        <SlidersHorizontal />
-      </DialogTrigger>
-      <DialogContent showCloseButton={false} className="gap-0 p-0 sm:max-w-130">
-        <header className="flex h-14 items-center justify-between border-b border-hairline pr-3 pl-4">
-          <DialogTitle className="text-heading font-semibold">
-            Settings
-          </DialogTitle>
-          <DialogClose
-            render={<Button variant="ghost" size="icon" aria-label="Close" />}
-          >
-            <X />
-          </DialogClose>
-        </header>
-        <SettingsBody />
-      </DialogContent>
-    </Dialog>
+    <DialogPanel
+      title="Settings"
+      icon={<SlidersHorizontal />}
+      className="sm:max-w-130"
+    >
+      <SettingsBody />
+    </DialogPanel>
   );
 }
 
@@ -48,7 +28,7 @@ function SettingsBody() {
   const { saveFolder, deleteAfterDays } = settings;
   return (
     <>
-      <Group title="Files">
+      <DialogSection className="gap-2" title="Files">
         <div className="flex h-8 items-center justify-between gap-3">
           <span>Save exports to</span>
           <Button
@@ -74,8 +54,8 @@ function SettingsBody() {
             </Button>
           ) : null}
         </div>
-      </Group>
-      <Group title="Recordings">
+      </DialogSection>
+      <DialogSection className="gap-2" title="Recordings">
         <span>Delete recordings older than</span>
         <Tabs
           value={String(deleteAfterDays ?? "never")}
@@ -97,16 +77,7 @@ function SettingsBody() {
           They go to the Trash when the app opens and when you change this, so
           you can put one back.
         </p>
-      </Group>
+      </DialogSection>
     </>
-  );
-}
-
-function Group({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="flex flex-col gap-2 px-4 py-3 text-ui not-first-of-type:border-t not-first-of-type:border-hairline">
-      <h3 className="flex h-8 items-center font-semibold">{title}</h3>
-      {children}
-    </section>
   );
 }

@@ -1,21 +1,14 @@
 import { useState, type PointerEvent } from "react";
+import { followPointer } from "@/hooks/usePointerHover";
 import { type Box, msAtX } from "@/lib/editor/timeline";
 
 export function useScrub(durationMs: number, seek: (ms: number) => void) {
-  function seekTo(event: PointerEvent<HTMLElement>) {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    seek(msAtX(event.clientX - bounds.left, bounds.width, durationMs));
-  }
-
   return {
     onPointerDown: (event: PointerEvent<HTMLElement>) => {
-      event.currentTarget.setPointerCapture(event.pointerId);
-      seekTo(event);
-    },
-    onPointerMove: (event: PointerEvent<HTMLElement>) => {
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-        seekTo(event);
-      }
+      const { left, width } = event.currentTarget.getBoundingClientRect();
+      const seekAt = (x: number) => seek(msAtX(x - left, width, durationMs));
+      seekAt(event.clientX);
+      followPointer((moved) => seekAt(moved.clientX));
     },
   };
 }
@@ -52,38 +45,33 @@ export function useMarquee(
   onClick: (x: number, width: number) => void,
 ) {
   const [box, setBox] = useState<Box | null>(null);
-
-  function pointAt(event: PointerEvent<HTMLElement>) {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    return {
-      x: event.clientX - bounds.left,
-      y: event.clientY - bounds.top,
-      width: bounds.width,
-    };
-  }
-
   return {
     box,
     marqueeProps: {
       onPointerDown: (event: PointerEvent<HTMLElement>) => {
         event.stopPropagation();
-        event.currentTarget.setPointerCapture(event.pointerId);
-        const { x, y } = pointAt(event);
-        setBox({ x0: x, y0: y, x1: x, y1: y });
-      },
-      onPointerMove: (event: PointerEvent<HTMLElement>) => {
-        if (!box || !event.currentTarget.hasPointerCapture(event.pointerId))
-          return;
-        const { x, y, width } = pointAt(event);
-        const next = { ...box, x1: x, y1: y };
-        setBox(next);
-        onBox(next, width);
-      },
-      onPointerUp: (event: PointerEvent<HTMLElement>) => {
-        if (!box) return;
-        const moved = Math.abs(box.x1 - box.x0) + Math.abs(box.y1 - box.y0);
-        if (moved < 4) onClick(box.x0, pointAt(event).width);
-        setBox(null);
+        const { left, top, width } =
+          event.currentTarget.getBoundingClientRect();
+        const start = { x0: event.clientX - left, y0: event.clientY - top };
+        let latest = { ...start, x1: start.x0, y1: start.y0 };
+        setBox(latest);
+        followPointer(
+          (moved) => {
+            latest = {
+              ...start,
+              x1: moved.clientX - left,
+              y1: moved.clientY - top,
+            };
+            setBox(latest);
+            onBox(latest, width);
+          },
+          () => {
+            const travel =
+              Math.abs(latest.x1 - latest.x0) + Math.abs(latest.y1 - latest.y0);
+            if (travel < 4) onClick(latest.x0, width);
+            setBox(null);
+          },
+        );
       },
     },
   };

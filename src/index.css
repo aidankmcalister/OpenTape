@@ -36,7 +36,6 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
@@ -66,13 +65,10 @@
   --color-edge: var(--edge);
   --color-canvas: var(--canvas);
   --color-hairline: var(--hairline);
-  --color-faint: var(--faint);
   --color-raised: var(--raised);
   --color-raised-hover: var(--raised-hover);
   --color-progress: var(--progress);
   --color-progress-track: var(--progress-track);
-  --color-speed: var(--speed);
-  --color-speed-foreground: var(--speed-foreground);
   --color-hue: rgb(var(--hue));
   --color-hue-fill: color-mix(
     in srgb,
@@ -107,7 +103,6 @@
   --gray-4: #1e1e21;
   --gray-5: #202024;
   --gray-6: #2a2a2e;
-  --gray-9: #82828c;
   --gray-10: #a1a1aa;
   --gray-12: #ededf0;
   --orange-strong: #d1440d;
@@ -116,8 +111,6 @@
   --orange: #ff7a1a;
   --orange-soft: #ff9a4d;
   --red: #e5484d;
-  --blue: #3d9bff;
-  --blue-soft: #8cc4ff;
   --white: #ffffff;
 }
 
@@ -125,7 +118,6 @@
   --background: var(--gray-1);
   --canvas: var(--gray-2);
   --card: var(--gray-3);
-  --card-foreground: var(--gray-12);
   --muted: var(--gray-4);
   --popover: var(--card);
   --popover-foreground: var(--gray-12);
@@ -134,7 +126,6 @@
 
   --foreground: var(--gray-12);
   --muted-foreground: var(--gray-10);
-  --faint: var(--gray-9);
 
   --border: var(--gray-6);
   --input: var(--gray-6);
@@ -171,11 +162,9 @@
 
   --canvas-dot: rgb(255 255 255 / 0.07);
 
-  --speed: var(--blue);
   --track-recording: #1a1a1d;
   --track-modifiers: #1f1f22;
   --on-hue: #0d0d0f;
-  --speed-foreground: var(--blue-soft);
 
   --radius: 0.625rem;
 }

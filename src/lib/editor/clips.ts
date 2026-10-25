@@ -1,7 +1,13 @@
 import { clamp } from "@/lib/geometry";
-import { dragSpan, MIN_REGION_MS } from "./regions";
+import {
+  covers,
+  gapsBetween,
+  MIN_REGION_MS,
+  type Span,
+  stretched,
+} from "./regions";
 
-export type Clip = { id: number; startMs: number; endMs: number };
+export type Clip = Span & { id: number };
 
 export function keptClips(clips: Clip[], durationMs: number): Clip[] {
   return clips.length > 0 ? clips : [{ id: 1, startMs: 0, endMs: durationMs }];
@@ -29,10 +35,6 @@ export function splitClip(
   );
 }
 
-export function clipSeams(kept: Clip[]): number[] {
-  return kept.slice(1).map(({ startMs }) => startMs);
-}
-
 export function removeClip(
   clips: Clip[],
   id: number,
@@ -51,26 +53,23 @@ export function trimClip(
   durationMs: number,
 ): Clip[] {
   const kept = keptClips(clips, durationMs);
-  const trimmed = dragSpan(kept, id, edge, deltaMs, durationMs);
-  return trimmed === kept ? clips : trimmed;
+  const clip = kept.find((other) => other.id === id);
+  if (!clip) return clips;
+  const others = kept.filter((other) => other !== clip);
+  const span = stretched(
+    clip,
+    others,
+    edge,
+    deltaMs,
+    durationMs,
+    MIN_REGION_MS,
+  );
+  if (span.startMs === clip.startMs && span.endMs === clip.endMs) return clips;
+  return kept.map((other) => (other === clip ? { ...clip, ...span } : other));
 }
 
 export function cutSpans(clips: Clip[], durationMs: number) {
-  const edges = [
-    0,
-    ...keptClips(clips, durationMs).flatMap(({ startMs, endMs }) => [
-      startMs,
-      endMs,
-    ]),
-    durationMs,
-  ];
-  const cuts: { startMs: number; endMs: number }[] = [];
-  for (let i = 0; i < edges.length; i += 2) {
-    if (edges[i + 1] > edges[i]) {
-      cuts.push({ startMs: edges[i], endMs: edges[i + 1] });
-    }
-  }
-  return cuts;
+  return gapsBetween(keptClips(clips, durationMs), 0, durationMs);
 }
 
 export function cutEndAt(
@@ -78,9 +77,7 @@ export function cutEndAt(
   ms: number,
   durationMs: number,
 ): number | null {
-  const cut = cutSpans(clips, durationMs).find(
-    ({ startMs, endMs }) => ms >= startMs && ms < endMs,
-  );
+  const cut = cutSpans(clips, durationMs).find((span) => covers(span, ms));
   return cut?.endMs ?? null;
 }
 
@@ -110,7 +107,7 @@ export function keptTime(clips: Clip[], durationMs: number) {
       piece.clip.endMs,
     );
   };
-  const shown = <T extends { startMs: number; endMs: number }>(spans: T[]) =>
+  const shown = <T extends Span>(spans: T[]) =>
     spans
       .map((span) => ({
         ...span,
@@ -128,7 +125,7 @@ export function keptTime(clips: Clip[], durationMs: number) {
     at,
     source,
     shown,
-    edit<T extends { id: number; startMs: number; endMs: number }>(
+    edit<T extends Span & { id: number }>(
       spans: T[],
       change: (shownSpans: T[], lengthMs: number) => T[],
     ): T[] {
@@ -156,10 +153,7 @@ export function keptTime(clips: Clip[], durationMs: number) {
 
 export const MIN_KEPT_MS = 500;
 
-export function fitToClips<T extends { startMs: number; endMs: number }>(
-  spans: T[],
-  clips: Clip[],
-): T[] {
+export function fitToClips<T extends Span>(spans: T[], clips: Clip[]): T[] {
   if (clips.length === 0) return spans;
   const time = keptTime(clips, 0);
   const fitted = spans.flatMap((span) => {

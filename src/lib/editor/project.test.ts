@@ -1,16 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_APPEARANCE } from "./appearance";
+import { DEFAULT_APPEARANCE, frameLayout } from "./appearance";
 import { outputAt, type Region, sourceAt } from "./regions";
 import {
   changeAppearance,
+  editClips,
   editRegions,
-  frameAt,
+  historyOf,
   NEW_PROJECT,
   projectJson,
   PROJECT_VERSION,
   readProject,
+  record,
+  redo,
+  undo,
 } from "./project";
-import { zoomTrack } from "./zoom";
+import { zoomAt as zoomAtMs, zoomTrack } from "./zoom";
 
 describe("project", () => {
   test("changeAppearance and editRegions keep the same project when nothing changes", () => {
@@ -52,18 +56,13 @@ describe("project", () => {
   });
 });
 
-describe("frameAt", () => {
+describe("the frame at a moment", () => {
   const APPEARANCE = { ...DEFAULT_APPEARANCE, inset: 10, borderWidth: 4 };
-  const at = (regions: Region[], outputMs: number, width = 1920 + 96) =>
-    frameAt(
-      {
-        appearance: APPEARANCE,
-        regions,
-        canvas: { width, height: 2000 },
-        ratio: 16 / 9,
-      },
-      outputMs,
-    );
+  const at = (regions: Region[], outputMs: number, width = 1920 + 96) => ({
+    ...frameLayout(APPEARANCE, { width, height: 2000 }, 16 / 9),
+    zoom: zoomAtMs(regions, outputMs),
+    sourceMs: sourceAt(regions, outputMs),
+  });
   const region = (
     kind: Region["kind"],
     startMs: number,
@@ -168,4 +167,46 @@ describe("frameAt", () => {
       );
     },
   );
+});
+
+describe("history", () => {
+  test("undo steps back and redo steps forward again", () => {
+    const twice = record(record(historyOf(0), 1), 2);
+    expect(undo(twice).present).toBe(1);
+    expect(undo(undo(twice)).present).toBe(0);
+    expect(redo(undo(twice)).present).toBe(2);
+  });
+
+  test("a new edit after an undo drops what could have been redone", () => {
+    const branched = record(undo(record(historyOf(0), 1)), 5);
+    expect(branched.present).toBe(5);
+    expect(redo(branched)).toBe(branched);
+  });
+
+  test("an edit that changes nothing isn't recorded", () => {
+    const start = historyOf([1]);
+    expect(record(start, start.present)).toBe(start);
+  });
+
+  test("undo and redo at either end change nothing", () => {
+    const start = historyOf(0);
+    expect(undo(start)).toBe(start);
+    expect(redo(start)).toBe(start);
+  });
+});
+
+test("editClips fits modifiers to the footage that is left", () => {
+  const project = {
+    ...NEW_PROJECT,
+    regions: [
+      { id: 1, kind: "zoom", startMs: 1000, endMs: 3000, amount: 1.5 },
+      { id: 2, kind: "zoom", startMs: 2100, endMs: 2400, amount: 1.5 },
+    ] satisfies Region[],
+  };
+  const cut = editClips(project, () => [
+    { id: 1, startMs: 0, endMs: 2000 },
+    { id: 3, startMs: 5000, endMs: 10_000 },
+  ]);
+  expect(cut.regions).toEqual([{ ...project.regions[0], endMs: 2000 }]);
+  expect(editClips(project, (clips) => clips)).toBe(project);
 });

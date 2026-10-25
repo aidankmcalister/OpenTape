@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use tauri::{AppHandle, Manager};
 
-use crate::current_recording::CurrentRecording;
+use crate::capture::EVENTS_FILE;
+use crate::current_recording::{CurrentRecording, is_video};
 
 const VIDEO_VAR: &str = "EDIT_VIDEO";
 
@@ -29,7 +30,7 @@ fn open_editor(app: &AppHandle, choice: &str) -> Result<()> {
             .find(|folder| {
                 current
                     .stored(folder)
-                    .is_ok_and(|path| path.join("events.jsonl").exists())
+                    .is_ok_and(|path| path.join(EVENTS_FILE).exists())
             })
             .context("no recording with a cursor log yet; record one first")?;
         return current.reopen(app, &folder);
@@ -60,11 +61,7 @@ fn newest_video(folder: &Path) -> Result<PathBuf> {
     let mut newest = None;
     for entry in std::fs::read_dir(folder)? {
         let path = entry?.path();
-        let is_video = matches!(
-            path.extension().and_then(|ext| ext.to_str()),
-            Some("mp4" | "mov")
-        );
-        if !is_video {
+        if !is_video(&path) {
             continue;
         }
         let is_recording = path

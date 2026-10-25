@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent } from "react";
+import { useRef, useState } from "react";
 import { PopoverTitle } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import type { Edits } from "@/hooks/editor/useProject";
@@ -9,24 +9,23 @@ import {
   gradientCss,
   type Fill,
 } from "@/lib/editor/appearance";
-import { changeAppearance } from "@/lib/editor/project";
 import { clamp } from "@/lib/geometry";
 import ColorPicker, { CustomSwatch } from "../ColorPicker";
 import { ValueInput } from "../Panel";
+import { followPointer } from "@/hooks/usePointerHover";
 
 export default function FillPicker({ edits }: { edits: Edits }) {
   const { fill } = edits.project.appearance;
   const isColor = fill.kind === "color";
   const [selected, setSelected] = useState(0);
   const index = isColor ? 0 : selected;
-  const custom =
-    (gradient: ExportGradient) =>
-    (project: Parameters<typeof changeAppearance>[0]) =>
-      changeAppearance(project, {
-        fill: { ...fill, preset: "custom", custom: gradient } satisfies Fill,
-      });
-  const preview = (gradient: ExportGradient) => edits.preview(custom(gradient));
-  const change = (gradient: ExportGradient) => edits.change(custom(gradient));
+  const custom = (gradient: ExportGradient) => ({
+    fill: { ...fill, preset: "custom", custom: gradient } satisfies Fill,
+  });
+  const preview = (gradient: ExportGradient) =>
+    edits.setAppearance(custom(gradient), true);
+  const change = (gradient: ExportGradient) =>
+    edits.setAppearance(custom(gradient));
   return (
     <CustomSwatch fill={fill.preset === "custom" ? fillCss(fill) : null}>
       <PopoverTitle>
@@ -92,12 +91,6 @@ function GradientBar({
   onDone: () => void;
 }) {
   const bar = useRef<HTMLDivElement>(null);
-  const move = (event: PointerEvent<HTMLElement>) => {
-    if (!bar.current || !event.currentTarget.hasPointerCapture(event.pointerId))
-      return;
-    const { left, width } = bar.current.getBoundingClientRect();
-    onMove(clamp((event.clientX - left) / width, 0, 1));
-  };
   return (
     <div
       ref={bar}
@@ -112,12 +105,14 @@ function GradientBar({
           data-selected={index === selected}
           className="absolute top-1/2 size-4 -translate-1/2 rounded-full border-2 border-primary-foreground shadow-md data-[selected=true]:ring-2 data-[selected=true]:ring-highlight"
           style={{ left: `${stop.at * 100}%`, background: stop.color }}
-          onPointerDown={(event) => {
-            event.currentTarget.setPointerCapture(event.pointerId);
+          onPointerDown={() => {
             onSelect(index);
+            const { left, width } = bar.current!.getBoundingClientRect();
+            followPointer(
+              (moved) => onMove(clamp((moved.clientX - left) / width, 0, 1)),
+              onDone,
+            );
           }}
-          onPointerMove={move}
-          onPointerUp={onDone}
         />
       ))}
     </div>

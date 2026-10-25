@@ -1,6 +1,13 @@
 import type { ComponentProps, ReactNode } from "react";
-import { Minus, Plus, RotateCcw } from "lucide-react";
+import { Minus, Plus, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 
@@ -9,21 +16,19 @@ export function PanelHeader({
   onReset,
 }: {
   title: string;
-  onReset?: () => void;
+  onReset: () => void;
 }) {
   return (
     <header className="flex h-14 shrink-0 items-center justify-between px-3 hairline-b">
       <h2 className="text-heading font-semibold">{title}</h2>
-      {onReset ? (
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={`Reset ${title.toLowerCase()}`}
-          onClick={onReset}
-        >
-          <RotateCcw />
-        </Button>
-      ) : null}
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={`Reset ${title.toLowerCase()}`}
+        onClick={onReset}
+      >
+        <RotateCcw />
+      </Button>
     </header>
   );
 }
@@ -138,5 +143,65 @@ export function ValueInput({
       />
       {unit ? <span className="text-muted-foreground">{unit}</span> : null}
     </label>
+  );
+}
+
+export function DialogPanel({
+  title,
+  icon,
+  className,
+  children,
+}: {
+  title: string;
+  icon: ReactNode;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <Dialog>
+      <DialogTrigger
+        render={<Button variant="ghost" size="icon" aria-label={title} />}
+      >
+        {icon}
+      </DialogTrigger>
+      <DialogContent
+        showCloseButton={false}
+        className={cn("gap-0 p-0", className)}
+      >
+        <header className="flex h-14 items-center justify-between border-b border-hairline pr-3 pl-4">
+          <DialogTitle className="text-heading font-semibold">
+            {title}
+          </DialogTitle>
+          <DialogClose
+            render={<Button variant="ghost" size="icon" aria-label="Close" />}
+          >
+            <X />
+          </DialogClose>
+        </header>
+        {children}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function DialogSection({
+  title,
+  className,
+  children,
+}: {
+  title: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      className={cn(
+        "flex flex-col px-4 py-3 text-ui not-first-of-type:border-t not-first-of-type:border-hairline",
+        className,
+      )}
+    >
+      <h3 className="flex h-8 items-center font-semibold">{title}</h3>
+      {children}
+    </section>
   );
 }

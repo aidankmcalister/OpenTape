@@ -40,3 +40,18 @@ export function usePointerHover() {
     },
   };
 }
+
+export function followPointer(
+  onMove: (moved: globalThis.PointerEvent) => void,
+  onEnd?: (ended: globalThis.PointerEvent) => void,
+) {
+  const end = (ended: globalThis.PointerEvent) => {
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", end);
+    window.removeEventListener("pointercancel", end);
+    onEnd?.(ended);
+  };
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", end);
+  window.addEventListener("pointercancel", end);
+}

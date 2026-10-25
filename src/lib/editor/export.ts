@@ -116,17 +116,14 @@ export function scaleLayout(
 
 export const QUALITIES = {
   best: {
-    label: "Best",
     bitsPerPixel: 12,
     hint: "Largest file, closest to the original.",
   },
   balanced: {
-    label: "Balanced",
     bitsPerPixel: 8,
     hint: "Good for sharing. A little smaller than the original.",
   },
   small: {
-    label: "Small",
     bitsPerPixel: 4,
     hint: "Smallest file, for messages and chat.",
   },

@@ -9,7 +9,7 @@ import {
   type SettingValue,
 } from "@/lib/editor/regions";
 import { MARK_COLORS, type MarkColor } from "@/lib/editor/appearance";
-import { focusBox, focusCenter } from "@/lib/editor/zoom";
+import { focusBox, focusBoxStyle, focusCenter } from "@/lib/editor/zoom";
 import { clamp } from "@/lib/geometry";
 import { ColorSwatches } from "../ColorPicker";
 import { NumberField, ValueInput } from "../Panel";
@@ -139,12 +139,7 @@ function Focus({ edit }: { edit: Edit }) {
         <div className="absolute inset-x-0 top-1/2 h-px bg-hairline" />
         <div
           className="absolute border border-dashed border-highlight/60"
-          style={{
-            left: `${box.x * 100}%`,
-            top: `${box.y * 100}%`,
-            width: `${box.size * 100}%`,
-            height: `${box.size * 100}%`,
-          }}
+          style={focusBoxStyle(edit.region)}
         />
         <div
           className="absolute size-2 -translate-1/2 rounded-full bg-highlight"

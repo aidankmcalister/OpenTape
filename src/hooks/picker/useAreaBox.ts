@@ -1,8 +1,9 @@
-import { useRef, useState, type PointerEvent } from "react";
+import { useState, type PointerEvent } from "react";
+import { followPointer } from "@/hooks/usePointerHover";
 import { invoke } from "@tauri-apps/api/core";
 import { useOneAtATime, useTauriEvent } from "@/hooks/useTauri";
 import type { DisplayInfo } from "@/lib/bindings";
-import type { Point, Rect, Size } from "@/lib/geometry";
+import type { Rect, Size } from "@/lib/geometry";
 import {
   captureBarPosition,
   centeredArea,
@@ -22,9 +23,6 @@ export function useAreaBox(
   const bounds = { width: display.frame.width, height: display.frame.height };
   const [area, setArea] = useState(() => centeredArea(bounds));
   const [ratio, setRatio] = useState<Ratio | null>(null);
-  const drag = useRef<{ handle: Handle; from: Point; initial: Rect } | null>(
-    null,
-  );
   const oneAtATime = useOneAtATime();
 
   const [hadBox, setHadBox] = useState(hasBox);
@@ -47,12 +45,12 @@ export function useAreaBox(
 
   function beginDrag(handle: Handle, initial: Rect, event: PointerEvent) {
     event.stopPropagation();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    drag.current = {
-      handle,
-      from: { x: event.clientX, y: event.clientY },
-      initial,
-    };
+    const { clientX: x, clientY: y } = event;
+    followPointer((moved) => {
+      if (handle !== "move") setRatio(null);
+      const delta = { x: moved.clientX - x, y: moved.clientY - y };
+      setArea(dragArea(initial, handle, delta, bounds));
+    });
   }
 
   return {
@@ -72,17 +70,6 @@ export function useAreaBox(
           { x: event.clientX, y: event.clientY, width: 0, height: 0 },
           event,
         ),
-      onPointerMove: (event: PointerEvent) => {
-        const ongoing = drag.current;
-        if (!ongoing) return;
-        const delta = {
-          x: event.clientX - ongoing.from.x,
-          y: event.clientY - ongoing.from.y,
-        };
-        if (ongoing.handle !== "move") setRatio(null);
-        setArea(dragArea(ongoing.initial, ongoing.handle, delta, bounds));
-      },
-      onPointerUp: () => (drag.current = null),
     },
     boxProps: {
       onPointerDown: (event: PointerEvent) => beginDrag("move", area, event),

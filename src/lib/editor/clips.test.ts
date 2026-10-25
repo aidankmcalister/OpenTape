@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
   type Clip,
-  clipSeams,
   cutEndAt,
   cutSpans,
   fitToClips,
@@ -25,7 +24,6 @@ describe("clips", () => {
 
   test("splitClip cuts the clip under the playhead in two, but not near an edge", () => {
     expect(splitClip([], 4000, 10000)).toEqual(SPLIT);
-    expect(clipSeams(SPLIT)).toEqual([4000]);
     expect(splitClip(SPLIT, 4100, 10000)).toBe(SPLIT);
   });
 

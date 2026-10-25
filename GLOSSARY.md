@@ -40,7 +40,7 @@ The names this project uses for its own things. Code, docs and reviews use them.
 - **No same-type overlap** (Aidan, Oct 24): two blocks of one type never overlap. A drag stops at a neighbor and jumps past it once nearer the far side, a stretch stops at it, and adding inside one lands in the nearest free gap. Different types overlap freely.
 - **Winner:** where two modifiers of one type still overlap (older projects), the later start wins. The lane's gutter and the stage's In effect chips show the winner at the playhead, and the covered part of the earlier block is striped.
 - **Project file** (`project.json`): the edits, saved next to the video after every change, with a version. Older files fill in what they lack.
-- **Frame at time t** (`frameAt` in `lib/editor/project.ts`): everything needed to draw the edited video at one moment: the layout, corners, shadow, border, the eased zoom and which moment of the recording shows. The stage draws from it; export gets the same numbers through `exportLayout` and the zoom track.
+- **Frame layout** (`frameLayout` in `lib/editor/appearance.ts`): where the recording, corners, shadow and border sit on the canvas. The stage combines it with the eased zoom (`zoomAt`) at the playhead; export gets the same numbers through `exportLayout` and the zoom track.
 - **Island:** one of the editor's rounded areas, such as the stage and the timeline.
 - **Rail:** the column of icons at the left of the side island. Its top tabs switch the panel (Background, Cursor, Zoom, Audio, Captions); its bottom tabs are app-wide (shortcuts, Help, GitHub, Settings).
 - **Panel:** what the rail shows beside it: one effect's settings, in sections of field rows.

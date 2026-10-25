@@ -40,7 +40,6 @@ objc2-core-image = { version = "=0.3.2", default-features = false, features = ["
 objc2-core-graphics = { version = "=0.3.2", default-features = false, features = ["std", "CGBitmapContext", "CGColor", "CGColorSpace", "CGContext", "CGGradient", "CGImage", "CGPath"] }
 objc2-core-foundation = { version = "=0.3.2", default-features = false, features = ["std", "CFCGTypes", "CFDictionary", "CFNumber", "CFString", "CFURL"] }
 objc2-image-io = { version = "=0.3.2", default-features = false, features = ["std", "CGImageDestination", "CGImageProperties", "objc2-core-graphics"] }
-objc2-core-video = { version = "=0.3.2", default-features = false, features = ["std", "CVBuffer", "CVImageBuffer", "CVPixelBuffer"] }
 block2 = "=0.6.2"
 objc2-core-media = { version = "=0.3.2", default-features = false, features = ["std", "CMTime", "CMTimeRange", "CMSampleBuffer", "objc2-core-video"] }
 

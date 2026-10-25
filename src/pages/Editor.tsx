@@ -1,8 +1,6 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Redo, Undo } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useOpenedRecording } from "@/hooks/editor/useOpenedRecording";
-import Header from "@/components/editor/header/Header";
 import Island from "@/components/editor/Island";
 import Stage from "@/components/editor/Stage";
 import Transport from "@/components/editor/timeline/Transport";
@@ -10,19 +8,20 @@ import { useCuts, usePlayback, useSpeed } from "@/hooks/editor/usePlayback";
 import { useKeymap } from "@/hooks/editor/useKeymap";
 import Timeline from "@/components/editor/timeline/Timeline";
 import ExportButton from "@/components/editor/header/ExportButton";
-import ExportSettings from "@/components/editor/header/ExportSettings";
 import Sidebar from "@/components/editor/sidebar/Sidebar";
 import { useExport } from "@/hooks/editor/useExport";
-import { useProject } from "@/hooks/editor/useProject";
-import { useSavedProject } from "@/hooks/editor/useSavedProject";
-import { useLanes } from "@/hooks/editor/useLanes";
-import { useClicks } from "@/hooks/editor/useClicks";
+import { useElementSize } from "@/hooks/useElementSize";
+import {
+  useClicks,
+  useLanes,
+  useOpenedRecording,
+  useProject,
+  useSavedProject,
+} from "@/hooks/editor/useProject";
 import { ringEvents } from "@/lib/editor/cursor";
 import ModifierEditor from "@/components/editor/timeline/ModifierEditor";
 import DevPanel from "@/components/editor/header/DevPanel";
 import { KINDS, regionKindForKey } from "@/lib/editor/regions";
-import { changeRegion } from "@/lib/editor/regions";
-import { editRegions } from "@/lib/editor/project";
 
 export default function Editor() {
   const recording = useOpenedRecording();
@@ -39,7 +38,8 @@ export default function Editor() {
 
 function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
   const playback = usePlayback(videoSrc);
-  const edits = useProject(playback.clock, playback.durationMs);
+  const { ref: trackRef, size: track } = useElementSize<HTMLDivElement>();
+  const edits = useProject(playback.clock, playback.durationMs, track.width);
   useSavedProject(edits);
   const lanes = useLanes();
   const editing = edits.project.regions.find(
@@ -59,7 +59,9 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const nudgeOr =
     (drag: "move" | "end", deltaMs: number, step: () => void) => () =>
-      edits.selectedIds.length > 0 ? edits.nudge(drag, deltaMs) : step();
+      edits.selectedIds.length > 0
+        ? edits.retime(edits.selectedIds, drag, deltaMs)
+        : step();
   useKeymap(
     {
       togglePlay: playback.togglePlay,
@@ -117,12 +119,7 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
           >
             <Redo />
           </Button>
-          <ExportButton
-            state={exporting.state}
-            onExport={exporting.start}
-            onShowInFinder={exporting.showInFinder}
-            settings={<ExportSettings exporting={exporting} />}
-          />
+          <ExportButton exporting={exporting} />
         </div>
       </Header>
       <main className="flex min-h-0 flex-1 gap-2 px-2 pb-2">
@@ -134,16 +131,12 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
             ratio={playback.ratio}
             clock={playback.clock}
             regions={soloed}
-            rings={ringEvents(clicks, soloed)}
+            rings={lanes.solo && lanes.solo !== "clickRing" ? [] : rings}
             focus={
               focusedZoom && {
                 zoom: focusedZoom,
                 onMove: (center) =>
-                  edits.preview((project) =>
-                    editRegions(project, (all) =>
-                      changeRegion(all, focusedZoom.id, { center }),
-                    ),
-                  ),
+                  edits.setRegion(focusedZoom.id, { center }, true),
                 onDone: edits.commit,
               }
             }
@@ -164,11 +157,31 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
               heldMs={playback.heldMs}
               onSkim={playback.skim}
               lanes={lanes}
+              trackRef={trackRef}
+              trackWidth={track.width}
             />
           </Island>
           <ModifierEditor edits={edits} />
         </div>
       </main>
     </>
+  );
+}
+
+function Header({
+  name,
+  children,
+}: {
+  name: string | null;
+  children?: ReactNode;
+}) {
+  return (
+    <header
+      data-tauri-drag-region
+      className="flex h-title-bar shrink-0 items-center justify-between pr-2 pl-traffic-lights text-muted-foreground"
+    >
+      {name}
+      {children}
+    </header>
   );
 }

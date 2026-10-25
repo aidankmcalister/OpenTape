@@ -2,7 +2,6 @@ import { Blend, Image, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsIconTrigger, TabsList } from "@/components/ui/tabs";
-import { ToggleGroup } from "@/components/ui/toggle-group";
 import type { Edits } from "@/hooks/editor/useProject";
 import {
   AMOUNTS,
@@ -14,9 +13,9 @@ import {
   type Amount,
   type Fill,
 } from "@/lib/editor/appearance";
-import { changeAppearance, NEW_PROJECT } from "@/lib/editor/project";
+import { NEW_PROJECT } from "@/lib/editor/project";
 import { ColorSwatches } from "../ColorPicker";
-import { PanelHeader, Section, Swatch, ValueInput } from "../Panel";
+import { PanelHeader, Section, ValueInput } from "../Panel";
 import FillPicker from "./FillPicker";
 
 const FILLS: { kind: Fill["kind"]; label: string; Icon: typeof Blend }[] = [
@@ -42,17 +41,12 @@ const SECTIONS: { title: string; amounts: Amount[] }[] = [
 export default function AppearancePanel({ edits }: { edits: Edits }) {
   const { appearance } = edits.project;
   const presets = appearance.fill.kind === "color" ? COLORS : GRADIENTS;
-  const changeFill = (fill: Fill) =>
-    edits.change((project) => changeAppearance(project, { fill }));
+  const changeFill = (fill: Fill) => edits.setAppearance({ fill });
   return (
     <>
       <PanelHeader
         title="Background"
-        onReset={() =>
-          edits.change((project) =>
-            changeAppearance(project, DEFAULT_APPEARANCE),
-          )
-        }
+        onReset={() => edits.setAppearance(DEFAULT_APPEARANCE)}
       />
       <Section title="Fill">
         <Tabs
@@ -73,28 +67,18 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
             ))}
           </TabsList>
         </Tabs>
-        <ToggleGroup
-          spacing={1}
-          className="w-full justify-between"
-          value={[String(appearance.fill.preset)]}
-          onValueChange={([preset]) =>
-            preset &&
-            changeFill({
-              ...appearance.fill,
-              preset: preset === "custom" ? "custom" : Number(preset),
-            })
+        <ColorSwatches
+          options={presets.map((_, preset) => ({
+            value: String(preset),
+            label: `Preset ${preset + 1}`,
+            color: fillCss({ ...appearance.fill, preset }),
+          }))}
+          value={String(appearance.fill.preset)}
+          onChange={(preset) =>
+            changeFill({ ...appearance.fill, preset: Number(preset) })
           }
-        >
-          {presets.map((_, preset) => (
-            <Swatch
-              key={preset}
-              value={String(preset)}
-              aria-label={`Preset ${preset + 1}`}
-              style={{ background: fillCss({ ...appearance.fill, preset }) }}
-            />
-          ))}
-          <FillPicker edits={edits} />
-        </ToggleGroup>
+          custom={<FillPicker edits={edits} />}
+        />
       </Section>
       {SECTIONS.map(({ title, amounts }) => (
         <Section key={title} title={title}>
@@ -109,15 +93,9 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
         <ColorSwatches
           options={BORDER_OPTIONS}
           value={appearance.borderColor}
-          onChange={(borderColor) =>
-            edits.change((project) =>
-              changeAppearance(project, { borderColor }),
-            )
-          }
+          onChange={(borderColor) => edits.setAppearance({ borderColor })}
           onPreview={(borderColor) =>
-            edits.preview((project) =>
-              changeAppearance(project, { borderColor }),
-            )
+            edits.setAppearance({ borderColor }, true)
           }
           onCommit={edits.commit}
         />
@@ -143,9 +121,7 @@ function ValueField({ amount, edits }: { amount: Amount; edits: Edits }) {
       max={max}
       value={[value]}
       onValueChange={(next) =>
-        edits.preview((project) =>
-          changeAppearance(project, { [amount]: Number(next) }),
-        )
+        edits.setAppearance({ [amount]: Number(next) }, true)
       }
       onValueCommitted={edits.commit}
     >
@@ -155,11 +131,7 @@ function ValueField({ amount, edits }: { amount: Amount; edits: Edits }) {
         value={value}
         unit={unit}
         onChange={(next) =>
-          edits.change((project) =>
-            changeAppearance(project, {
-              [amount]: clampAmount(amount, next),
-            }),
-          )
+          edits.setAppearance({ [amount]: clampAmount(amount, next) })
         }
       />
     </Slider>

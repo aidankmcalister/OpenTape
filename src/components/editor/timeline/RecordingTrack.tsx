@@ -3,7 +3,7 @@ import { Film, Scissors } from "lucide-react";
 import type { Edits } from "@/hooks/editor/useProject";
 import type { Skim } from "@/hooks/editor/useScrub";
 import type { TimelineDrag } from "@/hooks/editor/useTimelineDrag";
-import { type Clip, clipSeams } from "@/lib/editor/clips";
+import type { Clip } from "@/lib/editor/clips";
 import { lengthLabel, percentAt } from "@/lib/editor/timeline";
 import { cn } from "@/lib/utils";
 
@@ -44,7 +44,7 @@ export default function RecordingTrack({
           drag={drag}
         />
       ))}
-      {clipSeams(clips).map((ms) => (
+      {clips.slice(1).map(({ startMs: ms }) => (
         <Seam key={ms} ms={ms} durationMs={durationMs} />
       ))}
     </div>

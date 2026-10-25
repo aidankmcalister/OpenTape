@@ -1,13 +1,10 @@
-import type { Size } from "@/lib/geometry";
 import {
   type Appearance,
   DEFAULT_APPEARANCE,
-  frameLayout,
   readAppearance,
 } from "./appearance";
 import { type Clip, fitToClips } from "./clips";
-import { type Region, REGIONS, sourceAt } from "./regions";
-import { zoomAt } from "./zoom";
+import { type Region, REGIONS } from "./regions";
 
 export type Project = {
   appearance: Appearance;
@@ -64,18 +61,32 @@ export function changeAppearance(
     : { ...project, appearance };
 }
 
-export function frameAt(
-  scene: {
-    appearance: Appearance;
-    regions: Region[];
-    canvas: Size;
-    ratio: number;
-  },
-  outputMs: number,
-) {
+export type History<T> = { past: T[]; present: T; future: T[] };
+
+export function historyOf<T>(present: T): History<T> {
+  return { past: [], present, future: [] };
+}
+
+export function record<T>(history: History<T>, next: T): History<T> {
+  if (next === history.present) return history;
   return {
-    ...frameLayout(scene.appearance, scene.canvas, scene.ratio),
-    zoom: zoomAt(scene.regions, outputMs),
-    sourceMs: sourceAt(scene.regions, outputMs),
+    past: [...history.past, history.present],
+    present: next,
+    future: [],
   };
+}
+
+export function undo<T>(history: History<T>): History<T> {
+  if (history.past.length === 0) return history;
+  return {
+    past: history.past.slice(0, -1),
+    present: history.past[history.past.length - 1],
+    future: [history.present, ...history.future],
+  };
+}
+
+export function redo<T>(history: History<T>): History<T> {
+  const [next, ...future] = history.future;
+  if (history.future.length === 0) return history;
+  return { past: [...history.past, history.present], present: next, future };
 }

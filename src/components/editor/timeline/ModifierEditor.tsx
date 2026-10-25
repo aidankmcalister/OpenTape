@@ -4,14 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTitle } from "@/components/ui/popover";
 import type { Edits } from "@/hooks/editor/useProject";
 import {
-  changeRegion,
   changeSetting,
   REGIONS,
   type Region,
   type RegionKind,
   type SettingValue,
 } from "@/lib/editor/regions";
-import { editRegions, type Project } from "@/lib/editor/project";
 import { parseTimeLabel, timeLabel } from "@/lib/editor/timeline";
 import { NumberField } from "../Panel";
 import { KindTile } from "./kinds";
@@ -59,17 +57,13 @@ export default function ModifierEditor({ edits }: { edits: Edits }) {
 
 function Settings({ modifier, edits }: { modifier: Region; edits: Edits }) {
   const { label, settings } = REGIONS[modifier.kind];
-  const changed = (change: Partial<Region>) => (project: Project) =>
-    editRegions(project, (regions) =>
-      changeRegion(regions, modifier.id, change),
-    );
   const edit = {
     region: modifier,
     set: (key: string, value: SettingValue) =>
-      edits.change(changed(changeSetting(modifier, key, value))),
+      edits.setRegion(modifier.id, changeSetting(modifier, key, value)),
     preview: (key: string, value: SettingValue) =>
-      edits.preview(changed(changeSetting(modifier, key, value))),
-    change: (change: Partial<Region>) => edits.change(changed(change)),
+      edits.setRegion(modifier.id, changeSetting(modifier, key, value), true),
+    change: (change: Partial<Region>) => edits.setRegion(modifier.id, change),
     commit: edits.commit,
   };
   const lengthMs = modifier.endMs - modifier.startMs;
@@ -95,7 +89,7 @@ function Settings({ modifier, edits }: { modifier: Region; edits: Edits }) {
           parse={parseTimeLabel}
           step={100}
           onChange={(ms) =>
-            edits.retime(modifier.id, "move", ms - modifier.startMs)
+            edits.retime([modifier.id], "move", ms - modifier.startMs)
           }
         />
         <NumberField
@@ -105,7 +99,7 @@ function Settings({ modifier, edits }: { modifier: Region; edits: Edits }) {
           format={(seconds) => seconds.toFixed(1)}
           step={0.1}
           onChange={(seconds) =>
-            edits.retime(modifier.id, "end", seconds * 1000 - lengthMs)
+            edits.retime([modifier.id], "end", seconds * 1000 - lengthMs)
           }
         />
       </div>

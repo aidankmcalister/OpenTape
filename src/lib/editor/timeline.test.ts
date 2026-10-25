@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import type { Region } from "./regions";
 import {
   blockContent,
+  blockOrder,
+  isUnderChip,
+  nextBlock,
+  rulerLabels,
   frameStep,
   lengthLabel,
   msAtX,
@@ -128,4 +133,52 @@ test("regionsInBox picks the modifiers a box touches, by time and lane", () => {
   expect(
     regionsInBox(regions, { ...box, y1: 20 }, 1000, 10_000, lanes),
   ).toEqual([1]);
+});
+
+describe("ruler labels and block navigation", () => {
+  test("labels sit right of their tick, the last one flips left, and none overlap", () => {
+    const labels = rulerLabels(8400, 600);
+    expect(labels[0]).toMatchObject({ ms: 0, from: 6, flips: false });
+    const last = labels[labels.length - 1];
+    expect(last.to).toBeLessThanOrEqual(600);
+    const shown = labels.filter(({ isCrowded }) => !isCrowded);
+    shown.slice(1).forEach((label, index) => {
+      expect(label.from).toBeGreaterThanOrEqual(shown[index].to);
+    });
+  });
+
+  test("a crowded label is measured against the last label shown, so the end keeps one", () => {
+    const labels = rulerLabels(10_000, 120);
+    expect(labels.filter(({ isCrowded }) => !isCrowded).length).toBeGreaterThan(
+      0,
+    );
+    expect(isUnderChip(labels[0], labels[0].from)).toBe(true);
+    expect(isUnderChip(labels[0], labels[0].to + 40)).toBe(false);
+  });
+
+  const zoom = (id: number, startMs: number): Region => ({
+    id,
+    kind: "zoom",
+    startMs,
+    endMs: startMs + 500,
+    amount: 1.5,
+  });
+  const speed = (id: number, startMs: number): Region => ({
+    ...zoom(id, startMs),
+    kind: "speed",
+  });
+  const regions = [zoom(1, 3000), speed(2, 1000), zoom(3, 0), speed(4, 3200)];
+  const lanes = laneLayout(["zoom", "speed"], []).lanes;
+
+  test("blocks go in time order, and by registry order when they start together", () => {
+    expect(blockOrder(regions).map(({ id }) => id)).toEqual([3, 2, 1, 4]);
+  });
+
+  test("Tab walks that order, and up and down find the nearest block in the next lane", () => {
+    expect(nextBlock(regions, lanes, regions[1], "next")?.id).toBe(1);
+    expect(nextBlock(regions, lanes, regions[2], "previous")).toBeUndefined();
+    expect(nextBlock(regions, lanes, regions[0], "down")?.id).toBe(4);
+    expect(nextBlock(regions, lanes, regions[3], "up")?.id).toBe(1);
+    expect(nextBlock(regions, lanes, regions[0], "up")).toBeUndefined();
+  });
 });
