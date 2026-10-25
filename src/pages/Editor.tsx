@@ -14,13 +14,14 @@ import ExportSettings from "@/components/editor/header/ExportSettings";
 import Sidebar from "@/components/editor/sidebar/Sidebar";
 import { useExport } from "@/hooks/editor/useExport";
 import { useProject } from "@/hooks/editor/useProject";
+import { useSavedProject } from "@/hooks/editor/useSavedProject";
 import { useTimelineLimit } from "@/hooks/editor/useTimelineLimit";
 import ResizeThumb from "@/components/editor/timeline/ResizeThumb";
 import ModifierEditor from "@/components/editor/timeline/ModifierEditor";
 import { useDevFlags, useMostRows } from "@/hooks/editor/useDevFlags";
 import DevPanel from "@/components/editor/header/DevPanel";
 import { ALL_KINDS, KINDS, rowCount } from "@/lib/editor/regions";
-import { FRAME_MS, rowLayout, TIMELINE_LIMIT_PX } from "@/lib/editor/timeline";
+import { FRAME_MS } from "@/lib/editor/timeline";
 import { changeRegion } from "@/lib/editor/regions";
 import { editRegions } from "@/lib/editor/project";
 
@@ -41,11 +42,9 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
   const playback = usePlayback(videoSrc);
   const dev = useDevFlags();
   const edits = useProject(playback.clock, playback.durationMs);
+  useSavedProject(edits);
   const mostRows = useMostRows(rowCount(edits.project.regions));
-  const timeline = useTimelineLimit(
-    rowLayout(rowCount(edits.project.regions)).areaPx +
-      TIMELINE_LIMIT_PX.chromePx,
-  );
+  const timeline = useTimelineLimit();
   const editing = edits.project.regions.find(
     ({ id }) => id === edits.editingId,
   );

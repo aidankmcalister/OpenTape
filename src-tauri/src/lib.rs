@@ -135,6 +135,13 @@ pub fn run() -> tauri::Result<()> {
             current_recording::commands::show_saved_in_finder,
             current_recording::commands::edit_recording,
             current_recording::commands::editor_recording,
+            current_recording::commands::load_project,
+            current_recording::commands::kept_recordings,
+            current_recording::commands::reopen_recording,
+            current_recording::commands::trash_recording,
+            current_recording::commands::show_recording_in_finder,
+            current_recording::commands::show_all_recordings,
+            current_recording::commands::save_project,
             current_recording::commands::export_recording,
             current_recording::commands::show_export_in_finder,
             quit

@@ -13,6 +13,8 @@ use crate::macos::{Alert, Choice};
 use crate::util::lock;
 
 const NAME_FORMAT: &str = "%Y-%m-%d %H.%M.%S";
+const PROJECT_FILE: &str = "project.json";
+const RECORDING_MARKER: &str = "recording-in-progress";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Window {
@@ -29,8 +31,20 @@ pub(crate) struct ShownRecording {
     name: String,
 }
 
+#[derive(Debug, Clone, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "bindings.ts")]
+pub(crate) struct KeptRecording {
+    folder: String,
+    modified_ms: f64,
+    size_bytes: f64,
+    is_edited: bool,
+    is_recovered: bool,
+}
+
 pub(crate) trait Shell {
     fn ask(&self, alert: Alert) -> Choice;
+    fn trash(&self, folder: &Path) -> Result<()>;
     fn switch(&self, from: Window, to: Window, recording: Option<&ShownRecording>) -> Result<()>;
 }
 
@@ -69,12 +83,23 @@ impl CurrentRecording {
         }
     }
 
-    pub(crate) fn new_folder(&self) -> PathBuf {
+    pub(crate) fn new_folder(&self) -> Result<PathBuf> {
         let name = chrono::Local::now().format(NAME_FORMAT).to_string();
+        let folder = self.folders.storage.join(name);
+        std::fs::create_dir_all(&folder)
+            .with_context(|| format!("could not make {}", folder.display()))?;
+        std::fs::write(folder.join(RECORDING_MARKER), b"")?;
+        Ok(folder)
+    }
+
+    pub(crate) fn named_folder(&self, name: &str) -> PathBuf {
         self.folders.storage.join(name)
     }
 
     pub(crate) fn keep(&self, shell: &impl Shell, video_path: PathBuf) -> Result<()> {
+        if let Some(folder) = video_path.parent() {
+            let _ = std::fs::remove_file(folder.join(RECORDING_MARKER));
+        }
         let shown = {
             let mut kept = lock(&self.kept);
             ensure!(kept.is_none(), "another recording is still open");
@@ -105,6 +130,75 @@ impl CurrentRecording {
         shell.switch(Window::Preview, Window::Editor, Some(&shown))
     }
 
+    pub(crate) fn kept_recordings(&self) -> Result<Vec<KeptRecording>> {
+        let Ok(entries) = std::fs::read_dir(&self.folders.storage) else {
+            return Ok(Vec::new());
+        };
+        let mut recordings = Vec::new();
+        for entry in entries {
+            let folder = entry?.path();
+            if video_in(&folder).is_none() {
+                continue;
+            }
+            let modified = folder.metadata()?.modified()?;
+            let size_bytes = std::fs::read_dir(&folder)?
+                .filter_map(|file| file.ok()?.metadata().ok())
+                .map(|metadata| metadata.len() as f64)
+                .sum();
+            recordings.push(KeptRecording {
+                folder: folder_name(&folder),
+                modified_ms: modified.duration_since(std::time::UNIX_EPOCH)?.as_millis() as f64,
+                size_bytes,
+                is_edited: folder.join(PROJECT_FILE).exists(),
+                is_recovered: folder.join(RECORDING_MARKER).exists(),
+            });
+        }
+        recordings.sort_by(|a, b| {
+            (b.is_recovered, b.modified_ms)
+                .partial_cmp(&(a.is_recovered, a.modified_ms))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        Ok(recordings)
+    }
+
+    pub(crate) fn reopen(&self, shell: &impl Shell, folder: &str) -> Result<()> {
+        let path = self.stored(folder)?;
+        let video_path = video_in(&path).context("that recording has no video")?;
+        let shown = {
+            let mut kept = lock(&self.kept);
+            ensure!(kept.is_none(), "another recording is still open");
+            kept.insert(Kept {
+                video_path,
+                name: folder.to_string(),
+                saved_to: None,
+                window: Window::Editor,
+            })
+            .shown()
+        };
+        shell.switch(Window::Bar, Window::Editor, Some(&shown))
+    }
+
+    pub(crate) fn trash(&self, shell: &impl Shell, folder: &str) -> Result<()> {
+        let path = self.stored(folder)?;
+        let is_open = lock(&self.kept)
+            .as_ref()
+            .is_some_and(|kept| kept.video_path.parent() == Some(path.as_path()));
+        ensure!(
+            !is_open,
+            "close this recording before moving it to the Trash"
+        );
+        shell.trash(&path)
+    }
+
+    pub(crate) fn stored(&self, folder: &str) -> Result<PathBuf> {
+        let is_name =
+            !folder.is_empty() && !folder.contains(['/', '\\']) && folder != "." && folder != "..";
+        ensure!(is_name, "{folder:?} isn't a recording");
+        let path = self.folders.storage.join(folder);
+        ensure!(path.is_dir(), "{folder} isn't in your recordings");
+        Ok(path)
+    }
+
     fn shown(&self) -> Option<ShownRecording> {
         lock(&self.kept).as_ref().map(Kept::shown)
     }
@@ -119,6 +213,29 @@ impl CurrentRecording {
         let kept = kept.as_ref().context("there's no recording")?;
         let export_name = format!("Screen Recording {}", kept.name.replacen(' ', " at ", 1));
         Ok((kept.video_path.clone(), export_name))
+    }
+
+    fn project_path(&self) -> Result<PathBuf> {
+        let kept = lock(&self.kept);
+        let kept = kept.as_ref().context("there's no recording")?;
+        Ok(kept.video_path.with_file_name(PROJECT_FILE))
+    }
+
+    fn load_project(&self) -> Result<Option<String>> {
+        let path = self.project_path()?;
+        match std::fs::read_to_string(&path) {
+            Ok(json) => Ok(Some(json)),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(err) => Err(err).with_context(|| format!("could not read {}", path.display())),
+        }
+    }
+
+    fn save_project(&self, json: &str) -> Result<()> {
+        let path = self.project_path()?;
+        let draft = path.with_extension("json.part");
+        std::fs::write(&draft, json)
+            .with_context(|| format!("could not write {}", draft.display()))?;
+        std::fs::rename(&draft, &path).with_context(|| format!("could not save {}", path.display()))
     }
 
     fn save(&self) -> Result<PathBuf> {
@@ -169,17 +286,21 @@ impl CurrentRecording {
         let Some(window) = lock(&self.kept).as_ref().map(|kept| kept.window) else {
             return Ok(());
         };
-        if self.saved_to().is_none() {
-            match shell.ask(close_alert(window)) {
+        let mut is_deleting = false;
+        if window == Window::Preview && self.saved_to().is_none() {
+            match shell.ask(CLOSE_ALERT) {
                 Choice::Cancel => return Ok(()),
-                Choice::First if window == Window::Preview => {
+                Choice::First => {
                     self.save()?;
                 }
-                Choice::First | Choice::Second => {}
+                Choice::Second => is_deleting = true,
             }
         }
         let kept = lock(&self.kept).take();
         shell.switch(window, Window::Bar, None)?;
+        if !is_deleting {
+            return Ok(());
+        }
         let Some(folder) = kept.as_ref().and_then(|kept| kept.video_path.parent()) else {
             return Ok(());
         };
@@ -188,22 +309,26 @@ impl CurrentRecording {
     }
 }
 
-fn close_alert(window: Window) -> Alert {
-    if window == Window::Editor {
-        Alert {
-            title: "Delete this recording and close?",
-            message: "It hasn't been saved, and exporting from the editor isn't ready yet.",
-            first: "Delete and close",
-            second: None,
-        }
-    } else {
-        Alert {
-            title: "Save this recording before closing, or delete it?",
-            message: "Saving puts an .mp4 in your Downloads folder.",
-            first: "Save and close",
-            second: Some("Delete and close"),
-        }
-    }
+const CLOSE_ALERT: Alert = Alert {
+    title: "Save this recording before closing, or delete it?",
+    message: "Saving puts an .mp4 in your Downloads folder.",
+    first: "Save and close",
+    second: Some("Delete and close"),
+};
+
+fn video_in(folder: &Path) -> Option<PathBuf> {
+    std::fs::read_dir(folder).ok()?.find_map(|entry| {
+        let path = entry.ok()?.path();
+        let extension = path.extension()?.to_str()?;
+        matches!(extension, "mov" | "mp4").then_some(path)
+    })
+}
+
+fn folder_name(folder: &Path) -> String {
+    folder
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 fn to_mp4(video: &Path, output: &Path) -> Result<()> {

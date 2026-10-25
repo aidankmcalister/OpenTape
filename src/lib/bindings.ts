@@ -32,6 +32,8 @@ export type ExportZoom = { scale: number, x: number, y: number, };
 
 export type Frame = { x: number, y: number, width: number, height: number, };
 
+export type KeptRecording = { folder: string, modifiedMs: number, sizeBytes: number, isEdited: boolean, isRecovered: boolean, };
+
 export type Mode = "display" | "window" | "area";
 
 export type PageEvent = { "event": "picker-session", "payload": Session } | { "event": "picker-cursor", "payload": Point } | { "event": "picker-recording", "payload": Frame | null } | { "event": "picker-key", "payload": PickerKey } | { "event": "picker-closed" } | { "event": "recording-status", "payload": RecordingStatus } | { "event": "current-recording", "payload": ShownRecording | null } | { "event": "bar-pointer", "payload": Point | null } | { "event": "preview-pointer", "payload": Point | null } | { "event": "preview-key", "payload": PreviewKey } | { "event": "export-progress", "payload": number };

@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_APPEARANCE } from "./appearance";
 import { outputAt, type Region, sourceAt } from "./regions";
-import { changeAppearance, editRegions, frameAt, NEW_PROJECT } from "./project";
+import {
+  changeAppearance,
+  editRegions,
+  frameAt,
+  NEW_PROJECT,
+  projectJson,
+  PROJECT_VERSION,
+  readProject,
+} from "./project";
 import { zoomTrack } from "./zoom";
 
 describe("project", () => {
@@ -11,6 +19,22 @@ describe("project", () => {
       changeAppearance(NEW_PROJECT, { padding: 80 }).appearance.padding,
     ).toBe(80);
     expect(editRegions(NEW_PROJECT, (regions) => regions)).toBe(NEW_PROJECT);
+  });
+
+  test("a saved project reads back the same, with its version", () => {
+    const project = changeAppearance(NEW_PROJECT, { padding: 80 });
+    expect(readProject(projectJson(project))).toEqual(project);
+    expect(JSON.parse(projectJson(project)).version).toBe(PROJECT_VERSION);
+  });
+
+  test("no file starts a new project, and an older file fills what it lacks", () => {
+    expect(readProject(null)).toBe(NEW_PROJECT);
+    const older = readProject(JSON.stringify({ appearance: { padding: 12 } }));
+    expect(older).toEqual({
+      appearance: { ...DEFAULT_APPEARANCE, padding: 12 },
+      regions: [],
+      clips: [],
+    });
   });
 });
 

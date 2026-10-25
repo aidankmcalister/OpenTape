@@ -30,7 +30,7 @@ const ROW_GAP_PX = 4;
 
 export const MODIFIERS_TOP_PX = 60;
 
-export const TIMELINE_LIMIT_PX = { min: 128, initial: 184, chromePx: 104 };
+export const TIMELINE_LIMIT_PX = { min: 156, initial: 184, chromePx: 104 };
 
 export function rowLayout(rowCount: number) {
   const rows: RowBox[] = Array.from(
@@ -39,11 +39,6 @@ export function rowLayout(rowCount: number) {
   );
   const last = rows[rows.length - 1];
   return { rows, areaPx: last.top + last.height };
-}
-
-export function modifiersWindowPx(rowCount: number, limitPx: number): number {
-  const { areaPx } = rowLayout(rowCount);
-  return Math.min(areaPx, limitPx - TIMELINE_LIMIT_PX.chromePx);
 }
 
 export function rowAtY(rows: RowBox[], y: number): number {

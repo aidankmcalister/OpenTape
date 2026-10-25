@@ -5,7 +5,7 @@ import { TIMELINE_LIMIT_PX } from "@/lib/editor/timeline";
 const KEY = "screen-recorder:timeline-limit";
 const PREVIEW_MIN_PX = 240;
 
-export function useTimelineLimit(neededPx: number) {
+export function useTimelineLimit() {
   const [limitPx, setLimitPx] = useState(read);
   const [draggingPx, setDraggingPx] = useState<number | null>(null);
   const drag = useRef<{ fromY: number; fromPx: number; maxPx: number } | null>(
@@ -29,13 +29,12 @@ export function useTimelineLimit(neededPx: number) {
         event.currentTarget.setPointerCapture(event.pointerId);
         const column = event.currentTarget.parentElement?.parentElement;
         const roomPx = (column?.clientHeight ?? 0) - PREVIEW_MIN_PX;
-        const fromPx = Math.min(limitPx, neededPx);
         drag.current = {
           fromY: event.clientY,
-          fromPx,
-          maxPx: Math.max(TIMELINE_LIMIT_PX.min, Math.min(roomPx, neededPx)),
+          fromPx: limitPx,
+          maxPx: Math.max(TIMELINE_LIMIT_PX.min, roomPx),
         };
-        setDraggingPx(fromPx);
+        setDraggingPx(limitPx);
       },
       onPointerMove: (event: PointerEvent<HTMLElement>) => {
         const current = drag.current;

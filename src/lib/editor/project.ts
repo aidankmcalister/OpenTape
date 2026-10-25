@@ -16,6 +16,22 @@ export const NEW_PROJECT: Project = {
   clips: [],
 };
 
+export const PROJECT_VERSION = 1;
+
+export function projectJson(project: Project): string {
+  return JSON.stringify({ version: PROJECT_VERSION, ...project });
+}
+
+export function readProject(json: string | null): Project {
+  if (json === null) return NEW_PROJECT;
+  const saved: Partial<Project> = JSON.parse(json);
+  return {
+    appearance: { ...DEFAULT_APPEARANCE, ...saved.appearance },
+    regions: saved.regions ?? [],
+    clips: saved.clips ?? [],
+  };
+}
+
 export function editRegions(
   project: Project,
   edit: (regions: Region[]) => Region[],

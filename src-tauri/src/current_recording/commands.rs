@@ -4,7 +4,7 @@ use std::process::Command;
 use anyhow::{Context, Result, ensure};
 use tauri::{AppHandle, Manager, State};
 
-use super::{CurrentRecording, Shell, ShownRecording, Window};
+use super::{CurrentRecording, KeptRecording, Shell, ShownRecording, Window};
 use crate::PageEvent;
 use crate::export::{ExportLayout, ExportOptions};
 use crate::macos::{self, Alert, Choice};
@@ -14,6 +14,10 @@ use crate::windows::{bar, editor, preview};
 impl Shell for AppHandle {
     fn ask(&self, alert: Alert) -> Choice {
         macos::ask(self, alert)
+    }
+
+    fn trash(&self, folder: &Path) -> Result<()> {
+        macos::trash(folder)
     }
 
     fn switch(&self, from: Window, to: Window, recording: Option<&ShownRecording>) -> Result<()> {
@@ -110,6 +114,61 @@ pub(crate) async fn close_recording(app: AppHandle) -> CmdResult {
 #[tauri::command]
 pub(crate) fn edit_recording(app: AppHandle, current: State<'_, CurrentRecording>) -> CmdResult {
     current.edit(&app)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) async fn kept_recordings(app: AppHandle) -> CmdResult<Vec<KeptRecording>> {
+    Ok(run_blocking(move || app.state::<CurrentRecording>().kept_recordings()).await?)
+}
+
+#[tauri::command]
+pub(crate) async fn reopen_recording(app: AppHandle, folder: String) -> CmdResult {
+    run_blocking(move || app.state::<CurrentRecording>().reopen(&app, &folder)).await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) async fn trash_recording(app: AppHandle, folder: String) -> CmdResult {
+    run_blocking(move || app.state::<CurrentRecording>().trash(&app, &folder)).await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) async fn show_recording_in_finder(app: AppHandle, folder: String) -> CmdResult {
+    let path = app.state::<CurrentRecording>().stored(&folder)?;
+    run_blocking(move || reveal(&path)).await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) async fn show_all_recordings(app: AppHandle) -> CmdResult {
+    let storage = app.state::<CurrentRecording>().folders.storage.clone();
+    run_blocking(move || {
+        std::fs::create_dir_all(&storage)?;
+        let status = Command::new("/usr/bin/open")
+            .arg(&storage)
+            .status()
+            .context("could not open Finder")?;
+        ensure!(
+            status.success(),
+            "Finder could not open {}",
+            storage.display()
+        );
+        Ok(())
+    })
+    .await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) fn load_project(current: State<'_, CurrentRecording>) -> CmdResult<Option<String>> {
+    Ok(current.load_project()?)
+}
+
+#[tauri::command]
+pub(crate) async fn save_project(app: AppHandle, json: String) -> CmdResult {
+    run_blocking(move || app.state::<CurrentRecording>().save_project(&json)).await?;
     Ok(())
 }
 

@@ -3,7 +3,6 @@ import {
   blockContent,
   frameStep,
   lengthLabel,
-  modifiersWindowPx,
   msAtX,
   percentAt,
   regionsInBox,
@@ -88,21 +87,11 @@ describe("ruler", () => {
 });
 
 test.each([
-  [1, 24, 128],
-  [3, 80, 184],
-  [4, 108, 184],
-  [7, 192, 184],
-])(
-  "%p rows need %ppx, and a 184px limit makes a %ppx timeline",
-  (count, areaPx, timelinePx) => {
-    expect(rowLayout(count).areaPx).toBe(areaPx);
-    expect(modifiersWindowPx(count, 184) + 104).toBe(timelinePx);
-  },
-);
-
-test("a 240px limit shows five rows and scrolls past them", () => {
-  expect(modifiersWindowPx(5, 240) + 104).toBe(240);
-  expect(modifiersWindowPx(6, 240) + 104).toBe(240);
+  [1, 24],
+  [3, 80],
+  [7, 192],
+])("%p rows need %ppx", (count, areaPx) => {
+  expect(rowLayout(count).areaPx).toBe(areaPx);
 });
 
 test("rowAtY finds the row under the pointer, or the next new one", () => {

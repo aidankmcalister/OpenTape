@@ -214,7 +214,7 @@ async fn start_capture(app: &AppHandle, target: Target) {
 }
 
 async fn open_capture(app: &AppHandle, target: Target) -> Result<RunningRecording> {
-    let folder = app.state::<CurrentRecording>().new_folder();
+    let folder = app.state::<CurrentRecording>().new_folder()?;
     run_blocking(move || capture::start(target, folder)).await
 }
 

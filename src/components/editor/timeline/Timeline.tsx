@@ -10,12 +10,12 @@ import { useElementSize } from "@/hooks/useElementSize";
 import {
   lengthLabel,
   MODIFIERS_TOP_PX,
-  modifiersWindowPx,
   percentAt,
   rowAtY,
   rowLayout,
   rulerLabel,
   rulerMarks,
+  TIMELINE_LIMIT_PX,
   timeLabel,
 } from "@/lib/editor/timeline";
 import { rowCount } from "@/lib/editor/regions";
@@ -49,7 +49,7 @@ export default function Timeline({
   const windowRef = useRef<HTMLDivElement>(null);
   const rows = rowCount(edits.project.regions);
   const layout = rowLayout(rows);
-  const windowPx = modifiersWindowPx(rows, limitPx);
+  const windowPx = limitPx - TIMELINE_LIMIT_PX.chromePx;
   const rowAt = (clientY: number) => {
     const scroller = windowRef.current;
     if (!scroller) return 0;

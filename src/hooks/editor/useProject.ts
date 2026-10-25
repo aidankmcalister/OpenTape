@@ -98,6 +98,11 @@ export function useProject(clock: Clock, durationMs: number) {
       if (draft) change(() => draft);
       setDraft(null);
     },
+    saved: history.present,
+    load: (project: Project) => {
+      setHistory(historyOf(project));
+      setDraft(null);
+    },
     undo: () => setHistory(undo),
     redo: () => setHistory(redo),
     canUndo: history.past.length > 0,

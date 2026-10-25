@@ -26,14 +26,19 @@ fn open_editor(app: &AppHandle, choice: &str) -> Result<()> {
         PathBuf::from(choice)
     };
     let current = app.state::<CurrentRecording>();
-    let folder = current.new_folder();
+    let stem = source
+        .file_stem()
+        .context("the video path has no file name")?;
+    let folder = current.named_folder(&stem.to_string_lossy());
     std::fs::create_dir_all(&folder)?;
     let name = source
         .file_name()
         .context("the video path has no file name")?;
     let copy = folder.join(name);
-    std::fs::copy(&source, &copy)
-        .with_context(|| format!("could not copy {}", source.display()))?;
+    if !copy.exists() {
+        std::fs::copy(&source, &copy)
+            .with_context(|| format!("could not copy {}", source.display()))?;
+    }
     current.keep(app, copy)?;
     current.edit(app)
 }
