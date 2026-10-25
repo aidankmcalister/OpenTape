@@ -307,3 +307,18 @@ fn exports_should_go_to_the_chosen_folder_or_downloads() {
     current.set_save_folder(Some(PathBuf::from("/tmp/exports")));
     assert_eq!(current.output_folder(), PathBuf::from("/tmp/exports"));
 }
+
+#[test]
+fn the_cursor_log_should_come_with_its_meta_or_not_at_all() {
+    let shell = FakeShell::answering(Choice::Cancel);
+    let (current, folder) = keeping_one("cursor-log", &shell);
+    assert!(current.cursor_log().expect("it reads").is_none());
+    std::fs::write(folder.join("meta.json"), "{}").expect("the meta can be written");
+    assert!(current.cursor_log().expect("it reads").is_none());
+    std::fs::write(folder.join("events.jsonl"), "{}\n").expect("the log can be written");
+    let log = current
+        .cursor_log()
+        .expect("it reads")
+        .expect("both are there");
+    assert_eq!(log.meta, "{}");
+}

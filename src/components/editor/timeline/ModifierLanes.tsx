@@ -14,6 +14,7 @@ import type { TimelineDrag } from "@/hooks/editor/useTimelineDrag";
 import { useClockValue } from "@/hooks/useVideoClock";
 import {
   ALL_KINDS,
+  KINDS,
   blockValue,
   coveredStretches,
   REGIONS,
@@ -24,7 +25,6 @@ import {
 } from "@/lib/editor/regions";
 import {
   blockContent,
-  lengthLabel,
   msAtX,
   percentAt,
   regionsInBox,
@@ -79,7 +79,8 @@ function LaneGutter({
   return (
     <div
       data-solo={laneState.solo === kind}
-      className="group/lane absolute inset-x-0 flex items-center gap-2 px-3 text-label font-medium text-muted-foreground transition-colors hover:bg-accent/40"
+      data-flow
+      className="group/lane fade-in absolute inset-x-0 flex items-center gap-2 px-3 text-label font-medium text-hue-foreground transition-colors hover:bg-accent/40"
       style={{ top: lane.top, height: lane.height, ...hueOf(kind) }}
     >
       <Icon className="size-4 shrink-0 text-hue-foreground" />
@@ -142,7 +143,6 @@ export function LaneTracks({
   lanes,
   heightPx,
   top,
-  kinds,
   durationMs,
   trackWidth,
   clock,
@@ -154,7 +154,6 @@ export function LaneTracks({
   lanes: Lane[];
   heightPx: number;
   top: number;
-  kinds: RegionKind[];
   durationMs: number;
   trackWidth: number;
   clock: Clock;
@@ -162,7 +161,7 @@ export function LaneTracks({
   solo: RegionKind | null;
   onSeek: (ms: number) => void;
 }) {
-  const { regions } = edits.project;
+  const { shown: regions, time } = edits;
   const { box, marqueeProps } = useMarquee(
     (box, width) =>
       edits.select(regionsInBox(regions, box, width, durationMs, lanes)),
@@ -222,15 +221,8 @@ export function LaneTracks({
       style={{ top, height: heightPx }}
       {...marqueeProps}
     >
-      {lanes.length === 0 ? <EmptyLanes kinds={kinds} /> : null}
-      {lanes.map((lane) => (
-        <div
-          key={lane.kind}
-          className="pointer-events-none absolute inset-x-0 hairline-b"
-          style={{ top: lane.top, height: lane.height }}
-        />
-      ))}
-      {order.map((region, rank) => {
+      {lanes.length === 0 ? <EmptyLanes /> : null}
+      {regions.map((region) => {
         const lane = lanes.find(({ kind }) => kind === region.kind);
         if (!lane) return null;
         return (
@@ -241,17 +233,18 @@ export function LaneTracks({
             regions={regions}
             durationMs={durationMs}
             trackWidth={trackWidth}
-            rank={rank}
+            rank={order.indexOf(region)}
             isSelected={edits.selectedIds.includes(region.id)}
             isFocusStop={region.id === focusStop}
+            touches={touching(regions, region)}
             isDimmed={solo !== null && solo !== region.kind}
-            isDragging={drag.stretch !== null}
             stretchEdge={
               drag.stretch?.track === "region" && drag.stretch.id === region.id
                 ? drag.stretch.edge
                 : null
             }
             clock={clock}
+            at={time.at}
             drag={drag.region}
             onOpen={() => open(region.id)}
             onKeyDown={(event) => onBlockKey(event, region)}
@@ -274,11 +267,11 @@ export function LaneTracks({
   );
 }
 
-function EmptyLanes({ kinds }: { kinds: RegionKind[] }) {
+function EmptyLanes() {
   return (
     <div className="absolute inset-x-3 top-1 flex h-14 items-center justify-center gap-1.5 rounded-lg text-label text-muted-foreground inset-ring inset-ring-hairline">
       No modifiers yet. Press
-      {kinds.slice(0, 4).map((kind) => (
+      {KINDS.map((kind) => (
         <Kbd key={kind}>{REGIONS[kind].key}</Kbd>
       ))}
       or + to place one at the playhead.
@@ -295,10 +288,11 @@ function Block({
   rank,
   isSelected,
   isFocusStop,
+  touches,
   isDimmed,
-  isDragging,
   stretchEdge,
   clock,
+  at,
   drag,
   onOpen,
   onKeyDown,
@@ -311,10 +305,11 @@ function Block({
   rank: number;
   isSelected: boolean;
   isFocusStop: boolean;
+  touches: { start: boolean; end: boolean };
   isDimmed: boolean;
-  isDragging: boolean;
   stretchEdge: RegionDrag | null;
   clock: Clock;
+  at: (sourceMs: number) => number;
   drag: TimelineDrag["region"];
   onOpen: () => void;
   onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
@@ -323,24 +318,26 @@ function Block({
   const { label } = REGIONS[region.kind];
   const value = blockValue(region);
   const lengthMs = region.endMs - region.startMs;
+  const gapsPx = Number(touches.start) + Number(touches.end);
   const content = blockContent(
-    Math.max(24, (trackWidth * lengthMs) / durationMs),
+    (trackWidth * lengthMs) / durationMs - gapsPx,
     label,
     value,
   );
   const isActive = useClockValue(
     clock,
     (seconds) =>
-      seconds * 1000 >= region.startMs && seconds * 1000 < region.endMs,
+      at(seconds * 1000) >= region.startMs && at(seconds * 1000) < region.endMs,
   );
   const span = `${timeLabel(region.startMs)} to ${timeLabel(region.endMs)}`;
   const place = {
     ...hueOf(region.kind),
-    left: `${percentAt(region.startMs, durationMs)}%`,
-    width: `max(24px, ${percentAt(lengthMs, durationMs)}%)`,
+    left: `calc(${percentAt(region.startMs, durationMs)}% + ${touches.start ? 1 : 0}px)`,
+    width: `calc(${percentAt(lengthMs, durationMs)}% - ${gapsPx}px)`,
     zIndex: isSelected ? regions.length + 1 : rank + 1,
   };
   const shared = {
+    "data-flow": true,
     "data-region-id": region.id,
     "data-selected": isSelected,
     "aria-label": `${label} ${value}, ${span}`,
@@ -364,67 +361,57 @@ function Block({
   }
 
   return (
-    <Tooltip disabled={isDragging}>
-      <TooltipTrigger
-        delay={400}
-        render={<div />}
-        {...shared}
-        data-active={isActive && !isSelected}
-        tabIndex={isFocusStop ? 0 : -1}
-        onKeyDown={onKeyDown}
-        className={cn(
-          "group absolute flex cursor-grab items-center gap-1.5 overflow-hidden rounded-md bg-hue-fill px-2.5 text-label font-semibold whitespace-nowrap text-hue-foreground transition-colors duration-120 outline-none hover:bg-hue-hover active:cursor-grabbing",
-          "data-[active=true]:inset-ring data-[active=true]:inset-ring-hue/85 data-[selected=true]:bg-hue data-[selected=true]:text-on-hue",
-          "focus-visible:ring-2 focus-visible:ring-highlight focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-          content === "icon" && "justify-center px-0",
-          isDimmed && "opacity-35",
-        )}
-        style={{ ...place, top: lane.top + 2, height: 24 }}
-      >
-        {coveredStretches(regions, region).map(({ startMs, endMs }) => (
-          <span
-            key={startMs}
-            className="pointer-events-none absolute inset-y-0 covered-stripes"
-            style={{
-              left: `${((startMs - region.startMs) / lengthMs) * 100}%`,
-              width: `${((endMs - startMs) / lengthMs) * 100}%`,
-            }}
-          />
-        ))}
-        <Icon className="relative size-4 shrink-0" />
-        {content === "full" ? (
-          <span className="relative min-w-0 truncate">{label}</span>
-        ) : null}
-        {content === "icon" ? null : (
-          <span
-            className={cn(
-              "relative min-w-0 truncate font-mono font-medium",
-              content === "full" && "ml-auto",
-            )}
-          >
-            {value}
-          </span>
-        )}
-        <Grip
-          edge="start"
-          isActive={stretchEdge === "start"}
-          {...drag(region.id, "start")}
+    <div
+      {...shared}
+      data-active={isActive && !isSelected}
+      tabIndex={isFocusStop ? 0 : -1}
+      onKeyDown={onKeyDown}
+      className={cn(
+        "group wipe-in absolute flex cursor-grab items-center gap-1.5 overflow-hidden rounded-md bg-hue-fill px-2.5 text-label font-semibold whitespace-nowrap text-hue-foreground transition-colors duration-120 outline-none hover:bg-hue-hover active:cursor-grabbing",
+        "data-[active=true]:inset-ring data-[active=true]:inset-ring-hue/85 data-[selected=true]:bg-hue data-[selected=true]:text-on-hue",
+        "focus-visible:ring-2 focus-visible:ring-highlight focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        content === "icon" && "justify-center px-0",
+        touches.start && "rounded-l-none",
+        touches.end && "rounded-r-none",
+        isDimmed && "opacity-35",
+      )}
+      style={{ ...place, top: lane.top + 4, height: 24 }}
+    >
+      {coveredStretches(regions, region).map(({ startMs, endMs }) => (
+        <span
+          key={startMs}
+          className="pointer-events-none absolute inset-y-0 covered-stripes"
+          style={{
+            left: `${((startMs - region.startMs) / lengthMs) * 100}%`,
+            width: `${((endMs - startMs) / lengthMs) * 100}%`,
+          }}
         />
-        <Grip
-          edge="end"
-          isActive={stretchEdge === "end"}
-          {...drag(region.id, "end")}
-        />
-      </TooltipTrigger>
-      <TooltipContent>
-        <span className="font-semibold">
-          {label} <span className="font-mono">{value}</span>
+      ))}
+      <Icon className="relative size-4 shrink-0" />
+      {content === "full" ? (
+        <span className="relative min-w-0 truncate">{label}</span>
+      ) : null}
+      {content === "icon" ? null : (
+        <span
+          className={cn(
+            "relative min-w-0 truncate font-mono font-medium",
+            content === "full" && "ml-auto",
+          )}
+        >
+          {value}
         </span>
-        <span className="text-muted-foreground">
-          {span}, {lengthLabel(lengthMs)}
-        </span>
-      </TooltipContent>
-    </Tooltip>
+      )}
+      <Grip
+        edge="start"
+        isActive={stretchEdge === "start"}
+        {...drag(region.id, "start")}
+      />
+      <Grip
+        edge="end"
+        isActive={stretchEdge === "end"}
+        {...drag(region.id, "end")}
+      />
+    </div>
   );
 }
 
@@ -451,4 +438,14 @@ function Grip({
       />
     </div>
   );
+}
+
+function touching(regions: Region[], region: Region) {
+  const sameKind = regions.filter(
+    (other) => other.kind === region.kind && other.id !== region.id,
+  );
+  return {
+    start: sameKind.some(({ endMs }) => endMs === region.startMs),
+    end: sameKind.some(({ startMs }) => startMs === region.endMs),
+  };
 }

@@ -4,7 +4,9 @@ import {
   clipSeams,
   cutEndAt,
   cutSpans,
+  fitToClips,
   keptClips,
+  keptTime,
   removeClip,
   splitClip,
   trimClip,
@@ -27,7 +29,7 @@ describe("clips", () => {
     expect(splitClip(SPLIT, 4100, 10000)).toBe(SPLIT);
   });
 
-  test("removeClip leaves a gap, and always keeps one clip", () => {
+  test("removeClip drops the clip, and always keeps one clip", () => {
     expect(removeClip(SPLIT, 1, 10000)).toEqual([SPLIT[1]]);
     const whole: Clip[] = [];
     expect(removeClip(whole, 1, 10000)).toBe(whole);
@@ -57,5 +59,84 @@ describe("clips", () => {
     expect(cutSpans(SPLIT, 10000)).toEqual([]);
     expect(cutEndAt(clips, 5000, 10000)).toBe(6000);
     expect(cutEndAt(clips, 2000, 10000)).toBeNull();
+  });
+});
+
+describe("kept time", () => {
+  const GAP: Clip[] = [
+    { id: 1, startMs: 0, endMs: 2000 },
+    { id: 3, startMs: 5000, endMs: 10000 },
+  ];
+  const time = keptTime(GAP, 10000);
+
+  test("deleted stretches close up, so the timeline gets shorter", () => {
+    expect(time.lengthMs).toBe(7000);
+    expect(time.clips.map(({ startMs, endMs }) => [startMs, endMs])).toEqual([
+      [0, 2000],
+      [2000, 7000],
+    ]);
+    expect(time.at(6000)).toBe(3000);
+    expect(time.at(3000)).toBe(2000);
+    expect(time.source(3000)).toBe(6000);
+    expect(time.source(2000, "start")).toBe(5000);
+    expect(time.source(2000, "end")).toBe(2000);
+  });
+
+  test("a modifier keeps its moment, and one inside a deleted stretch hides", () => {
+    const regions = [
+      { id: 1, startMs: 6000, endMs: 7000 },
+      { id: 2, startMs: 3000, endMs: 4000 },
+    ];
+    expect(time.shown(regions)).toEqual([
+      { id: 1, startMs: 3000, endMs: 4000 },
+    ]);
+  });
+
+  test("edits happen in kept time and land back on the recording", () => {
+    const regions = [
+      { id: 1, startMs: 6000, endMs: 7000 },
+      { id: 2, startMs: 3000, endMs: 4000 },
+    ];
+    const moved = time.edit(regions, (shown) =>
+      shown.map((span) => ({ ...span, startMs: 500, endMs: 1500 })),
+    );
+    expect(moved).toEqual([
+      { id: 1, startMs: 500, endMs: 1500 },
+      { id: 2, startMs: 3000, endMs: 4000 },
+    ]);
+    expect(time.edit(regions, (shown) => shown)).toBe(regions);
+  });
+});
+
+describe("fitToClips", () => {
+  const KEPT: Clip[] = [
+    { id: 1, startMs: 0, endMs: 2000 },
+    { id: 3, startMs: 5000, endMs: 10000 },
+  ];
+
+  test("a modifier shrinks to the footage that is left", () => {
+    expect(fitToClips([{ id: 1, startMs: 1000, endMs: 3000 }], KEPT)).toEqual([
+      { id: 1, startMs: 1000, endMs: 2000 },
+    ]);
+    expect(fitToClips([{ id: 1, startMs: 4000, endMs: 7000 }], KEPT)).toEqual([
+      { id: 1, startMs: 5000, endMs: 7000 },
+    ]);
+  });
+
+  test("one with little or nothing left is removed", () => {
+    expect(fitToClips([{ id: 1, startMs: 1800, endMs: 4500 }], KEPT)).toEqual(
+      [],
+    );
+    expect(fitToClips([{ id: 1, startMs: 2500, endMs: 4500 }], KEPT)).toEqual(
+      [],
+    );
+  });
+
+  test("one spanning the join keeps both sides, and untouched ones stay the same", () => {
+    const spans = [
+      { id: 1, startMs: 1000, endMs: 6000 },
+      { id: 2, startMs: 6000, endMs: 8000 },
+    ];
+    expect(fitToClips(spans, KEPT)).toBe(spans);
   });
 });

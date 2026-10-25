@@ -24,11 +24,12 @@ export function frameStep(
 }
 
 export const GUTTER_PX = 152;
-export const TRACKS_TOP_PX = 56;
+export const MIN_BLOCK_PX = 40;
+export const TRACKS_TOP_PX = 68;
+export const TRACK_INSET_PX = 8;
 
-const LANE_PX = 28;
+const LANE_PX = 32;
 const COLLAPSED_LANE_PX = 20;
-const LANES_PADDING_PX = 4;
 const EMPTY_LANES_PX = 64;
 
 export type Lane = {
@@ -39,7 +40,7 @@ export type Lane = {
 };
 
 export function laneLayout(kinds: RegionKind[], collapsed: RegionKind[]) {
-  let top = LANES_PADDING_PX;
+  let top = 0;
   const lanes = kinds.map((kind): Lane => {
     const isCollapsed = collapsed.includes(kind);
     const lane = {
@@ -51,7 +52,7 @@ export function laneLayout(kinds: RegionKind[], collapsed: RegionKind[]) {
     top += lane.height;
     return lane;
   });
-  const heightPx = lanes.length ? top + LANES_PADDING_PX : EMPTY_LANES_PX;
+  const heightPx = lanes.length ? top : EMPTY_LANES_PX;
   return { lanes, heightPx };
 }
 
@@ -67,11 +68,13 @@ export function blockContent(
   return widthPx >= withValue ? "value" : "icon";
 }
 
-export function rulerMarks(durationMs: number) {
-  const durationS = durationMs / 1000;
+const MIN_LABEL_GAP_PX = 96;
+
+export function rulerMarks(durationMs: number, widthPx: number) {
+  const pxPerSecond = widthPx / Math.max(durationMs / 1000, 0.001);
   const stepS =
     [1, 2, 5, 10, 15, 30, 60, 120, 300].find(
-      (step) => durationS / step <= 10,
+      (step) => step * pxPerSecond >= MIN_LABEL_GAP_PX,
     ) ?? 600;
   const halfStepMs = (stepS * 1000) / 2;
   const marks: { ms: number; isMajor: boolean }[] = [];

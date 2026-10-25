@@ -188,6 +188,31 @@
   box-shadow: inset -1px 0 0 var(--hairline);
 }
 
+@property --fade-bottom {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@keyframes fade-bottom {
+  from {
+    --fade-bottom: 40px;
+  }
+  to {
+    --fade-bottom: 0px;
+  }
+}
+
+@utility scroll-fade-b {
+  mask-image: linear-gradient(
+    to bottom,
+    black calc(100% - var(--fade-bottom)),
+    transparent
+  );
+  animation: fade-bottom linear both;
+  animation-timeline: scroll(self);
+}
+
 @utility covered-stripes {
   background: repeating-linear-gradient(
     135deg,
@@ -245,6 +270,47 @@
     filter 150ms ease-out;
   @media (prefers-reduced-motion: reduce) {
     transition: none;
+  }
+}
+
+@utility reflow {
+  & [data-flow] {
+    transition:
+      left 400ms var(--ease-morph),
+      width 400ms var(--ease-morph),
+      top 400ms var(--ease-morph),
+      height 400ms var(--ease-morph);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    & [data-flow] {
+      transition: none;
+    }
+  }
+}
+
+@utility wipe-in {
+  animation: wipe-in 300ms var(--ease-morph);
+  @media (prefers-reduced-motion: reduce) {
+    animation: fade-in 150ms ease-out;
+  }
+}
+
+@utility fade-in {
+  animation: fade-in 200ms ease-out;
+}
+
+@keyframes wipe-in {
+  from {
+    clip-path: inset(0 100% 0 0 round 6px);
+  }
+  to {
+    clip-path: inset(0 0 0 0 round 6px);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
   }
 }
 

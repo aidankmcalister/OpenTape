@@ -12,7 +12,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "dev:editor": "EDIT_VIDEO=${EDIT_VIDEO:-$HOME/Downloads/17198558_3840_2160_30fps.mp4} tauri dev",
+    "dev:editor": "EDIT_VIDEO=${EDIT_VIDEO:-recording} tauri dev",
     "test": "bun test ./src",
     "lint": "eslint .",
     "format": "prettier --write src",

@@ -7,15 +7,26 @@ import type {
 } from "@/lib/bindings";
 import { type Appearance, fillGradient } from "./appearance";
 import { type Clip, cutSpans } from "./clips";
+import { exportRings, type RingEvent } from "./cursor";
 import { outputAt, type Region, resolveOverlaps } from "./regions";
 import { zoomTrack } from "./zoom";
+
+export type ExportTimeline = {
+  regions: Region[];
+  durationMs: number;
+  clips: Clip[];
+  rings: RingEvent[];
+};
 
 export function exportLayout(
   appearance: Appearance,
   video: Size,
-  regions: Region[] = [],
-  durationMs = 0,
-  clips: Clip[] = [],
+  {
+    regions = [],
+    durationMs = 0,
+    clips = [],
+    rings = [],
+  }: Partial<ExportTimeline> = {},
 ): ExportLayout {
   const ratio = video.width / video.height;
   const paddingShare = ((2 * appearance.padding) / 1920) * Math.max(1, ratio);
@@ -66,6 +77,7 @@ export function exportLayout(
       start: outputAt(regions, startMs) / 1000,
       end: outputAt(regions, endMs) / 1000,
     })),
+    rings: exportRings(rings, regions, scale),
   };
 }
 
@@ -93,6 +105,7 @@ export function scaleLayout(
     video: scaled(layout.video),
     border: border && { ...border, width: border.width * scale },
     radius: layout.radius * scale,
+    rings: layout.rings.map((ring) => ({ ...ring, size: ring.size * scale })),
     shadow: {
       ...shadow,
       offsetY: shadow.offsetY * scale,

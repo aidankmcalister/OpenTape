@@ -4,6 +4,8 @@ export type Animation = { durationMs: number, ease: [number, number, number, num
 
 export type CaptureSize = { width: number, height: number, };
 
+export type CursorLog = { meta: string, events: string, };
+
 export type Device = { id: string, name: string, };
 
 export type Devices = { cameras: Array<Device>, microphones: Array<Device>, };
@@ -18,9 +20,11 @@ export type ExportFormat = "mp4" | "gif";
 
 export type ExportGradient = { angle: number, stops: Array<ExportStop>, };
 
-export type ExportLayout = { width: number, height: number, recording: PixelRect, video: PixelRect, radius: number, shadow: ExportShadow, border: ExportBorder | null, background: ExportGradient, zoom: Array<ExportZoom>, speed: Array<ExportSpeed>, cuts: Array<ExportCut>, };
+export type ExportLayout = { width: number, height: number, recording: PixelRect, video: PixelRect, radius: number, shadow: ExportShadow, border: ExportBorder | null, background: ExportGradient, zoom: Array<ExportZoom>, speed: Array<ExportSpeed>, cuts: Array<ExportCut>, rings: Array<ExportRing>, };
 
 export type ExportOptions = { format: ExportFormat, frameRate: number, bitsPerPixel: number, toClipboard: boolean, };
+
+export type ExportRing = { t: number, x: number, y: number, color: string, size: number, style: RingStyle, };
 
 export type ExportShadow = { offsetY: number, blur: number, opacity: number, };
 
@@ -49,6 +53,8 @@ export type Point = { x: number, y: number, };
 export type PreviewKey = "edit" | "copy" | "save";
 
 export type RecordingStatus = { phase: Phase, error: string | null, elapsedMs: number, };
+
+export type RingStyle = "ring" | "pulse" | "ripple";
 
 export type Session = { mode: Mode, sources: Sources, pinnedWindowId: number | null, areaDisplayId: number | null, };
 

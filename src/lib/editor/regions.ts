@@ -1,10 +1,9 @@
 import { type Point, clamp } from "@/lib/geometry";
-import { MARK_COLORS, type MarkColor } from "./appearance";
+import type { MarkColor } from "./appearance";
 
 export type RegionKind =
   | "zoom"
   | "speed"
-  | "audio"
   | "captions"
   | "annotation"
   | "blur"
@@ -23,6 +22,8 @@ export type Region = {
 };
 
 export type SettingValue = string | number | boolean;
+
+export type TypeStatus = "ready" | "experimental" | "soon";
 
 export type Setting =
   | {
@@ -46,29 +47,8 @@ export type Setting =
     }
   | { kind: "color"; key: string; label: string; initial: MarkColor }
   | { kind: "switch"; key: string; label: string; initial?: boolean }
-  | {
-      kind: "text";
-      key: string;
-      label: string;
-      initial?: string;
-      placeholder?: string;
-    }
-  | { kind: "select"; key: string; label: string; options: string[] }
-  | {
-      kind: "seconds";
-      fields: { key: string; label: string; initial: number }[];
-    }
   | { kind: "focus" }
-  | { kind: "action"; label: string }
   | { kind: "hint"; text: string | ((region: Region) => string) };
-
-const LANGUAGES: Record<string, string> = {
-  English: "EN",
-  Spanish: "ES",
-  French: "FR",
-  German: "DE",
-  Japanese: "JA",
-};
 
 type Value = (key: string) => SettingValue;
 
@@ -82,10 +62,11 @@ export const REGIONS: Record<
     lengthMs: number;
     settings: Setting[];
     shows: (value: Value) => string;
-    isPreview?: boolean;
+    status: TypeStatus;
   }
 > = {
   zoom: {
+    status: "ready",
     label: "Zoom",
     key: "Z",
     hue: "255 122 26",
@@ -112,6 +93,7 @@ export const REGIONS: Record<
     shows: (value) => `${value("amount")}×`,
   },
   speed: {
+    status: "ready",
     label: "Speed",
     key: "S",
     hue: "61 155 255",
@@ -147,170 +129,14 @@ export const REGIONS: Record<
     ],
     shows: (value) => `${value("amount")}×`,
   },
-  audio: preview(
-    "Audio",
-    "A",
-    "52 199 140",
-    4000,
-    (value) => `${value("volume")}%`,
-    [
-      {
-        kind: "slider",
-        key: "volume",
-        label: "Volume",
-        min: 0,
-        max: 200,
-        step: 5,
-        unit: "%",
-        initial: 80,
-      },
-      {
-        kind: "seconds",
-        fields: [
-          { key: "fadeIn", label: "Fade in", initial: 0.5 },
-          { key: "fadeOut", label: "Fade out", initial: 0.5 },
-        ],
-      },
-      { kind: "hint", text: "Volume goes from 0 to 200 percent." },
-    ],
-  ),
-  captions: preview(
-    "Captions",
-    "C",
-    "167 139 250",
-    3000,
-    (value) => LANGUAGES[String(value("language"))],
-    [
-      {
-        kind: "select",
-        key: "language",
-        label: "Language",
-        options: Object.keys(LANGUAGES),
-      },
-      {
-        kind: "choice",
-        key: "position",
-        label: "Position",
-        options: ["Bottom", "Middle", "Top"],
-      },
-      {
-        kind: "choice",
-        key: "size",
-        label: "Size",
-        options: ["S", "M", "L"],
-        initial: "M",
-      },
-      {
-        kind: "switch",
-        key: "highlightWord",
-        label: "Highlight spoken word",
-        initial: true,
-      },
-      { kind: "action", label: "Edit transcript" },
-    ],
-  ),
-  annotation: preview(
-    "Annotation",
-    "N",
-    "244 114 182",
-    2000,
-    (value) => String(value("shape")),
-    [
-      {
-        kind: "choice",
-        key: "shape",
-        label: "Shape",
-        options: ["Arrow", "Box", "Line", "Text"],
-      },
-      { kind: "color", key: "color", label: "Color", initial: "orange" },
-      {
-        kind: "choice",
-        key: "weight",
-        label: "Weight",
-        options: ["Thin", "Medium", "Thick"],
-        initial: "Medium",
-      },
-      {
-        kind: "choice",
-        key: "enters",
-        label: "Enters",
-        options: ["Draw", "Fade", "Cut"],
-      },
-      {
-        kind: "hint",
-        text: "Drag the handles in the preview to move or resize it.",
-      },
-    ],
-  ),
-  blur: preview(
-    "Blur",
-    "B",
-    "34 211 238",
-    2000,
-    (value) => String(value("strength")),
-    [
-      {
-        kind: "choice",
-        key: "hideWith",
-        label: "Hide with",
-        options: ["Blur", "Pixelate", "Block"],
-      },
-      {
-        kind: "choice",
-        key: "strength",
-        label: "Strength",
-        options: ["Soft", "Medium", "Strong"],
-      },
-      {
-        kind: "choice",
-        key: "shape",
-        label: "Shape",
-        options: ["Box", "Ellipse"],
-      },
-      { kind: "switch", key: "follow", label: "Follow moving content" },
-      {
-        kind: "hint",
-        text: "Drag the box in the preview to cover what you want to hide.",
-      },
-    ],
-  ),
-  highlight: preview(
-    "Highlight",
-    "H",
-    "250 204 21",
-    2000,
-    (value) => colorName(String(value("color"))),
-    [
-      {
-        kind: "choice",
-        key: "style",
-        label: "Style",
-        options: ["Marker", "Box", "Spotlight"],
-      },
-      { kind: "color", key: "color", label: "Color", initial: "yellow" },
-      {
-        kind: "slider",
-        key: "intensity",
-        label: "Intensity",
-        min: 0,
-        max: 100,
-        step: 5,
-        unit: "%",
-        initial: 40,
-      },
-      {
-        kind: "hint",
-        text: "Drag the corners in the preview to set the region.",
-      },
-    ],
-  ),
-  clickRing: preview(
-    "Click ring",
-    "P",
-    "148 163 184",
-    1000,
-    (value) => String(value("style")),
-    [
+  clickRing: {
+    status: "experimental",
+    label: "Click ring",
+    key: "P",
+    hue: "148 163 184",
+    amount: 0,
+    lengthMs: 1000,
+    settings: [
       {
         kind: "choice",
         key: "style",
@@ -330,54 +156,25 @@ export const REGIONS: Record<
       },
       { kind: "switch", key: "rightClick", label: "Also on right click" },
     ],
-  ),
-  titleCard: preview(
-    "Title card",
-    "T",
-    "251 113 133",
-    3000,
-    (value) => String(value("title")),
-    [
-      { kind: "text", key: "title", label: "Title", initial: "Title" },
-      {
-        kind: "text",
-        key: "subtitle",
-        label: "Subtitle",
-        placeholder: "Optional",
-      },
-      {
-        kind: "choice",
-        key: "layout",
-        label: "Layout",
-        options: ["Full frame", "Lower third"],
-      },
-      {
-        kind: "choice",
-        key: "background",
-        label: "Background",
-        options: ["Dim video", "Solid"],
-      },
-    ],
-  ),
+    shows: (value) => String(value("style")),
+  },
+  captions: comingSoon("Captions", "C", "167 139 250"),
+  annotation: comingSoon("Annotation", "N", "244 114 182"),
+  blur: comingSoon("Blur", "B", "34 211 238"),
+  highlight: comingSoon("Highlight", "H", "250 204 21"),
+  titleCard: comingSoon("Title card", "T", "251 113 133"),
 };
 
-function preview(
-  label: string,
-  key: string,
-  hue: string,
-  lengthMs: number,
-  shows: (value: Value) => string,
-  settings: Setting[],
-) {
+function comingSoon(label: string, key: string, hue: string) {
   return {
+    status: "soon" as const,
     label,
     key,
     hue,
     amount: 0,
-    lengthMs,
-    settings,
-    shows,
-    isPreview: true,
+    lengthMs: 2000,
+    settings: [],
+    shows: () => "",
   };
 }
 
@@ -401,15 +198,10 @@ export function changeSetting(
 }
 
 function initialValue(kind: RegionKind, key: string): SettingValue {
-  for (const setting of REGIONS[kind].settings) {
-    if (setting.kind === "seconds") {
-      const field = setting.fields.find((field) => field.key === key);
-      if (field) return field.initial;
-    } else if ("key" in setting && setting.key === key) {
-      return initialOf(setting);
-    }
-  }
-  return "";
+  const setting = REGIONS[kind].settings.find(
+    (setting) => "key" in setting && setting.key === key,
+  );
+  return setting ? initialOf(setting) : "";
 }
 
 function initialOf(setting: Setting): SettingValue {
@@ -418,14 +210,10 @@ function initialOf(setting: Setting): SettingValue {
       return setting.initial ?? setting.min;
     case "choice":
       return setting.initial ?? setting.options[0];
-    case "select":
-      return setting.options[0];
     case "color":
       return setting.initial;
     case "switch":
       return setting.initial ?? false;
-    case "text":
-      return setting.initial ?? "";
     default:
       return "";
   }
@@ -435,15 +223,17 @@ function seconds(ms: number): string {
   return (ms / 1000).toFixed(1);
 }
 
-function colorName(color: string): string {
-  return color in MARK_COLORS
-    ? color.charAt(0).toUpperCase() + color.slice(1)
-    : "Custom";
-}
-
 export const ALL_KINDS = Object.keys(REGIONS) as RegionKind[];
 
-export const KINDS = ALL_KINDS.filter((kind) => !REGIONS[kind].isPreview);
+export const KINDS = ALL_KINDS.filter(
+  (kind) => REGIONS[kind].status !== "soon",
+);
+
+export const STATUSES: { status: TypeStatus; label: string }[] = [
+  { status: "ready", label: "Modifiers" },
+  { status: "experimental", label: "Experimental" },
+  { status: "soon", label: "Coming soon" },
+];
 
 export const MIN_REGION_MS = 200;
 
@@ -457,9 +247,14 @@ export function addRegion(
   atMs: number,
   durationMs: number,
 ): Region[] {
-  if (durationMs < MIN_REGION_MS) return regions;
-  const endMs = Math.min(atMs + REGIONS[kind].lengthMs, durationMs);
-  const startMs = Math.max(0, Math.min(atMs, endMs - MIN_REGION_MS));
+  const [gap] = freeGaps(sameKind(regions, kind), durationMs)
+    .filter(({ startMs, endMs }) => endMs - startMs >= MIN_REGION_MS)
+    .sort(
+      (a, b) => distance(a, atMs) - distance(b, atMs) || b.startMs - a.startMs,
+    );
+  if (!gap) return regions;
+  const startMs = clamp(atMs, gap.startMs, gap.endMs - MIN_REGION_MS);
+  const endMs = Math.min(startMs + REGIONS[kind].lengthMs, gap.endMs);
   const amount = REGIONS[kind].amount;
   return [...regions, { id: nextId(regions), kind, startMs, endMs, amount }];
 }
@@ -474,21 +269,19 @@ export function dragRegions(
   drag: RegionDrag,
   deltaMs: number,
   durationMs: number,
+  minMs = MIN_REGION_MS,
 ): Region[] {
   const dragged = regions.filter((region) => ids.includes(region.id));
   if (dragged.length === 0) return regions;
-  const spans = new Map(
-    dragged.map((region) => [
-      region.id,
-      drag === "move"
-        ? moved(dragged, region, deltaMs, durationMs)
-        : stretched(region, drag, deltaMs, durationMs),
-    ]),
-  );
+  const shift =
+    drag === "move" ? movedBy(regions, dragged, deltaMs, durationMs) : 0;
   const changed = regions.map((region) => {
-    const span = spans.get(region.id);
-    return span &&
-      (span.startMs !== region.startMs || span.endMs !== region.endMs)
+    if (!dragged.includes(region)) return region;
+    const span =
+      drag === "move"
+        ? { startMs: region.startMs + shift, endMs: region.endMs + shift }
+        : stretched(regions, region, drag, deltaMs, durationMs, minMs);
+    return span.startMs !== region.startMs || span.endMs !== region.endMs
       ? { ...region, ...span }
       : region;
   });
@@ -497,38 +290,93 @@ export function dragRegions(
     : changed;
 }
 
-function moved(
+function movedBy(
+  regions: Region[],
   group: Region[],
-  region: Region,
   deltaMs: number,
   durationMs: number,
-) {
+): number {
   const first = Math.min(...group.map(({ startMs }) => startMs));
   const last = Math.max(...group.map(({ endMs }) => endMs));
-  const shift = clamp(snap(first + deltaMs) - first, -first, durationMs - last);
-  return { startMs: region.startMs + shift, endMs: region.endMs + shift };
+  const wanted = snap(first + deltaMs) - first;
+  const others = regions.filter((region) => !group.includes(region));
+  const blockers = group.flatMap((moving) =>
+    sameKind(others, moving.kind).map((other) => ({ moving, other })),
+  );
+  const fits = (shift: number) =>
+    shift >= -first &&
+    shift <= durationMs - last &&
+    blockers.every(
+      ({ moving, other }) =>
+        other.endMs <= moving.startMs + shift ||
+        other.startMs >= moving.endMs + shift,
+    );
+  const candidates = [
+    wanted,
+    -first,
+    durationMs - last,
+    ...blockers.flatMap(({ moving, other }) => [
+      other.startMs - moving.endMs,
+      other.endMs - moving.startMs,
+    ]),
+  ];
+  const [best = 0] = candidates
+    .filter(fits)
+    .sort((a, b) => Math.abs(a - wanted) - Math.abs(b - wanted));
+  return best;
 }
 
 function stretched(
+  regions: Region[],
   region: Region,
   edge: "start" | "end",
   deltaMs: number,
   durationMs: number,
+  minMs: number,
 ) {
   const { startMs, endMs } = region;
-  return edge === "start"
-    ? {
-        startMs: clamp(snap(startMs + deltaMs), 0, endMs - MIN_REGION_MS),
-        endMs,
-      }
-    : {
-        startMs,
-        endMs: clamp(
-          snap(endMs + deltaMs),
-          startMs + MIN_REGION_MS,
-          durationMs,
-        ),
-      };
+  const others = sameKind(regions, region.kind).filter(
+    (other) => other !== region,
+  );
+  if (edge === "start") {
+    const floor = Math.max(
+      0,
+      ...others.filter((o) => o.endMs <= startMs).map((o) => o.endMs),
+    );
+    return {
+      startMs: clamp(snap(startMs + deltaMs), floor, endMs - minMs),
+      endMs,
+    };
+  }
+  const ceiling = Math.min(
+    durationMs,
+    ...others.filter((o) => o.startMs >= endMs).map((o) => o.startMs),
+  );
+  return {
+    startMs,
+    endMs: clamp(snap(endMs + deltaMs), startMs + minMs, ceiling),
+  };
+}
+
+function sameKind(regions: Region[], kind: RegionKind): Region[] {
+  return regions.filter((region) => region.kind === kind);
+}
+
+function freeGaps(lane: Region[], durationMs: number) {
+  const gaps: { startMs: number; endMs: number }[] = [];
+  let atMs = 0;
+  for (const region of [...lane].sort((a, b) => a.startMs - b.startMs)) {
+    if (region.startMs > atMs)
+      gaps.push({ startMs: atMs, endMs: region.startMs });
+    atMs = Math.max(atMs, region.endMs);
+  }
+  if (atMs < durationMs) gaps.push({ startMs: atMs, endMs: durationMs });
+  return gaps;
+}
+
+function distance(gap: { startMs: number; endMs: number }, ms: number) {
+  if (ms < gap.startMs) return gap.startMs - ms;
+  return ms > gap.endMs ? ms - gap.endMs : 0;
 }
 
 function snap(ms: number): number {

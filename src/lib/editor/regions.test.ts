@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   addRegion,
-  ALL_KINDS,
+  KINDS,
   amountAt,
   blockValue,
   changeRegion,
@@ -44,7 +44,7 @@ describe("regions", () => {
 
   test.each([
     [5000, "1000-3000 5000-7000", "adds at the playhead"],
-    [2000, "1000-3000 2000-4000", "overlaps anything"],
+    [2000, "1000-3000 2000-4000", "overlaps another type"],
     [9000, "1000-3000 9000-10000", "ends at the end"],
     [9900, "1000-3000 9800-10000", "starts earlier to keep 0.2s"],
   ])("addRegion at %p gives %p: %s", (atMs, expected) => {
@@ -76,7 +76,15 @@ describe("regions", () => {
 
   test.each([
     [[1], "move", 520, "1500-3500 5000-6000", "moves to the 0.1s grid"],
-    [[1], "move", 3500, "4500-6500 5000-6000", "moves over another block"],
+    [[1], "move", 2500, "3000-5000 5000-6000", "stops at a block of its type"],
+    [
+      [1],
+      "move",
+      3600,
+      "6000-8000 5000-6000",
+      "jumps past once nearer the far side",
+    ],
+    [[1], "end", 3000, "1000-5000 5000-6000", "stretches up to its neighbor"],
     [[1], "move", -5000, "0-2000 5000-6000", "stops at the start"],
     [
       [1, 2],
@@ -182,16 +190,45 @@ test.each(Object.entries(REGIONS))(
   },
 );
 
-test.each(ALL_KINDS)("a new %s block shows its default setting", (kind) => {
+test.each(KINDS)("a new %s block shows its default setting", (kind) => {
   const [region] = addRegion([], kind, 0, 10_000);
   expect(blockValue(region)).not.toBe("");
 });
 
 test("a setting change reads back, and amount stays on the region", () => {
-  const [audio] = addRegion([], "audio", 0, 10_000);
-  expect(blockValue(audio)).toBe("80%");
-  const louder = { ...audio, ...changeSetting(audio, "volume", 120) };
-  expect(settingValue(louder, "volume")).toBe(120);
+  const [ring] = addRegion([], "clickRing", 0, 10_000);
+  expect(blockValue(ring)).toBe("Ring");
+  const bigger = { ...ring, ...changeSetting(ring, "size", 64) };
+  expect(settingValue(bigger, "size")).toBe(64);
   const [speed] = addRegion([], "speed", 0, 10_000);
   expect(changeSetting(speed, "amount", "4")).toEqual({ amount: 4 });
+});
+
+test.each([
+  [2000, "1000-3000 3000-5000", "lands right after the block it's on"],
+  [500, "1000-3000 500-1000", "ends where the next block of its type starts"],
+])("adding a zoom at %p gives %p: %s", (atMs, expected) => {
+  const zoom: Region = {
+    id: 1,
+    kind: "zoom",
+    startMs: 1000,
+    endMs: 3000,
+    amount: 1.5,
+  };
+  expect(
+    addRegion([zoom], "zoom", atMs, 10_000)
+      .map(({ startMs, endMs }) => `${startMs}-${endMs}`)
+      .join(" "),
+  ).toBe(expected);
+});
+
+test("a zoom isn't added when its lane has no room", () => {
+  const full: Region = {
+    id: 1,
+    kind: "zoom",
+    startMs: 0,
+    endMs: 10_000,
+    amount: 1.5,
+  };
+  expect(addRegion([full], "zoom", 5000, 10_000)).toEqual([full]);
 });

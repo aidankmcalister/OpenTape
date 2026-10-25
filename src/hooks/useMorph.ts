@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Animation } from "@/lib/bindings";
 import type { Size } from "@/lib/geometry";
 
@@ -67,4 +67,20 @@ function morphAnimation(): Animation {
     "(prefers-reduced-motion: reduce)",
   ).matches;
   return reduceMotion ? { ...MORPH, durationMs: 0 } : MORPH;
+}
+
+export function useReflow(key: string, isPaused: boolean) {
+  const [shownKey, setShownKey] = useState(key);
+  const [isReflowing, setIsReflowing] = useState(false);
+  if (key !== shownKey) {
+    setShownKey(key);
+    setIsReflowing(!isPaused);
+  }
+  if (isPaused && isReflowing) setIsReflowing(false);
+  useEffect(() => {
+    if (!isReflowing) return;
+    const timer = setTimeout(() => setIsReflowing(false), MORPH.durationMs);
+    return () => clearTimeout(timer);
+  }, [isReflowing, shownKey]);
+  return isReflowing;
 }

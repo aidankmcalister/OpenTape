@@ -20,6 +20,8 @@ export function useScrub(durationMs: number, seek: (ms: number) => void) {
   };
 }
 
+export type Skim = ReturnType<typeof useSkim>;
+
 export function useSkim(durationMs: number, skim: (ms: number | null) => void) {
   const [hoverMs, setHoverMs] = useState<number | null>(null);
 

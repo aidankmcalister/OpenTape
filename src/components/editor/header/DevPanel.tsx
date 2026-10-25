@@ -7,17 +7,13 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { Dev } from "@/hooks/editor/useDevFlags";
 import type { Edits } from "@/hooks/editor/useProject";
 import { FIXTURES, fixtureRegions } from "@/lib/editor/fixtures";
 
 export default function DevPanel({
-  dev,
   edits,
   durationMs,
 }: {
-  dev: Dev;
   edits: Edits;
   durationMs: number;
 }) {
@@ -33,20 +29,6 @@ export default function DevPanel({
       </PopoverTrigger>
       <PopoverContent align="end">
         <PopoverTitle>Dev settings</PopoverTitle>
-        <div className="flex flex-col gap-2">
-          <span className="text-label text-muted-foreground">
-            Preview types in the Add menu
-          </span>
-          <Tabs
-            value={dev.previewTypes ? "shown" : "hidden"}
-            onValueChange={(value) => dev.setPreviewTypes(value === "shown")}
-          >
-            <TabsList className="w-full">
-              <TabsTrigger value="hidden">Hidden</TabsTrigger>
-              <TabsTrigger value="shown">Shown</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
         <div className="flex flex-col gap-2">
           <span className="text-label text-muted-foreground">
             Load a fixture

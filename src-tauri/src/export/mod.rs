@@ -16,9 +16,11 @@ use serde::Deserialize;
 use ts_rs::TS;
 
 mod cutout;
+mod rings;
 mod writers;
 
 use cutout::cutout;
+pub(crate) use rings::ExportRing;
 use writers::{write_gif, write_mp4};
 
 #[derive(Debug, Clone, Deserialize, TS)]
@@ -36,6 +38,7 @@ pub(crate) struct ExportLayout {
     zoom: Vec<ExportZoom>,
     speed: Vec<ExportSpeed>,
     cuts: Vec<ExportCut>,
+    rings: Vec<ExportRing>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, TS)]
@@ -150,11 +153,12 @@ pub(crate) fn export(
         .firstObject()
         .context("the recording has no video")?;
     let natural = unsafe { track.naturalSize() };
-    let (recording, video_rect, height, zoom) = (
+    let (recording, video_rect, height, zoom, rings) = (
         layout.recording.clone(),
         layout.video.clone(),
         layout.height,
         layout.zoom.clone(),
+        layout.rings.clone(),
     );
     let mut cuts = layout.cuts.clone();
     cuts.sort_by(|a, b| a.start.total_cmp(&b.start));
@@ -167,9 +171,16 @@ pub(crate) fn export(
         move |request: NonNull<AVAsynchronousCIImageFilteringRequest>| {
             let request = unsafe { request.as_ref() };
             unsafe {
-                let zoom = zoom_at(&zoom, uncut(&cuts, request.compositionTime().seconds()));
-                let place = placement(&zoomed(&video_rect, &recording, zoom), height, natural);
-                let frame = request.sourceImage().imageByApplyingTransform(place);
+                let now = uncut(&cuts, request.compositionTime().seconds());
+                let zoom = zoom_at(&zoom, now);
+                let video = zoomed(&video_rect, &recording, zoom);
+                let place = placement(&video, height, natural);
+                let mut frame = request.sourceImage().imageByApplyingTransform(place);
+                for ring in rings.iter().filter(|ring| ring.is_showing(now)) {
+                    if let Ok(image) = ring.image(now, &video, zoom.scale, height) {
+                        frame = image.imageByCompositingOverImage(&frame);
+                    }
+                }
                 let image = cutout
                     .imageByCompositingOverImage(&frame)
                     .imageByCroppingToRect(picture);

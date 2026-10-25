@@ -16,19 +16,22 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { REGIONS, type RegionKind } from "@/lib/editor/regions";
+import {
+  ALL_KINDS,
+  REGIONS,
+  STATUSES,
+  type RegionKind,
+} from "@/lib/editor/regions";
 import { KindTile } from "./kinds";
 
 export default function AddMenu({
   isOpen,
   onOpenChange,
   onAdd,
-  kinds,
 }: {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   onAdd: (kind: RegionKind) => void;
-  kinds: RegionKind[];
 }) {
   const search = useRef<HTMLInputElement>(null);
   return (
@@ -43,27 +46,36 @@ export default function AddMenu({
       <PopoverContent align="start" initialFocus={search} className="w-60 p-0">
         <Command>
           <CommandInput ref={search} placeholder="Search modifiers" />
-          <CommandList>
+          <CommandList className="scroll-fade-b">
             <CommandEmpty>No modifiers found.</CommandEmpty>
-            <CommandGroup>
-              {kinds.map((kind) => (
-                <CommandItem
-                  key={kind}
-                  value={REGIONS[kind].label}
-                  keywords={[REGIONS[kind].key]}
-                  onSelect={() => {
-                    onAdd(kind);
-                    onOpenChange(false);
-                  }}
-                >
-                  <KindTile kind={kind} />
-                  {REGIONS[kind].label}
-                  <CommandShortcut>
-                    <Kbd>{REGIONS[kind].key}</Kbd>
-                  </CommandShortcut>
-                </CommandItem>
-              ))}
-            </CommandGroup>
+            {STATUSES.map(({ status, label }) => {
+              const group = ALL_KINDS.filter(
+                (kind) => REGIONS[kind].status === status,
+              );
+              if (group.length === 0) return null;
+              return (
+                <CommandGroup key={status} heading={label}>
+                  {group.map((kind) => (
+                    <CommandItem
+                      key={kind}
+                      value={REGIONS[kind].label}
+                      keywords={[REGIONS[kind].key]}
+                      disabled={status === "soon"}
+                      onSelect={() => {
+                        onAdd(kind);
+                        onOpenChange(false);
+                      }}
+                    >
+                      <KindTile kind={kind} />
+                      {REGIONS[kind].label}
+                      <CommandShortcut>
+                        <Kbd>{REGIONS[kind].key}</Kbd>
+                      </CommandShortcut>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              );
+            })}
           </CommandList>
         </Command>
       </PopoverContent>

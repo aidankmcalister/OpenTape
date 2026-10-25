@@ -21,7 +21,7 @@ export default function ModifierEditor({ edits }: { edits: Edits }) {
   const [shownId, setShownId] = useState(edits.editingId);
   if (edits.editingId !== null && edits.editingId !== shownId)
     setShownId(edits.editingId);
-  const modifier = edits.project.regions.find(({ id }) => id === shownId);
+  const modifier = edits.shown.find(({ id }) => id === shownId);
   const count = edits.selectedIds.length;
   return (
     <Popover

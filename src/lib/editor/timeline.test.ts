@@ -48,30 +48,30 @@ describe("timeline", () => {
 });
 
 describe("ruler", () => {
-  const labeled = (durationMs: number) =>
-    rulerMarks(durationMs)
+  const labeled = (durationMs: number, widthPx: number) =>
+    rulerMarks(durationMs, widthPx)
       .filter((mark) => mark.isMajor)
       .map((mark) => mark.ms);
 
-  test("rulerMarks labels every two seconds of a 15 second clip, with a short mark between", () => {
-    expect(labeled(15_000)).toEqual([
+  test("at 64px a second, a 15 second clip gets a label every 2 seconds and a short tick between", () => {
+    expect(labeled(15_000, 960)).toEqual([
       0, 2000, 4000, 6000, 8000, 10_000, 12_000, 14_000,
     ]);
-    expect(rulerMarks(15_000)[1]).toEqual({ ms: 1000, isMajor: false });
+    expect(rulerMarks(15_000, 960)[1]).toEqual({ ms: 1000, isMajor: false });
   });
 
-  test("rulerMarks labels every second of a ten second clip, end included", () => {
-    expect(labeled(10_000)).toHaveLength(11);
-    const marks = rulerMarks(10_000);
+  test("with room to spare, labels come every second, end included", () => {
+    expect(labeled(10_000, 1200)).toHaveLength(11);
+    const marks = rulerMarks(10_000, 1200);
     expect(marks[marks.length - 1]).toEqual({ ms: 10_000, isMajor: true });
   });
 
   test("rulerMarks gives a single mark for an empty clip", () => {
-    expect(rulerMarks(0)).toEqual([{ ms: 0, isMajor: true }]);
+    expect(rulerMarks(0, 800)).toEqual([{ ms: 0, isMajor: true }]);
   });
 
   test("rulerMarks falls back to ten-minute labels for very long clips", () => {
-    const [first, second] = labeled(3 * 60 * 60 * 1000);
+    const [first, second] = labeled(3 * 60 * 60 * 1000, 800);
     expect(second - first).toBe(600_000);
   });
 
@@ -85,15 +85,15 @@ describe("ruler", () => {
   });
 });
 
-test("lanes are 28px, 20px collapsed, inside 4px of padding, and 64px when empty", () => {
+test("lanes are 32px, 20px collapsed, and 64px when empty", () => {
   const { lanes, heightPx } = laneLayout(["zoom", "speed", "blur"], ["speed"]);
   expect(lanes.map(({ top, height }) => [top, height])).toEqual([
-    [4, 28],
+    [0, 32],
     [32, 20],
-    [52, 28],
+    [52, 32],
   ]);
   expect(heightPx).toBe(84);
-  expect(laneLayout(["zoom", "speed", "blur"], []).heightPx).toBe(92);
+  expect(laneLayout(["zoom", "speed", "blur"], []).heightPx).toBe(96);
   expect(laneLayout([], []).heightPx).toBe(64);
 });
 

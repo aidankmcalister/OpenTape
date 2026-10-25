@@ -1,6 +1,4 @@
 import type { ReactNode } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,7 +12,7 @@ import { MARK_COLORS, type MarkColor } from "@/lib/editor/appearance";
 import { focusBox, focusCenter } from "@/lib/editor/zoom";
 import { clamp } from "@/lib/geometry";
 import { ColorSwatches } from "../ColorPicker";
-import { NumberField, SelectField, ValueInput } from "../Panel";
+import { NumberField, ValueInput } from "../Panel";
 
 const MARK_OPTIONS = (Object.keys(MARK_COLORS) as MarkColor[]).map((mark) => ({
   value: mark,
@@ -105,55 +103,8 @@ export default function SettingControl({
           />
         </label>
       );
-    case "text":
-      return (
-        <Row label={setting.label}>
-          <Input
-            key={String(value(setting.key))}
-            aria-label={setting.label}
-            defaultValue={String(value(setting.key))}
-            placeholder={setting.placeholder}
-            onBlur={(event) => set(setting.key, event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") event.currentTarget.blur();
-            }}
-          />
-        </Row>
-      );
-    case "select":
-      return (
-        <SelectField
-          label={setting.label}
-          value={String(value(setting.key))}
-          options={setting.options.map((option) => ({
-            value: option,
-            label: option,
-          }))}
-          onChange={(next) => set(setting.key, next)}
-        />
-      );
-    case "seconds":
-      return (
-        <div className="grid grid-cols-2 gap-2">
-          {setting.fields.map(({ key, label }) => (
-            <NumberField
-              key={key}
-              label={label}
-              value={Number(value(key))}
-              unit="s"
-              onChange={(seconds) => set(key, clamp(seconds, 0, 10))}
-            />
-          ))}
-        </div>
-      );
     case "focus":
       return <Focus edit={edit} />;
-    case "action":
-      return (
-        <Button variant="secondary" className="w-full" disabled>
-          {setting.label}
-        </Button>
-      );
     case "hint":
       return (
         <p className="text-label text-muted-foreground">

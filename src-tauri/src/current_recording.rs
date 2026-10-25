@@ -35,11 +35,18 @@ pub(crate) struct ShownRecording {
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "bindings.ts")]
 pub(crate) struct KeptRecording {
-    folder: String,
+    pub(crate) folder: String,
     modified_ms: f64,
     size_bytes: f64,
     is_edited: bool,
     is_recovered: bool,
+}
+
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "bindings.ts")]
+pub(crate) struct CursorLog {
+    meta: String,
+    events: String,
 }
 
 pub(crate) trait Shell {
@@ -249,6 +256,14 @@ impl CurrentRecording {
         let kept = lock(&self.kept);
         let kept = kept.as_ref().context("there's no recording")?;
         Ok(kept.video_path.with_file_name(PROJECT_FILE))
+    }
+
+    fn cursor_log(&self) -> Result<Option<CursorLog>> {
+        let folder = self.project_path()?.with_file_name("");
+        let read = |name: &str| std::fs::read_to_string(folder.join(name)).ok();
+        Ok(read("meta.json")
+            .zip(read("events.jsonl"))
+            .map(|(meta, events)| CursorLog { meta, events }))
     }
 
     fn load_project(&self) -> Result<Option<String>> {

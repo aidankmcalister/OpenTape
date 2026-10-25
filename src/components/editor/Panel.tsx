@@ -1,13 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 import { Minus, Plus, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 
@@ -52,38 +45,6 @@ export function Section({
       </div>
       {children}
     </section>
-  );
-}
-
-export function SelectField({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: { value: string; label: string }[];
-  onChange: (value: string) => void;
-}) {
-  return (
-    <Select value={value} onValueChange={(next) => next && onChange(next)}>
-      <SelectTrigger className="h-8 w-full rounded-md border-hairline bg-secondary px-3 text-label">
-        <span>{label}</span>
-        <SelectValue className="justify-end">
-          {(selected: string) =>
-            options.find((option) => option.value === selected)?.label
-          }
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {options.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            {option.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
   );
 }
 

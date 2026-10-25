@@ -1,24 +1,23 @@
-import { Film } from "lucide-react";
+import { Fragment, type ReactNode } from "react";
+import { Film, Scissors } from "lucide-react";
 import { useClockValue } from "@/hooks/useVideoClock";
 import { useElementSize } from "@/hooks/useElementSize";
+import { useReflow } from "@/hooks/useMorph";
 import type { Lanes } from "@/hooks/editor/useLanes";
-import {
-  useTimelineDrag,
-  type TimelineDrag,
-} from "@/hooks/editor/useTimelineDrag";
+import { useTimelineDrag } from "@/hooks/editor/useTimelineDrag";
 import type { Edits } from "@/hooks/editor/useProject";
-import { useScrub } from "@/hooks/editor/useScrub";
+import { useScrub, useSkim } from "@/hooks/editor/useScrub";
 import {
   GUTTER_PX,
   laneLayout,
-  lengthLabel,
   percentAt,
   rulerLabel,
   rulerMarks,
   timeLabel,
+  TRACK_INSET_PX,
   TRACKS_TOP_PX,
 } from "@/lib/editor/timeline";
-import { laneKinds, type RegionKind } from "@/lib/editor/regions";
+import { laneKinds } from "@/lib/editor/regions";
 import type { Clock } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { LaneGutters, LaneTracks } from "./ModifierLanes";
@@ -32,7 +31,6 @@ export default function Timeline({
   heldMs,
   onSkim,
   lanes: laneState,
-  kinds,
 }: {
   clock: Clock;
   durationMs: number;
@@ -41,30 +39,34 @@ export default function Timeline({
   heldMs: number | null;
   onSkim: (ms: number | null) => void;
   lanes: Lanes;
-  kinds: RegionKind[];
 }) {
-  const scrubProps = useScrub(durationMs, onSeek);
+  const { time, shown } = edits;
+  const { lengthMs, at } = time;
+  const scrubProps = useScrub(lengthMs, (ms) => onSeek(time.source(ms)));
   const { ref: trackRef, size: track } = useElementSize<HTMLDivElement>();
   const { regions } = edits.project;
-  const { lanes, heightPx } = laneLayout(
-    laneKinds(regions),
-    laneState.collapsed,
-  );
+  const { lanes, heightPx } = laneLayout(laneKinds(shown), laneState.collapsed);
   const drag = useTimelineDrag(edits, durationMs);
-  const draggedLane = lanes.find(
-    ({ kind }) =>
-      kind === regions.find(({ id }) => id === drag.stretch?.id)?.kind,
+  const isReflowing = useReflow(
+    [
+      lengthMs,
+      ...lanes.map(({ kind, isCollapsed }) => kind + isCollapsed),
+    ].join(),
+    drag.stretch?.track === "clip",
+  );
+  const skim = useSkim(lengthMs, (ms) =>
+    onSkim(ms === null ? null : time.source(ms)),
   );
   return (
     <div
-      className="relative isolate flex pr-4 transition-[height] duration-160 ease-out motion-reduce:transition-none"
-      style={{ height: TRACKS_TOP_PX + heightPx }}
+      className={cn(
+        "relative isolate flex pr-2 pb-2 transition-[height] duration-160 ease-out motion-reduce:transition-none",
+        isReflowing && "reflow",
+      )}
+      style={{ height: TRACKS_TOP_PX + heightPx + TRACK_INSET_PX }}
     >
-      <div
-        className="relative shrink-0 hairline-r"
-        style={{ width: GUTTER_PX }}
-      >
-        <div className="absolute inset-x-0 top-6 flex h-8 items-center gap-2 px-3 text-label font-medium text-muted-foreground">
+      <div className="relative shrink-0" style={{ width: GUTTER_PX }}>
+        <div className="absolute inset-x-0 top-8 flex h-9 items-center gap-2 px-3 text-label font-medium text-muted-foreground">
           <Film className="size-4 shrink-0" />
           Recording
         </div>
@@ -77,155 +79,209 @@ export default function Timeline({
           />
         </div>
       </div>
-      <div
-        ref={trackRef}
-        data-track
-        className="relative flex-1 select-none"
-        {...scrubProps}
-        onPointerDown={(event) => {
-          edits.select([]);
-          scrubProps.onPointerDown(event);
-        }}
-      >
-        <div className="absolute inset-x-0 top-6 h-8 bg-track-recording" />
+      <div className="relative flex-1 overflow-hidden rounded-lg bg-track-modifiers">
+        <div className="absolute inset-x-0 top-0 h-8 bg-track-recording" />
+        {lanes.map(({ kind, top }) => (
+          <div
+            key={kind}
+            data-flow
+            className="absolute inset-x-0 h-px bg-foreground/6"
+            style={{ top: TRACKS_TOP_PX + top }}
+          />
+        ))}
         <div
-          className="absolute inset-x-0 bottom-0 bg-track-modifiers"
-          style={{ top: TRACKS_TOP_PX }}
-        />
-        {durationMs > 0 ? (
-          <>
-            <Ruler durationMs={durationMs} />
-            <RecordingTrack
-              edits={edits}
-              durationMs={durationMs}
-              drag={drag.clip}
-              onSkim={onSkim}
-            />
-            <LaneTracks
-              edits={edits}
-              lanes={lanes}
-              heightPx={heightPx}
-              top={TRACKS_TOP_PX}
-              kinds={kinds}
-              durationMs={durationMs}
-              trackWidth={track.width}
-              clock={clock}
-              drag={drag}
-              solo={laneState.solo}
-              onSeek={onSeek}
-            />
-            {drag.stretch ? (
-              <DragTip
-                stretch={drag.stretch}
-                top={
-                  draggedLane && drag.stretch.track === "region"
-                    ? TRACKS_TOP_PX + draggedLane.top - 26
-                    : 0
-                }
-                durationMs={durationMs}
-                zIndex={regions.length + 3}
+          ref={trackRef}
+          data-track
+          className="absolute inset-x-3 inset-y-0 select-none"
+          {...scrubProps}
+          onPointerDown={(event) => {
+            edits.select([]);
+            scrubProps.onPointerDown(event);
+          }}
+        >
+          {durationMs > 0 ? (
+            <>
+              <Ruler
+                durationMs={lengthMs}
+                width={track.width}
+                playheadMs={(seconds) => at(heldMs ?? seconds * 1000)}
+                clock={clock}
+                skimMs={skim.hoverMs}
               />
-            ) : null}
-            <Playhead
-              clock={clock}
-              durationMs={durationMs}
-              heldMs={heldMs}
-              zIndex={regions.length + 2}
-            />
-          </>
-        ) : null}
+              <RecordingTrack
+                edits={edits}
+                durationMs={lengthMs}
+                drag={drag.clip}
+                skim={skim}
+              />
+              <LaneTracks
+                edits={edits}
+                lanes={lanes}
+                heightPx={heightPx}
+                top={TRACKS_TOP_PX}
+                durationMs={lengthMs}
+                trackWidth={track.width}
+                clock={clock}
+                drag={drag}
+                solo={laneState.solo}
+                onSeek={(ms) => onSeek(time.source(ms))}
+              />
+              <Playhead
+                clock={clock}
+                durationMs={lengthMs}
+                playheadMs={(seconds) => at(heldMs ?? seconds * 1000)}
+                zIndex={regions.length + 2}
+              />
+              {skim.hoverMs !== null ? (
+                <Marker
+                  ms={skim.hoverMs}
+                  durationMs={lengthMs}
+                  zIndex={regions.length + 3}
+                  isMuted
+                >
+                  {edits.isCutting ? (
+                    <div className="absolute top-10 left-1/2 grid size-5 -translate-x-1/2 place-items-center rounded-full bg-highlight text-on-hue">
+                      <Scissors className="size-3" />
+                    </div>
+                  ) : null}
+                </Marker>
+              ) : null}
+            </>
+          ) : null}
+        </div>
       </div>
     </div>
   );
 }
 
-function Ruler({ durationMs }: { durationMs: number }) {
-  return (
-    <>
-      {rulerMarks(durationMs).map(({ ms, isMajor }) => (
+const LABEL_GAP_PX = 6;
+const CHIP_HALF_PX = 30;
+
+function Ruler({
+  durationMs,
+  width,
+  playheadMs,
+  clock,
+  skimMs,
+}: {
+  durationMs: number;
+  width: number;
+  playheadMs: (seconds: number) => number;
+  clock: Clock;
+  skimMs: number | null;
+}) {
+  const marks = rulerMarks(durationMs, width);
+  const xOf = (ms: number) => (percentAt(ms, durationMs) / 100) * width;
+  const labelPx = (ms: number) => rulerLabel(ms).length * 7;
+  const flips = (ms: number) => xOf(ms) + LABEL_GAP_PX + labelPx(ms) > width;
+  const spanOf = (ms: number) =>
+    flips(ms)
+      ? [xOf(ms) - LABEL_GAP_PX - labelPx(ms), xOf(ms) - LABEL_GAP_PX]
+      : [xOf(ms) + LABEL_GAP_PX, xOf(ms) + LABEL_GAP_PX + labelPx(ms)];
+  const majors = marks.filter(({ isMajor }) => isMajor);
+  const crowded = majors.filter(({ ms }, index) => {
+    const before = majors[index - 1];
+    return before && spanOf(ms)[0] < spanOf(before.ms)[1] + LABEL_GAP_PX;
+  });
+  const underChip = (atMs: number | null) =>
+    majors.filter(({ ms }) => {
+      if (atMs === null) return false;
+      const [from, to] = spanOf(ms);
+      const at = xOf(atMs);
+      return to > at - CHIP_HALF_PX && from < at + CHIP_HALF_PX;
+    });
+  const hidden = useClockValue(clock, (seconds) =>
+    underChip(playheadMs(seconds))
+      .map(({ ms }) => ms)
+      .join(","),
+  )
+    .split(",")
+    .concat([...crowded, ...underChip(skimMs)].map(({ ms }) => String(ms)));
+  return marks.map(({ ms, isMajor }) => {
+    const left = `${percentAt(ms, durationMs)}%`;
+    if (!isMajor) {
+      return (
         <div
           key={ms}
-          className="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1"
-          style={{ left: `${percentAt(ms, durationMs)}%` }}
-        >
-          <div className={cn("w-px bg-faint", isMajor ? "h-2.5" : "h-1.5")} />
-          {isMajor ? (
-            <span className="font-mono text-micro text-faint">
-              {rulerLabel(ms)}
-            </span>
-          ) : null}
-        </div>
-      ))}
-    </>
-  );
-}
-
-function DragTip({
-  stretch,
-  top,
-  durationMs,
-  zIndex,
-}: {
-  stretch: NonNullable<TimelineDrag["stretch"]>;
-  top: number;
-  durationMs: number;
-  zIndex: number;
-}) {
-  const { edge, now, from } = stretch;
-  const shiftMs = now.startMs - from.startMs;
-  return (
-    <div
-      className="pointer-events-none absolute flex h-6 -translate-x-1/2 items-center gap-1.5 rounded-md border border-glass-border bg-popover px-2 text-label whitespace-nowrap"
-      style={{
-        left: `${percentAt(edge === "end" ? now.endMs : now.startMs, durationMs)}%`,
-        top: Math.max(0, top),
-        zIndex,
-      }}
-    >
-      {edge === "move" ? (
-        <>
-          <span className="font-mono font-semibold">
-            {shiftMs < 0 ? "−" : "+"}
-            {lengthLabel(Math.abs(shiftMs))}
+          data-flow
+          className="pointer-events-none absolute top-7 h-1 w-px bg-foreground/15"
+          style={{ left }}
+        />
+      );
+    }
+    return (
+      <Fragment key={ms}>
+        <div
+          data-flow
+          className="pointer-events-none absolute top-2 h-4 w-px bg-foreground/30"
+          style={{ left }}
+        />
+        {hidden.includes(String(ms)) ? null : (
+          <span
+            data-flow
+            className={cn(
+              "pointer-events-none absolute top-2 font-mono text-caption leading-4 text-muted-foreground",
+              flips(ms) && "-translate-x-full",
+            )}
+            style={{
+              left: `calc(${left} ${flips(ms) ? "-" : "+"} ${LABEL_GAP_PX}px)`,
+            }}
+          >
+            {rulerLabel(ms)}
           </span>
-          <span className="text-muted-foreground">
-            starts {timeLabel(now.startMs)}
-          </span>
-        </>
-      ) : (
-        <>
-          <span className="font-mono font-semibold">
-            {lengthLabel(now.endMs - now.startMs)}
-          </span>
-          <span className="text-muted-foreground">
-            ends {timeLabel(now.endMs)}
-          </span>
-        </>
-      )}
-    </div>
-  );
+        )}
+      </Fragment>
+    );
+  });
 }
 
 function Playhead({
   clock,
   durationMs,
-  heldMs,
+  playheadMs,
   zIndex,
 }: {
   clock: Clock;
   durationMs: number;
-  heldMs: number | null;
+  playheadMs: (seconds: number) => number;
   zIndex: number;
 }) {
-  const ms = useClockValue(clock, (seconds) => heldMs ?? seconds * 1000);
+  const ms = useClockValue(clock, playheadMs);
+  return <Marker ms={ms} durationMs={durationMs} zIndex={zIndex} />;
+}
+
+function Marker({
+  ms,
+  durationMs,
+  zIndex,
+  isMuted = false,
+  children,
+}: {
+  ms: number;
+  durationMs: number;
+  zIndex: number;
+  isMuted?: boolean;
+  children?: ReactNode;
+}) {
+  const color = isMuted ? "bg-muted-foreground" : "bg-highlight";
   return (
     <div
-      className="pointer-events-none absolute inset-y-0 -ml-px w-0.5 bg-highlight"
+      data-flow={!isMuted || undefined}
+      className={cn(
+        "pointer-events-none absolute inset-y-0 -ml-px w-0.5",
+        color,
+      )}
       style={{ left: `${percentAt(ms, durationMs)}%`, zIndex }}
     >
-      <div className="absolute top-1 left-1/2 flex h-4 -translate-x-1/2 items-center rounded-sm bg-highlight px-1.5 font-mono text-caption font-semibold text-on-hue">
+      <div
+        className={cn(
+          "absolute top-2 left-1/2 flex h-4 -translate-x-1/2 items-center rounded-sm px-1.5 font-mono text-caption font-semibold text-on-hue",
+          color,
+        )}
+      >
         {timeLabel(ms)}
       </div>
+      {children}
     </div>
   );
 }

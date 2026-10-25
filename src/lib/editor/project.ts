@@ -5,8 +5,8 @@ import {
   frameLayout,
   readAppearance,
 } from "./appearance";
-import type { Clip } from "./clips";
-import { type Region, sourceAt } from "./regions";
+import { type Clip, fitToClips } from "./clips";
+import { type Region, REGIONS, sourceAt } from "./regions";
 import { zoomAt } from "./zoom";
 
 export type Project = {
@@ -32,7 +32,7 @@ export function readProject(json: string | null): Project {
   const saved: Partial<Project> = JSON.parse(json);
   return {
     appearance: readAppearance(saved.appearance),
-    regions: saved.regions ?? [],
+    regions: (saved.regions ?? []).filter(({ kind }) => kind in REGIONS),
     clips: saved.clips ?? [],
   };
 }
@@ -50,7 +50,8 @@ export function editClips(
   edit: (clips: Clip[]) => Clip[],
 ): Project {
   const clips = edit(project.clips);
-  return clips === project.clips ? project : { ...project, clips };
+  if (clips === project.clips) return project;
+  return { ...project, clips, regions: fitToClips(project.regions, clips) };
 }
 
 export function changeAppearance(

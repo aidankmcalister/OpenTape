@@ -137,6 +137,7 @@ fn exports_a_recording_in_the_default_appearance() {
                 end: 4.0,
             }]
         }),
+        rings: vec![],
     };
     let var = |name: &str, or: &str| std::env::var(name).unwrap_or(or.into());
     let options = ExportOptions {

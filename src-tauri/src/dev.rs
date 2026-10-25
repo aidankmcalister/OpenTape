@@ -20,12 +20,25 @@ pub(crate) fn open_editor_if_asked(app: &AppHandle) {
 }
 
 fn open_editor(app: &AppHandle, choice: &str) -> Result<()> {
+    let current = app.state::<CurrentRecording>();
+    if choice == "recording" {
+        let folder = current
+            .kept_recordings()?
+            .into_iter()
+            .map(|kept| kept.folder)
+            .find(|folder| {
+                current
+                    .stored(folder)
+                    .is_ok_and(|path| path.join("events.jsonl").exists())
+            })
+            .context("no recording with a cursor log yet; record one first")?;
+        return current.reopen(app, &folder);
+    }
     let source = if choice == "latest" {
         newest_video(&app.path().download_dir()?)?
     } else {
         PathBuf::from(choice)
     };
-    let current = app.state::<CurrentRecording>();
     let stem = source
         .file_stem()
         .context("the video path has no file name")?;

@@ -37,6 +37,12 @@ describe("project", () => {
       JSON.stringify({ appearance: { borderColor: "none" } }),
     );
     expect(none.appearance.borderColor).toBe(DEFAULT_APPEARANCE.borderColor);
+    const removedType = readProject(
+      JSON.stringify({
+        regions: [{ id: 1, kind: "audio", startMs: 0, endMs: 1000, amount: 0 }],
+      }),
+    );
+    expect(removedType.regions).toEqual([]);
     const older = readProject(JSON.stringify({ appearance: { padding: 12 } }));
     expect(older).toEqual({
       appearance: { ...DEFAULT_APPEARANCE, padding: 12 },

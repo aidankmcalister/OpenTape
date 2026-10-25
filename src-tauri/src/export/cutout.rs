@@ -103,7 +103,7 @@ fn rounded_rect(rect: &PixelRect, radius: f64, height: u32) -> CFRetained<CGPath
     unsafe { CGPath::with_rounded_rect(flipped, radius, radius, std::ptr::null()) }
 }
 
-fn rgb(hex: &str) -> Result<[f64; 3]> {
+pub(super) fn rgb(hex: &str) -> Result<[f64; 3]> {
     let digits = hex.strip_prefix('#').filter(|digits| digits.len() == 6);
     let digits = digits.with_context(|| format!("{hex:?} isn't a color like #2a9d8f"))?;
     let channel = |at: usize| -> Result<f64> {

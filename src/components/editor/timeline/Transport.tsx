@@ -24,7 +24,6 @@ import type { Playback } from "@/hooks/editor/usePlayback";
 import type { Edits } from "@/hooks/editor/useProject";
 import { useClockValue } from "@/hooks/useVideoClock";
 import { formatTime, type Clock } from "@/lib/time";
-import type { RegionKind } from "@/lib/editor/regions";
 import AddMenu from "./AddMenu";
 
 const SPEEDS = [0.5, 1, 1.5, 2];
@@ -34,13 +33,11 @@ export default function Transport({
   edits,
   isAddOpen,
   onAddOpenChange,
-  kinds,
 }: {
   playback: Playback;
   edits: Edits;
   isAddOpen: boolean;
   onAddOpenChange: (isOpen: boolean) => void;
-  kinds: RegionKind[];
 }) {
   return (
     <div className="grid h-10.25 grid-cols-3 items-start px-1 pt-1 hairline-b">
@@ -57,7 +54,7 @@ export default function Transport({
           size="icon"
           aria-label="Cut tool"
           pressed={edits.isCutting}
-          onPressedChange={() => edits.setCutting(true)}
+          onPressedChange={edits.setCutting}
         >
           <Scissors />
         </Toggle>
@@ -66,7 +63,6 @@ export default function Transport({
           isOpen={isAddOpen}
           onOpenChange={onAddOpenChange}
           onAdd={edits.add}
-          kinds={kinds}
         />
       </div>
       <div className="flex justify-center gap-1">
@@ -143,14 +139,22 @@ export default function Transport({
           {playback.isMuted ? <VolumeX /> : <Volume2 />}
         </Toggle>
         <Separator orientation="vertical" className="mx-2 my-3" />
-        <TimeReadout clock={playback.clock} />
+        <TimeReadout clock={playback.clock} at={edits.time.at} />
       </div>
     </div>
   );
 }
 
-function TimeReadout({ clock }: { clock: Clock }) {
-  const time = useClockValue(clock, (seconds) => formatTime(seconds * 1000));
+function TimeReadout({
+  clock,
+  at,
+}: {
+  clock: Clock;
+  at: (sourceMs: number) => number;
+}) {
+  const time = useClockValue(clock, (seconds) =>
+    formatTime(at(seconds * 1000)),
+  );
   return (
     <span className="mr-2 font-mono text-ui text-muted-foreground tabular-nums">
       {time}

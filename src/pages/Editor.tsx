@@ -16,10 +16,11 @@ import { useExport } from "@/hooks/editor/useExport";
 import { useProject } from "@/hooks/editor/useProject";
 import { useSavedProject } from "@/hooks/editor/useSavedProject";
 import { useLanes } from "@/hooks/editor/useLanes";
+import { useClicks } from "@/hooks/editor/useClicks";
+import { ringEvents } from "@/lib/editor/cursor";
 import ModifierEditor from "@/components/editor/timeline/ModifierEditor";
-import { useDevFlags } from "@/hooks/editor/useDevFlags";
 import DevPanel from "@/components/editor/header/DevPanel";
-import { ALL_KINDS, KINDS, regionKindForKey } from "@/lib/editor/regions";
+import { KINDS, regionKindForKey } from "@/lib/editor/regions";
 import { changeRegion } from "@/lib/editor/regions";
 import { editRegions } from "@/lib/editor/project";
 
@@ -38,20 +39,23 @@ export default function Editor() {
 
 function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
   const playback = usePlayback(videoSrc);
-  const dev = useDevFlags();
   const edits = useProject(playback.clock, playback.durationMs);
   useSavedProject(edits);
   const lanes = useLanes();
-  const kinds = dev.previewTypes ? ALL_KINDS : KINDS;
   const editing = edits.project.regions.find(
     ({ id }) => id === edits.editingId,
   );
   const focusedZoom =
     editing?.kind === "zoom" && edits.selectedIds.length === 1 ? editing : null;
   const { appearance, regions, clips } = edits.project;
-  useSpeed(playback, regions);
+  const soloed = lanes.solo
+    ? regions.filter(({ kind }) => kind === lanes.solo)
+    : regions;
+  useSpeed(playback, soloed);
   useCuts(playback, clips);
-  const exporting = useExport(edits.project, playback);
+  const clicks = useClicks();
+  const rings = ringEvents(clicks, regions);
+  const exporting = useExport(edits.project, playback, rings);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const nudgeOr =
     (drag: "move" | "end", deltaMs: number, step: () => void) => () =>
@@ -83,7 +87,7 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
     },
     (key) => {
       const kind = regionKindForKey(key);
-      if (!kind || !kinds.includes(kind)) return false;
+      if (!kind || !KINDS.includes(kind)) return false;
       edits.add(kind);
       return true;
     },
@@ -93,11 +97,7 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
       <Header name={name}>
         <div className="flex items-center gap-1">
           {import.meta.env.DEV ? (
-            <DevPanel
-              dev={dev}
-              edits={edits}
-              durationMs={playback.durationMs}
-            />
+            <DevPanel edits={edits} durationMs={playback.durationMs} />
           ) : null}
           <Button
             variant="ghost"
@@ -133,11 +133,8 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
             appearance={appearance}
             ratio={playback.ratio}
             clock={playback.clock}
-            regions={
-              lanes.solo
-                ? regions.filter(({ kind }) => kind === lanes.solo)
-                : regions
-            }
+            regions={soloed}
+            rings={ringEvents(clicks, soloed)}
             focus={
               focusedZoom && {
                 zoom: focusedZoom,
@@ -158,7 +155,6 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
               edits={edits}
               isAddOpen={isAddOpen}
               onAddOpenChange={setIsAddOpen}
-              kinds={kinds}
             />
             <Timeline
               clock={playback.clock}
@@ -168,7 +164,6 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
               heldMs={playback.heldMs}
               onSkim={playback.skim}
               lanes={lanes}
-              kinds={kinds}
             />
           </Island>
           <ModifierEditor edits={edits} />

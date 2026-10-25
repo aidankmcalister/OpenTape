@@ -9,7 +9,7 @@ import {
   type RegionDrag,
   type RegionKind,
 } from "@/lib/editor/regions";
-import { type Clip, removeClip, splitClip } from "@/lib/editor/clips";
+import { type Clip, keptTime, removeClip, splitClip } from "@/lib/editor/clips";
 import {
   editClips,
   editRegions,
@@ -31,9 +31,17 @@ export function useProject(clock: Clock, durationMs: number) {
     setHistory((current) => record(current, edit(current.present)));
   const changeRegions = (edit: (regions: Region[]) => Region[]) =>
     change((project) => editRegions(project, edit));
+  const changeShown = (edit: (shown: Region[], lengthMs: number) => Region[]) =>
+    change((project) =>
+      editRegions(project, (regions) =>
+        keptTime(project.clips, durationMs).edit(regions, edit),
+      ),
+    );
   const changeClips = (edit: (clips: Clip[]) => Clip[]) =>
     change((project) => editClips(project, edit));
   const project = draft ?? history.present;
+  const time = keptTime(project.clips, durationMs);
+  const shown = time.shown(project.regions);
   const selectOnly = (ids: number[], clipId: number | null = null) => {
     setSelectedIds(ids);
     setSelectedClipId(clipId);
@@ -41,6 +49,8 @@ export function useProject(clock: Clock, durationMs: number) {
   };
   return {
     project,
+    time,
+    shown,
     editingId: project.regions.some(({ id }) => id === editingId)
       ? editingId
       : null,
@@ -62,17 +72,19 @@ export function useProject(clock: Clock, durationMs: number) {
     selectClip: (id: number) => selectOnly([], id),
     change,
     add: (kind: RegionKind) => {
-      const atMs = playheadMs();
-      changeRegions((regions) => addRegion(regions, kind, atMs, durationMs));
+      const atMs = time.at(playheadMs());
+      changeShown((regions, lengthMs) =>
+        addRegion(regions, kind, atMs, lengthMs),
+      );
       selectOnly([nextId(project.regions)]);
     },
     retime: (id: number, drag: RegionDrag, deltaMs: number) =>
-      changeRegions((regions) =>
-        dragRegions(regions, [id], drag, deltaMs, durationMs),
+      changeShown((regions, lengthMs) =>
+        dragRegions(regions, [id], drag, deltaMs, lengthMs),
       ),
     nudge: (drag: "move" | "end", deltaMs: number) =>
-      changeRegions((regions) =>
-        dragRegions(regions, selectedIds, drag, deltaMs, durationMs),
+      changeShown((regions, lengthMs) =>
+        dragRegions(regions, selectedIds, drag, deltaMs, lengthMs),
       ),
     isCutting,
     setCutting: setIsCutting,

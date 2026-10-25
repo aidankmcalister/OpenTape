@@ -8,7 +8,6 @@ import {
   MousePointerClick,
   Pencil,
   Type,
-  Volume2,
   ZoomIn,
 } from "lucide-react";
 import { REGIONS, type RegionKind } from "@/lib/editor/regions";
@@ -17,7 +16,6 @@ import { cn } from "@/lib/utils";
 export const REGION_ICONS: Record<RegionKind, LucideIcon> = {
   zoom: ZoomIn,
   speed: FastForward,
-  audio: Volume2,
   captions: Captions,
   annotation: Pencil,
   blur: Droplet,

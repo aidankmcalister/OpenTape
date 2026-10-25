@@ -8,6 +8,7 @@ import { Move } from "lucide-react";
 import { useElementSize } from "@/hooks/useElementSize";
 import { useClockValue } from "@/hooks/useVideoClock";
 import { fillCss, frameLayout, type Appearance } from "@/lib/editor/appearance";
+import { type RingEvent, ringsAt } from "@/lib/editor/cursor";
 import { focusAt, focusBox, zoomAt } from "@/lib/editor/zoom";
 import type { Point } from "@/lib/geometry";
 import {
@@ -27,6 +28,7 @@ export default function Stage({
   ratio,
   clock,
   regions,
+  rings,
   focus,
   ...props
 }: ComponentProps<"video"> & {
@@ -34,14 +36,12 @@ export default function Stage({
   ratio: number;
   clock: Clock;
   regions: Region[];
+  rings: RingEvent[];
   focus: Focusing | null;
 }) {
   const { ref, size } = useElementSize<HTMLDivElement>();
-  const { frame, recording, radius, shadow, border, video } = frameLayout(
-    appearance,
-    size,
-    ratio,
-  );
+  const { frame, recording, radius, shadow, border, video, scale } =
+    frameLayout(appearance, size, ratio);
 
   return (
     <Island className="relative min-h-0 flex-1 bg-canvas dot-grid">
@@ -69,6 +69,12 @@ export default function Stage({
                 }}
                 {...props}
               />
+              <ClickRings
+                clock={clock}
+                rings={rings}
+                video={video}
+                scale={scale}
+              />
             </Zoom>
             {focus ? <FocusBox {...focus} /> : null}
             {border.color ? (
@@ -85,6 +91,47 @@ export default function Stage({
       </div>
       <InEffect clock={clock} regions={regions} />
     </Island>
+  );
+}
+
+function ClickRings({
+  clock,
+  rings,
+  video,
+  scale,
+}: {
+  clock: Clock;
+  rings: RingEvent[];
+  video: { x: number; y: number; width: number; height: number };
+  scale: number;
+}) {
+  const shown: ReturnType<typeof ringsAt> = JSON.parse(
+    useClockValue(clock, (seconds) =>
+      JSON.stringify(ringsAt(rings, seconds * 1000)),
+    ),
+  );
+  return shown.flatMap((ring, at) =>
+    ring.circles.map((circle, index) => {
+      const side = circle.radius * 2 * scale;
+      const line = Math.max(2, ring.size * 0.08) * scale;
+      return (
+        <div
+          key={`${at}-${index}`}
+          className="pointer-events-none absolute -translate-1/2 rounded-full"
+          style={{
+            left: video.x + ring.x * video.width,
+            top: video.y + ring.y * video.height,
+            width: side,
+            height: side,
+            opacity: circle.alpha,
+            background: circle.isFilled ? ring.color : undefined,
+            boxShadow: circle.isFilled
+              ? undefined
+              : `inset 0 0 0 ${line}px ${ring.color}`,
+          }}
+        />
+      );
+    }),
   );
 }
 

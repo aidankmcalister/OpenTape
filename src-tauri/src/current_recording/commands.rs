@@ -4,7 +4,7 @@ use std::process::Command;
 use anyhow::{Context, Result, ensure};
 use tauri::{AppHandle, Manager, State};
 
-use super::{CurrentRecording, KeptRecording, Shell, ShownRecording, Window};
+use super::{CurrentRecording, CursorLog, KeptRecording, Shell, ShownRecording, Window};
 use crate::PageEvent;
 use crate::export::{ExportLayout, ExportOptions};
 use crate::macos::{self, Alert, Choice};
@@ -159,6 +159,11 @@ pub(crate) async fn show_all_recordings(app: AppHandle) -> CmdResult {
     })
     .await?;
     Ok(())
+}
+
+#[tauri::command]
+pub(crate) async fn cursor_log(app: AppHandle) -> CmdResult<Option<CursorLog>> {
+    Ok(run_blocking(move || app.state::<CurrentRecording>().cursor_log()).await?)
 }
 
 #[tauri::command]
