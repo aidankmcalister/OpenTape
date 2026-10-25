@@ -52,6 +52,7 @@ describe("project", () => {
       appearance: { ...DEFAULT_APPEARANCE, padding: 12 },
       regions: [],
       clips: [],
+      suggestionsMade: false,
     });
   });
 });

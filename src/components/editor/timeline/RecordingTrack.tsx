@@ -11,7 +11,7 @@ export default function RecordingTrack({
   edits,
   durationMs,
   drag,
-  skim: { msAt, skimProps },
+  skim: { msAt },
 }: {
   edits: Edits;
   durationMs: number;
@@ -25,7 +25,6 @@ export default function RecordingTrack({
         "absolute inset-x-0 top-8 h-9",
         edits.isCutting && "cursor-crosshair",
       )}
-      {...skimProps}
       onPointerDownCapture={(event: PointerEvent<HTMLElement>) => {
         if (!edits.isCutting) return;
         event.stopPropagation();

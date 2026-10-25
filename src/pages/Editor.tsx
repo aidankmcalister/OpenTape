@@ -12,7 +12,7 @@ import Sidebar from "@/components/editor/sidebar/Sidebar";
 import { useExport } from "@/hooks/editor/useExport";
 import { useElementSize } from "@/hooks/useElementSize";
 import {
-  useClicks,
+  useCursor,
   useLanes,
   useOpenedRecording,
   useProject,
@@ -20,7 +20,6 @@ import {
 } from "@/hooks/editor/useProject";
 import { ringEvents } from "@/lib/editor/cursor";
 import ModifierEditor from "@/components/editor/timeline/ModifierEditor";
-import DevPanel from "@/components/editor/header/DevPanel";
 import { KINDS, regionKindForKey } from "@/lib/editor/regions";
 
 export default function Editor() {
@@ -28,7 +27,11 @@ export default function Editor() {
   return (
     <div className="flex h-screen flex-col bg-background">
       {recording ? (
-        <Workspace name={recording.name} videoSrc={recording.videoSrc} />
+        <Workspace
+          key={recording.videoSrc}
+          name={recording.name}
+          videoSrc={recording.videoSrc}
+        />
       ) : (
         <Header name={null} />
       )}
@@ -39,7 +42,13 @@ export default function Editor() {
 function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
   const playback = usePlayback(videoSrc);
   const { ref: trackRef, size: track } = useElementSize<HTMLDivElement>();
-  const edits = useProject(playback.clock, playback.durationMs, track.width);
+  const cursor = useCursor();
+  const edits = useProject(
+    playback.clock,
+    playback.durationMs,
+    track.width,
+    cursor,
+  );
   useSavedProject(edits);
   const lanes = useLanes();
   const editing = edits.project.regions.find(
@@ -53,9 +62,8 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
     : regions;
   useSpeed(playback, soloed);
   useCuts(playback, clips);
-  const clicks = useClicks();
-  const rings = ringEvents(clicks, regions);
-  const exporting = useExport(edits.project, playback, rings);
+  const rings = ringEvents(cursor.clicks, appearance.cursor);
+  const exporting = useExport(edits.project, playback, rings, cursor);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const nudgeOr =
     (drag: "move" | "end", deltaMs: number, step: () => void) => () =>
@@ -98,9 +106,6 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
     <>
       <Header name={name}>
         <div className="flex items-center gap-1">
-          {import.meta.env.DEV ? (
-            <DevPanel edits={edits} durationMs={playback.durationMs} />
-          ) : null}
           <Button
             variant="ghost"
             size="icon"
@@ -123,7 +128,7 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
         </div>
       </Header>
       <main className="flex min-h-0 flex-1 gap-2 px-2 pb-2">
-        <Sidebar edits={edits} />
+        <Sidebar edits={edits} cursor={cursor} />
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <Stage
             src={videoSrc}
@@ -131,7 +136,9 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
             ratio={playback.ratio}
             clock={playback.clock}
             regions={soloed}
-            rings={lanes.solo && lanes.solo !== "clickRing" ? [] : rings}
+            rings={rings}
+            cursor={cursor}
+            durationMs={playback.durationMs}
             focus={
               focusedZoom && {
                 zoom: focusedZoom,

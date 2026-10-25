@@ -7,7 +7,7 @@ import {
 } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { usePointerHover } from "@/hooks/usePointerHover";
-import { useOneAtATime, useTauriEvent } from "@/hooks/useTauri";
+import { useOneAtATime, useRustValue, useTauriEvent } from "@/hooks/useTauri";
 import { useVideoClock } from "@/hooks/useVideoClock";
 import type { PreviewKey } from "@/lib/bindings";
 import {
@@ -73,7 +73,8 @@ export function useRecordingPreview() {
     edit: () => oneAtATime(() => invoke("edit_recording")).catch(console.error),
   } satisfies Record<PreviewKey, () => Promise<unknown>>;
 
-  useTauriEvent(
+  useRustValue(
+    "shown_recording",
     "current-recording",
     (recording) => show(recording?.videoPath ?? null),
     "window",

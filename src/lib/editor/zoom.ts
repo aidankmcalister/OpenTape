@@ -5,6 +5,7 @@ import { FRAME_MS } from "./timeline";
 import { outputAt, type Region, resolveOverlaps } from "./regions";
 
 const ZOOM_MS = 600;
+const PAN_MS = 600;
 
 const MIDDLE = { x: 0.5, y: 0.5 };
 
@@ -12,23 +13,42 @@ export function zoomAt(regions: Region[], outputMs: number) {
   let from = 1;
   let target = 1;
   let since = -Infinity;
-  let center: Point = MIDDLE;
+  let zoom: Region | null = null;
   const scaleAt = (ms: number) =>
     from + (target - from) * ease((ms - since) / ZOOM_MS);
+  const now = () => ({
+    scale: scaleAt(outputMs),
+    target,
+    center: zoom ? centerAt(zoom, regions, outputMs) : MIDDLE,
+  });
   for (const region of resolveOverlaps(regions, "zoom")) {
     for (const [edgeMs, scale] of [
       [region.startMs, region.amount],
       [region.endMs, 1],
     ]) {
       const ms = outputAt(regions, edgeMs);
-      if (ms > outputMs) return { scale: scaleAt(outputMs), target, center };
+      if (ms > outputMs) return now();
       from = scaleAt(ms);
       target = scale;
       since = ms;
-      center = region.center ?? MIDDLE;
+      zoom = region;
     }
   }
-  return { scale: scaleAt(outputMs), target, center };
+  return now();
+}
+
+function centerAt(zoom: Region, regions: Region[], outputMs: number): Point {
+  let center = focusCenter(zoom);
+  for (const { afterMs, x, y } of zoom.path ?? []) {
+    const arrivesMs = outputAt(regions, zoom.startMs + afterMs);
+    const share = ease(clamp((outputMs - arrivesMs + PAN_MS) / PAN_MS, 0, 1));
+    if (share === 0) break;
+    center = {
+      x: center.x + (x - center.x) * share,
+      y: center.y + (y - center.y) * share,
+    };
+  }
+  return center;
 }
 
 export function focusCenter(zoom: Region): Point {

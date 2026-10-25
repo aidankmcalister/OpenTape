@@ -1,9 +1,23 @@
-import { type ComponentProps, type ReactNode } from "react";
+import { type ComponentProps, type ReactNode, useMemo } from "react";
 import { Move } from "lucide-react";
 import { useElementSize } from "@/hooks/useElementSize";
 import { useClockValue } from "@/hooks/useVideoClock";
-import { fillCss, frameLayout, type Appearance } from "@/lib/editor/appearance";
-import { type RingEvent, ringsAt } from "@/lib/editor/cursor";
+import {
+  type Appearance,
+  type CursorSettings,
+  fillCss,
+  frameLayout,
+} from "@/lib/editor/appearance";
+import {
+  DOT_POINTS,
+  cursorPath,
+  cursorPictures,
+  cursorUnit,
+  plainOr,
+  type CursorTrack,
+  type RingEvent,
+  ringsAt,
+} from "@/lib/editor/cursor";
 import { focusAt, focusBox, focusBoxStyle, zoomAt } from "@/lib/editor/zoom";
 import { type Point, rectStyle } from "@/lib/geometry";
 import {
@@ -24,6 +38,8 @@ export default function Stage({
   clock,
   regions,
   rings,
+  cursor,
+  durationMs,
   focus,
   ...props
 }: ComponentProps<"video"> & {
@@ -32,6 +48,8 @@ export default function Stage({
   clock: Clock;
   regions: Region[];
   rings: RingEvent[];
+  cursor: CursorTrack;
+  durationMs: number;
   focus: Focusing | null;
 }) {
   const { ref, size } = useElementSize<HTMLDivElement>();
@@ -45,37 +63,51 @@ export default function Stage({
           className="grid place-items-center rounded-lg shadow-stage"
           style={{ ...frame, background: fillCss(appearance.fill) }}
         >
-          <div
-            className="relative overflow-hidden"
-            style={{
-              ...recording,
-              borderRadius: radius,
-              boxShadow: `0 ${shadow.offsetY}px ${shadow.blur}px ${shadow.color}`,
-            }}
-          >
-            <Zoom clock={clock} regions={focus ? [] : regions}>
-              <video
-                className="absolute max-w-none object-cover"
-                style={rectStyle(video)}
-                {...props}
-              />
-              <ClickRings
-                clock={clock}
-                rings={rings}
-                video={video}
-                scale={scale}
-              />
-            </Zoom>
-            {focus ? <FocusBox {...focus} /> : null}
-            {border.color ? (
-              <div
-                className="pointer-events-none absolute inset-0"
-                style={{
-                  borderRadius: radius,
-                  boxShadow: `inset 0 0 0 ${border.width}px ${border.color}`,
-                }}
-              />
-            ) : null}
+          <div className="relative" style={recording}>
+            <div
+              className="relative size-full overflow-hidden"
+              style={{
+                borderRadius: radius,
+                boxShadow: `0 ${shadow.offsetY}px ${shadow.blur}px ${shadow.color}`,
+              }}
+            >
+              <Zoom clock={clock} regions={focus ? [] : regions}>
+                <video
+                  className="absolute max-w-none object-cover"
+                  style={rectStyle(video)}
+                  {...props}
+                />
+                <ClickRings
+                  clock={clock}
+                  rings={rings}
+                  video={video}
+                  scale={scale}
+                />
+              </Zoom>
+              {focus ? <FocusBox {...focus} /> : null}
+              {border.color ? (
+                <div
+                  className="pointer-events-none absolute inset-0"
+                  style={{
+                    borderRadius: radius,
+                    boxShadow: `inset 0 0 0 ${border.width}px ${border.color}`,
+                  }}
+                />
+              ) : null}
+            </div>
+            <div className="pointer-events-none absolute inset-0">
+              <Zoom clock={clock} regions={focus ? [] : regions}>
+                <Cursor
+                  clock={clock}
+                  track={cursor}
+                  settings={appearance.cursor}
+                  durationMs={durationMs}
+                  video={video}
+                  size={recording}
+                  regions={focus ? [] : regions}
+                />
+              </Zoom>
+            </div>
           </div>
         </div>
       </div>
@@ -120,6 +152,86 @@ function ClickRings({
         />
       );
     }),
+  );
+}
+
+function Cursor({
+  clock,
+  track,
+  settings,
+  durationMs,
+  video,
+  size,
+  regions,
+}: {
+  clock: Clock;
+  track: CursorTrack;
+  settings: CursorSettings;
+  durationMs: number;
+  video: { x: number; y: number; width: number; height: number };
+  size: { width: number; height: number };
+  regions: Region[];
+}) {
+  const spotAt = useMemo(
+    () => cursorPath(track, settings, durationMs),
+    [track, settings, durationMs],
+  );
+  const pictures = useMemo(
+    () => cursorPictures(track.images, plainOr(settings).style),
+    [track.images, settings],
+  );
+  const spot = useClockValue(clock, (seconds) => {
+    const at = spotAt(seconds * 1000);
+    const zoom = zoomAt(regions, outputAt(regions, seconds * 1000));
+    const shown = (tip: number, center: number, length: number) => {
+      const seen = center * length + (tip - center * length) * zoom.scale;
+      return seen >= 0 && seen <= length;
+    };
+    const isInside =
+      at &&
+      shown(video.x + at.x * video.width, zoom.center.x, size.width) &&
+      shown(video.y + at.y * video.height, zoom.center.y, size.height);
+    return isInside ? at : null;
+  });
+  if (!spot || spot.alpha === 0) return null;
+  const px = cursorUnit(track, settings) * video.width * spot.scale;
+  const tip = {
+    x: video.x + spot.x * video.width,
+    y: video.y + spot.y * video.height,
+  };
+  if (plainOr(settings).style === "Dot") {
+    const side = DOT_POINTS * px;
+    return (
+      <div
+        className="pointer-events-none absolute rounded-full border-cursor-edge/90 bg-cursor/55"
+        style={{
+          left: tip.x - side / 2,
+          top: tip.y - side / 2,
+          width: side,
+          height: side,
+          borderWidth: side * 0.06,
+          opacity: spot.alpha,
+        }}
+      />
+    );
+  }
+  const image = pictures.find(({ kind }) => kind === spot.kind) ?? pictures[0];
+  if (!image) return null;
+  return (
+    <img
+      src={image.src}
+      alt=""
+      className="pointer-events-none absolute max-w-none"
+      style={{
+        left: tip.x - image.hotX * px,
+        top: tip.y - image.hotY * px,
+        width: image.width * px,
+        height: image.height * px,
+        opacity: spot.alpha,
+        rotate: `${spot.angle}deg`,
+        transformOrigin: `${image.hotX * px}px ${image.hotY * px}px`,
+      }}
+    />
   );
 }
 

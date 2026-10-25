@@ -20,8 +20,8 @@ import {
   removeRegionAt,
   REGIONS,
   resolveOverlaps,
-  settingValue,
   winnerAt,
+  settleSuggestion,
 } from "./regions";
 
 describe("regions", () => {
@@ -198,10 +198,6 @@ test.each(KINDS)("a new %s block shows its default setting", (kind) => {
 });
 
 test("a setting change reads back, and amount stays on the region", () => {
-  const [ring] = addRegion([], "clickRing", 0, 10_000);
-  expect(blockValue(ring)).toBe("Ring");
-  const bigger = { ...ring, ...changeSetting(ring, "size", 64) };
-  expect(settingValue(bigger, "size")).toBe(64);
   const [speed] = addRegion([], "speed", 0, 10_000);
   expect(changeSetting(speed, "amount", "4")).toEqual({ amount: 4 });
 });
@@ -347,4 +343,25 @@ describe("who wins and who touches", () => {
     expect(nextId([])).toBe(1);
     expect(nextId(regions)).toBe(4);
   });
+});
+
+test("settleSuggestion keeps a suggestion as a plain region, or removes it", () => {
+  const suggested = {
+    id: 1,
+    kind: "zoom" as const,
+    startMs: 0,
+    endMs: 1000,
+    amount: 1.5,
+    isSuggested: true,
+  };
+  const other = { ...suggested, id: 2, startMs: 2000, endMs: 3000 };
+  const [kept] = settleSuggestion([suggested, other], 1, true);
+  expect(kept).toEqual({
+    id: 1,
+    kind: "zoom",
+    startMs: 0,
+    endMs: 1000,
+    amount: 1.5,
+  });
+  expect(settleSuggestion([suggested, other], 1, false)).toEqual([other]);
 });

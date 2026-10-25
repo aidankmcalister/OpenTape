@@ -1,10 +1,7 @@
+pub(crate) mod cursor;
 pub(crate) mod glass;
 
-use std::{
-    panic::AssertUnwindSafe,
-    path::{Path, PathBuf},
-    sync::mpsc,
-};
+use std::{panic::AssertUnwindSafe, path::PathBuf, sync::mpsc};
 
 use anyhow::{Context, Result, anyhow, ensure};
 use objc2::{
@@ -15,7 +12,7 @@ use objc2_app_kit::{
     NSApplication, NSPanel, NSPasteboard, NSResponder, NSWindow, NSWindowCollectionBehavior,
     NSWindowLevel, NSWindowStyleMask,
 };
-use objc2_foundation::{NSArray, NSFileManager, NSObject, NSString, NSURL};
+use objc2_foundation::{NSArray, NSObject, NSString, NSURL};
 use tauri::{AppHandle, WebviewWindow};
 use tauri_plugin_dialog::{
     DialogExt, MessageDialogButtons, MessageDialogKind, MessageDialogResult,
@@ -108,13 +105,6 @@ pub(crate) fn put_file_on_clipboard(app: &AppHandle, path: PathBuf) -> Result<()
         );
         Ok(())
     })?
-}
-
-pub(crate) fn trash(path: &Path) -> Result<()> {
-    let url = NSURL::from_file_path(path).context("not a file path")?;
-    NSFileManager::defaultManager()
-        .trashItemAtURL_resultingItemURL_error(&url, None)
-        .map_err(|err| anyhow!("{}", err.localizedDescription()))
 }
 
 pub(crate) struct Alert {

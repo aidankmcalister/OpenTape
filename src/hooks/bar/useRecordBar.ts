@@ -1,13 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { LogicalPosition } from "@tauri-apps/api/dpi";
-import {
-  CheckMenuItem,
-  Menu,
-  MenuItem,
-  PredefinedMenuItem,
-  Submenu,
-} from "@tauri-apps/api/menu";
+import { CheckMenuItem, Menu, MenuItem } from "@tauri-apps/api/menu";
 import { usePointerHover } from "@/hooks/usePointerHover";
 import {
   useInvokeOnMount,
@@ -15,22 +9,9 @@ import {
   useRustValue,
   useTauriEvent,
 } from "@/hooks/useTauri";
-import type {
-  Animation,
-  Devices,
-  KeptRecording,
-  Mode,
-  RecordingStatus,
-} from "@/lib/bindings";
+import type { Animation, Devices, Mode, RecordingStatus } from "@/lib/bindings";
 import type { Size } from "@/lib/geometry";
-import {
-  elapsedMsAt,
-  parseOptions,
-  recentLabel,
-  recentSummary,
-} from "@/lib/bar/bar";
-
-const RECENT_LIMIT = 20;
+import { elapsedMsAt, parseOptions } from "@/lib/bar/bar";
 
 type Timer = { status: RecordingStatus; receivedAt: number };
 
@@ -82,35 +63,6 @@ export function useRecordBar() {
     restart: () => attempt(() => invoke("restart_recording")),
     stop: () => attempt(() => invoke("stop_recording")),
     dismissError: () => setError(null),
-    openRecent: (anchor: HTMLElement) =>
-      oneAtATime(async () => {
-        const kept = await invoke<KeptRecording[]>("kept_recordings");
-        if (kept.length === 0) {
-          const none = await MenuItem.new({
-            text: "No recordings yet",
-            enabled: false,
-          });
-          return popupBelow(anchor, [none]);
-        }
-        const recent = await Promise.all(
-          kept
-            .slice(0, RECENT_LIMIT)
-            .map((recording) =>
-              recentMenu(recentLabel(recording, new Date()), (command) =>
-                attempt(() => invoke(command, { folder: recording.folder })),
-              ),
-            ),
-        );
-        await popupBelow(anchor, [
-          ...recent,
-          await PredefinedMenuItem.new({ item: "Separator" }),
-          await MenuItem.new({ text: recentSummary(kept), enabled: false }),
-          await MenuItem.new({
-            text: "Show All in Finder",
-            action: () => void attempt(() => invoke("show_all_recordings")),
-          }),
-        ]);
-      }).catch(console.error),
     openSettings: (anchor: HTMLElement) =>
       oneAtATime(async () =>
         popupBelow(anchor, [
@@ -192,33 +144,9 @@ function quit() {
   return invoke("quit").catch(console.error);
 }
 
-async function recentMenu(
-  label: string,
-  run: (command: string) => Promise<void>,
-) {
-  return Submenu.new({
-    text: label,
-    items: [
-      await MenuItem.new({
-        text: "Open in Editor",
-        action: () => void run("reopen_recording"),
-      }),
-      await MenuItem.new({
-        text: "Show in Finder",
-        action: () => void run("show_recording_in_finder"),
-      }),
-      await PredefinedMenuItem.new({ item: "Separator" }),
-      await MenuItem.new({
-        text: "Move to Trash",
-        action: () => void run("trash_recording"),
-      }),
-    ],
-  });
-}
-
 async function popupBelow(
   anchor: HTMLElement,
-  items: (MenuItem | CheckMenuItem | Submenu | PredefinedMenuItem)[],
+  items: (MenuItem | CheckMenuItem)[],
 ) {
   const { left, bottom } = anchor.getBoundingClientRect();
   const menu = await Menu.new({ items });

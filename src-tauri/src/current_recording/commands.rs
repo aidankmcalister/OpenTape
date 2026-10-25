@@ -4,7 +4,7 @@ use std::process::Command;
 use anyhow::{Context, Result, ensure};
 use tauri::{AppHandle, Manager, State};
 
-use super::{CurrentRecording, CursorLog, KeptRecording, Shell, ShownRecording, Window};
+use super::{CurrentRecording, CursorLog, Shell, ShownRecording, Window};
 use crate::PageEvent;
 use crate::export::{ExportLayout, ExportOptions};
 use crate::macos::{self, Alert, Choice};
@@ -16,8 +16,9 @@ impl Shell for AppHandle {
         macos::ask(self, alert)
     }
 
-    fn trash(&self, folder: &Path) -> Result<()> {
-        macos::trash(folder)
+    fn export_and_close(&self) -> Result<()> {
+        PageEvent::ExportAndClose.send_to(self, editor::LABEL)?;
+        Ok(())
     }
 
     fn switch(&self, from: Window, to: Window, recording: Option<&ShownRecording>) -> Result<()> {
@@ -95,16 +96,12 @@ pub(crate) async fn show_export_in_finder(path: String) -> CmdResult {
 }
 
 fn reveal(path: &Path) -> Result<()> {
-    finder(path, true)
-}
-
-fn finder(path: &Path, select: bool) -> Result<()> {
     ensure!(path.exists(), "{} isn't there any more", path.display());
-    let mut open = Command::new("/usr/bin/open");
-    if select {
-        open.arg("-R");
-    }
-    let status = open.arg(path).status().context("could not open Finder")?;
+    let status = Command::new("/usr/bin/open")
+        .arg("-R")
+        .arg(path)
+        .status()
+        .context("could not open Finder")?;
     ensure!(status.success(), "Finder could not show {}", path.display());
     Ok(())
 }
@@ -122,43 +119,13 @@ pub(crate) fn edit_recording(app: AppHandle, current: State<'_, CurrentRecording
 }
 
 #[tauri::command]
-pub(crate) async fn kept_recordings(app: AppHandle) -> CmdResult<Vec<KeptRecording>> {
-    Ok(run_blocking(move || app.state::<CurrentRecording>().kept_recordings()).await?)
-}
-
-#[tauri::command]
-pub(crate) async fn reopen_recording(app: AppHandle, folder: String) -> CmdResult {
-    run_blocking(move || app.state::<CurrentRecording>().reopen(&app, &folder)).await?;
-    Ok(())
-}
-
-#[tauri::command]
-pub(crate) async fn trash_recording(app: AppHandle, folder: String) -> CmdResult {
-    run_blocking(move || app.state::<CurrentRecording>().trash(&app, &folder)).await?;
-    Ok(())
-}
-
-#[tauri::command]
-pub(crate) async fn show_recording_in_finder(app: AppHandle, folder: String) -> CmdResult {
-    let path = app.state::<CurrentRecording>().stored(&folder)?;
-    run_blocking(move || reveal(&path)).await?;
-    Ok(())
-}
-
-#[tauri::command]
-pub(crate) async fn show_all_recordings(app: AppHandle) -> CmdResult {
-    let storage = app.state::<CurrentRecording>().folders.storage.clone();
-    run_blocking(move || {
-        std::fs::create_dir_all(&storage)?;
-        finder(&storage, false)
-    })
-    .await?;
-    Ok(())
-}
-
-#[tauri::command]
 pub(crate) async fn cursor_log(app: AppHandle) -> CmdResult<Option<CursorLog>> {
     Ok(run_blocking(move || app.state::<CurrentRecording>().cursor_log()).await?)
+}
+
+#[tauri::command]
+pub(crate) async fn cursor_images() -> CmdResult<Vec<crate::macos::cursor::CursorImage>> {
+    Ok(run_blocking(crate::macos::cursor::cursor_images).await?)
 }
 
 #[tauri::command]
@@ -173,6 +140,12 @@ pub(crate) async fn save_project(app: AppHandle, json: String) -> CmdResult {
 }
 
 #[tauri::command]
-pub(crate) fn editor_recording(current: State<'_, CurrentRecording>) -> Option<ShownRecording> {
-    current.shown()
+pub(crate) fn shown_recording(
+    window: tauri::WebviewWindow,
+    current: State<'_, CurrentRecording>,
+) -> Option<ShownRecording> {
+    current
+        .shown()
+        .filter(|(shown_in, _)| label(*shown_in) == window.label())
+        .map(|(_, shown)| shown)
 }

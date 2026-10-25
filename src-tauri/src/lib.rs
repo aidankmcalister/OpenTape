@@ -39,6 +39,7 @@ pub(crate) enum PageEvent {
     PreviewPointer(Option<Point>),
     PreviewKey(PreviewKey),
     ExportProgress(f32),
+    ExportAndClose,
 }
 
 impl PageEvent {
@@ -115,9 +116,17 @@ pub fn run() -> tauri::Result<()> {
             bar::setup(&bar)?;
             preview::setup(app.handle())?;
             editor::setup(app.handle());
+
             picker::prepare(app.handle().clone());
             #[cfg(debug_assertions)]
-            dev::open_editor_if_asked(app.handle());
+            let is_dev_editor = dev::open_editor_if_asked(app.handle());
+            #[cfg(not(debug_assertions))]
+            let is_dev_editor = false;
+            if !is_dev_editor
+                && let Err(err) = app.state::<CurrentRecording>().recover(app.handle())
+            {
+                eprintln!("could not recover the last recording: {err:#}");
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -139,14 +148,10 @@ pub fn run() -> tauri::Result<()> {
             current_recording::commands::close_recording,
             current_recording::commands::show_saved_in_finder,
             current_recording::commands::edit_recording,
-            current_recording::commands::editor_recording,
+            current_recording::commands::shown_recording,
             current_recording::commands::load_project,
             current_recording::commands::cursor_log,
-            current_recording::commands::kept_recordings,
-            current_recording::commands::reopen_recording,
-            current_recording::commands::trash_recording,
-            current_recording::commands::show_recording_in_finder,
-            current_recording::commands::show_all_recordings,
+            current_recording::commands::cursor_images,
             settings::get_settings,
             settings::set_settings,
             settings::choose_save_folder,

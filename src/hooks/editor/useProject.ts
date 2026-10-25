@@ -1,8 +1,13 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useInvokeOnMount, useRustValue } from "@/hooks/useTauri";
-import type { CursorLog, ShownRecording } from "@/lib/bindings";
-import { type CursorClick, readClicks } from "@/lib/editor/cursor";
+import type { CursorImage, CursorLog, ShownRecording } from "@/lib/bindings";
+import {
+  type CursorTrack,
+  NO_CURSOR,
+  readCursor,
+  visibleBox,
+} from "@/lib/editor/cursor";
 import type { Appearance } from "@/lib/editor/appearance";
 import {
   addRegion,
@@ -12,6 +17,7 @@ import {
   nextId,
   removeRegionAt,
   removeRegions,
+  settleSuggestion,
   type Region,
   type RegionDrag,
   type RegionKind,
@@ -35,6 +41,7 @@ import {
   readProject,
   record,
   redo,
+  suggest,
   undo,
 } from "@/lib/editor/project";
 import type { Clock } from "@/lib/time";
@@ -43,8 +50,16 @@ export function useProject(
   clock: Clock,
   durationMs: number,
   trackWidthPx: number,
+  cursor: CursorTrack,
 ) {
   const [history, setHistory] = useState(() => historyOf(NEW_PROJECT));
+  const canSuggest = cursor.moves.length > 0 && durationMs > 0;
+  if (canSuggest && !history.present.suggestionsMade) {
+    setHistory((current) => ({
+      ...current,
+      present: suggest(current.present, cursor, durationMs),
+    }));
+  }
   const [draft, setDraft] = useState<Project | null>(null);
   const latestDraft = useRef<Project | null>(null);
   const present = useRef(history.present);
@@ -156,6 +171,8 @@ export function useProject(
           editRegions(project, (regions) => changeRegion(regions, id, change)),
         isPreview,
       ),
+    settle: (id: number, isKept: boolean) =>
+      changeRegions((regions) => settleSuggestion(regions, id, isKept)),
     isCutting,
     setCutting: setIsCutting,
     split: (atMs: number) =>
@@ -211,7 +228,7 @@ export function useSavedProject(edits: Edits) {
 
 export function useOpenedRecording() {
   const [recording, setRecording] = useState<ShownRecording | null>(null);
-  useRustValue("editor_recording", "current-recording", setRecording, "window");
+  useRustValue("shown_recording", "current-recording", setRecording, "window");
 
   if (!recording) return null;
   return {
@@ -220,12 +237,41 @@ export function useOpenedRecording() {
   };
 }
 
-export function useClicks(): CursorClick[] {
-  const [clicks, setClicks] = useState<CursorClick[]>([]);
+export function useCursor(): CursorTrack {
+  const [track, setTrack] = useState(NO_CURSOR);
+  const [images, setImages] = useState<CursorImage[]>([]);
   useInvokeOnMount<CursorLog | null>("cursor_log", (log) => {
-    if (log) setClicks(readClicks(log.meta, log.events));
+    if (log) setTrack(readCursor(log.meta, log.events));
   });
-  return clicks;
+  useInvokeOnMount<CursorImage[]>("cursor_images", setImages);
+  return useMemo(() => ({ ...track, images }), [track, images]);
+}
+
+export function useVisibleBox(src: string) {
+  const [box, setBox] = useState<
+    ReturnType<typeof visibleBox> & {
+      full: { width: number; height: number };
+    }
+  >();
+  useEffect(() => {
+    let isLive = true;
+    const image = new Image();
+    image.src = src;
+    void image.decode().then(() => {
+      const canvas = document.createElement("canvas");
+      [canvas.width, canvas.height] = [image.naturalWidth, image.naturalHeight];
+      const context = canvas.getContext("2d");
+      context?.drawImage(image, 0, 0);
+      const pixels = context?.getImageData(0, 0, canvas.width, canvas.height);
+      if (!isLive || !pixels) return;
+      const full = { width: canvas.width, height: canvas.height };
+      setBox({ ...visibleBox(pixels.data, canvas.width), full });
+    });
+    return () => {
+      isLive = false;
+    };
+  }, [src]);
+  return box;
 }
 
 export function useLanes() {

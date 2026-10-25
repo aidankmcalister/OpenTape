@@ -15,10 +15,12 @@ use objc2_foundation::{NSArray, NSError, NSString, NSURL};
 use serde::Deserialize;
 use ts_rs::TS;
 
+mod cursor;
 mod cutout;
 mod rings;
 mod writers;
 
+pub(crate) use cursor::ExportCursor;
 use cutout::cutout;
 pub(crate) use rings::ExportRing;
 use writers::{write_gif, write_mp4};
@@ -39,6 +41,7 @@ pub(crate) struct ExportLayout {
     speed: Vec<ExportSpeed>,
     cuts: Vec<ExportCut>,
     rings: Vec<ExportRing>,
+    cursor: Option<ExportCursor>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, TS)]
@@ -153,13 +156,15 @@ pub(crate) fn export(
         .firstObject()
         .context("the recording has no video")?;
     let natural = unsafe { track.naturalSize() };
-    let (recording, video_rect, height, zoom, rings) = (
+    let (recording, video_rect, height, zoom, rings, cursor) = (
         layout.recording.clone(),
         layout.video.clone(),
         layout.height,
         layout.zoom.clone(),
         layout.rings.clone(),
+        layout.cursor.clone(),
     );
+    let pictures = cursor.as_ref().map(ExportCursor::pictures).transpose()?;
     let mut cuts = layout.cuts.clone();
     cuts.sort_by(|a, b| a.start.total_cmp(&b.start));
     let picture = CGRect::new(
@@ -181,9 +186,18 @@ pub(crate) fn export(
                         frame = image.imageByCompositingOverImage(&frame);
                     }
                 }
-                let image = cutout
-                    .imageByCompositingOverImage(&frame)
-                    .imageByCroppingToRect(picture);
+                let mut image = cutout.imageByCompositingOverImage(&frame);
+                if let Some(Ok(Some(drawn))) =
+                    cursor
+                        .as_ref()
+                        .zip(pictures.as_ref())
+                        .map(|(cursor, pictures)| {
+                            cursor.image(now, &video, &recording, height, pictures)
+                        })
+                {
+                    image = drawn.imageByCompositingOverImage(&image);
+                }
+                let image = image.imageByCroppingToRect(picture);
                 request.finishWithImage_context(&image, None);
             }
         },

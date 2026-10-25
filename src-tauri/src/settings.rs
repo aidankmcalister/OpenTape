@@ -15,7 +15,6 @@ use crate::util::{CmdResult, lock, run_blocking};
 #[ts(export, export_to = "bindings.ts")]
 pub(crate) struct Settings {
     pub save_folder: Option<String>,
-    pub delete_after_days: Option<u32>,
 }
 
 pub(crate) struct AppSettings {
@@ -56,16 +55,8 @@ fn read(path: &Path) -> Settings {
 
 pub(crate) fn apply(app: &AppHandle) {
     let settings = app.state::<AppSettings>().current();
-    let current = app.state::<CurrentRecording>();
-    current.set_save_folder(settings.save_folder.map(PathBuf::from));
-    if let Some(days) = settings.delete_after_days {
-        let app = app.clone();
-        tauri::async_runtime::spawn_blocking(move || {
-            if let Err(err) = app.state::<CurrentRecording>().trash_older_than(&app, days) {
-                eprintln!("could not clean up old recordings: {err:#}");
-            }
-        });
-    }
+    app.state::<CurrentRecording>()
+        .set_save_folder(settings.save_folder.map(PathBuf::from));
 }
 
 #[tauri::command]
@@ -110,9 +101,9 @@ mod tests {
         std::fs::create_dir_all(&folder).expect("the temp folder can be made");
         std::fs::write(&path, "{broken").expect("the temp file can be written");
         assert_eq!(read(&path), Settings::default());
-        std::fs::write(&path, r#"{"deleteAfterDays":30,"later":true}"#)
+        std::fs::write(&path, r#"{"saveFolder":"/tmp/x","deleteAfterDays":30}"#)
             .expect("the temp file can be written");
-        assert_eq!(read(&path).delete_after_days, Some(30));
+        assert_eq!(read(&path).save_folder.as_deref(), Some("/tmp/x"));
     }
 
     #[test]
@@ -122,7 +113,6 @@ mod tests {
         let settings = AppSettings::load(folder.join("settings.json"));
         let chosen = Settings {
             save_folder: Some("/tmp/exports".into()),
-            delete_after_days: Some(90),
         };
         settings
             .save(chosen.clone())

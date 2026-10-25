@@ -2,8 +2,9 @@ import { describe, expect, test } from "bun:test";
 import type { Region } from "./regions";
 import {
   blockContent,
+  suggestionContent,
   blockOrder,
-  isUnderChip,
+  chipFrom,
   nextBlock,
   rulerLabels,
   frameStep,
@@ -152,8 +153,6 @@ describe("ruler labels and block navigation", () => {
     expect(labels.filter(({ isCrowded }) => !isCrowded).length).toBeGreaterThan(
       0,
     );
-    expect(isUnderChip(labels[0], labels[0].from)).toBe(true);
-    expect(isUnderChip(labels[0], labels[0].to + 40)).toBe(false);
   });
 
   const zoom = (id: number, startMs: number): Region => ({
@@ -182,3 +181,21 @@ describe("ruler labels and block navigation", () => {
     expect(nextBlock(regions, lanes, regions[0], "up")).toBeUndefined();
   });
 });
+
+test("the playhead chip centers on the line, but slides inward at either end of the track", () => {
+  expect(chipFrom(500, 1000)).toBe(470);
+  expect(chipFrom(0, 1000)).toBe(-8);
+  expect(chipFrom(1000, 1000)).toBe(948);
+  expect(chipFrom(0, 0)).toBe(-8);
+});
+
+test.each([
+  [200, "full"],
+  [90, "buttons"],
+  [50, "icon"],
+] as const)(
+  "a %ppx suggestion shows %p: the name goes first, then the buttons, and the icon stays",
+  (width, fit) => {
+    expect(suggestionContent(width, "Auto zoom")).toBe(fit);
+  },
+);

@@ -81,6 +81,8 @@
     var(--track-modifiers)
   );
   --color-hue-foreground: color-mix(in srgb, rgb(var(--hue)) 65%, white);
+  --color-cursor: var(--cursor);
+  --color-cursor-edge: var(--cursor-edge);
   --color-on-hue: var(--on-hue);
   --color-track-recording: var(--track-recording);
   --color-track-modifiers: var(--track-modifiers);
@@ -112,6 +114,8 @@
   --orange-soft: #ff9a4d;
   --red: #e5484d;
   --white: #ffffff;
+  --cursor: #000000;
+  --cursor-edge: #ffffff;
 }
 
 :root {

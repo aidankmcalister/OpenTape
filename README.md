@@ -37,11 +37,11 @@ The TypeScript types in `src/lib/bindings.ts` are generated from the Rust types 
 ## Permissions
 
 - Screen Recording. macOS asks the first time the app reads the screen, when you pick a mode. If it's off, the record bar shows the error. Turn it on in System Settings, Privacy & Security, Screen & System Audio Recording.
-- That's all. The cursor log polls the cursor position, which needs no Accessibility or Input Monitoring permission. Listing cameras and microphones needs no permission either. The microphone and camera will ask once audio and camera recording are built.
+- That's all. The cursor log polls the cursor position and shape, and notes when a key was pressed (only the time, never which key, read from macOS's count of key presses) so the editor can suggest zooms and speed-ups where you typed. None of it needs Accessibility or Input Monitoring permission, and it stays with the recording on your Mac. Listing cameras and microphones needs no permission either. The microphone and camera will ask once audio and camera recording are built.
 
 ## Where things go
 
-Recordings wait in app storage, at `~/Library/Application Support/com.aidankmcalister.screen-recorder/recordings/`. Nothing lands in your folders unless you press Save, which puts one `.mp4` in `~/Downloads`. Closing the preview or editor deletes the copy in app storage.
+Nothing is kept. A recording waits in a hidden folder (`~/Library/Application Support/com.aidankmcalister.screen-recorder/recordings/`) only while the preview or editor shows it. Save in the preview, or Export in the editor, puts a file in `~/Downloads` (or the folder chosen in Settings); closing either window deletes the hidden copy, after asking if nothing was saved. If the app crashes, the next launch opens the last recording in the preview so it can still be saved.
 
 ## How it's organized
 

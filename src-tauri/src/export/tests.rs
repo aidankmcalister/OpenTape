@@ -138,6 +138,9 @@ fn exports_a_recording_in_the_default_appearance() {
             }]
         }),
         rings: vec![],
+        cursor: std::env::var("EXPORT_TEST_CURSOR")
+            .ok()
+            .map(|path| serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()),
     };
     let var = |name: &str, or: &str| std::env::var(name).unwrap_or(or.into());
     let options = ExportOptions {

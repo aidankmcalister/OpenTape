@@ -1,5 +1,5 @@
-import type { KeyboardEvent, ReactNode } from "react";
-import { ChevronDown, ChevronRight, Eye } from "lucide-react";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
+import { Check, ChevronDown, ChevronRight, Eye, X } from "lucide-react";
 import { Kbd } from "@/components/ui/kbd";
 import { Toggle } from "@/components/ui/toggle";
 import {
@@ -18,6 +18,7 @@ import {
   covers,
   coveredStretches,
   REGIONS,
+  SUGGESTIONS,
   touchingSides,
   winnerAt,
   type Region,
@@ -26,6 +27,7 @@ import {
 } from "@/lib/editor/regions";
 import {
   blockContent,
+  suggestionContent,
   msAtX,
   percentAt,
   regionsInBox,
@@ -38,6 +40,7 @@ import {
 import type { Clock } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { hueOf, REGION_ICONS } from "./kinds";
+import { Named } from "../Panel";
 
 export function LaneGutters({
   lanes,
@@ -236,6 +239,7 @@ export function LaneTracks({
             at={time.at}
             drag={drag.region}
             onOpen={() => open(region.id)}
+            onSettle={(isKept) => edits.settle(region.id, isKept)}
             onKeyDown={(event) => onBlockKey(event, region)}
           />
         );
@@ -284,6 +288,7 @@ function Block({
   at,
   drag,
   onOpen,
+  onSettle,
   onKeyDown,
 }: {
   region: Region;
@@ -301,18 +306,18 @@ function Block({
   at: (sourceMs: number) => number;
   drag: TimelineDrag["region"];
   onOpen: () => void;
+  onSettle: (isKept: boolean) => void;
   onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
 }) {
+  const [isPillOpen, setIsPillOpen] = useState(false);
   const Icon = REGION_ICONS[region.kind];
-  const { label } = REGIONS[region.kind];
-  const value = blockValue(region);
+  const suggestion = region.isSuggested ? SUGGESTIONS[region.kind] : undefined;
+  const label = suggestion?.label ?? REGIONS[region.kind].label;
+  const value = suggestion ? "" : blockValue(region);
   const lengthMs = region.endMs - region.startMs;
   const gapsPx = Number(touches.start) + Number(touches.end);
-  const content = blockContent(
-    (trackWidth * lengthMs) / durationMs - gapsPx,
-    label,
-    value,
-  );
+  const widthPx = (trackWidth * lengthMs) / durationMs - gapsPx;
+  const content = blockContent(widthPx, label, value);
   const isActive = useClockValue(clock, (seconds) =>
     covers(region, at(seconds * 1000)),
   );
@@ -331,6 +336,64 @@ function Block({
     onDoubleClick: onOpen,
     ...drag(region.id, "move"),
   };
+
+  if (suggestion && !lane.isCollapsed) {
+    const fit = suggestionContent(widthPx, label);
+    const choice = (
+      <span
+        className="flex shrink-0 gap-1"
+        onPointerDown={(event) => event.stopPropagation()}
+        onDoubleClick={(event) => event.stopPropagation()}
+      >
+        <button
+          type="button"
+          aria-label={`Keep ${label.toLowerCase()}`}
+          className="flex size-4 items-center justify-center rounded-sm bg-hue/25 text-hue-foreground transition-colors hover:bg-hue hover:text-on-hue"
+          onClick={() => onSettle(true)}
+        >
+          <Check className="size-3" />
+        </button>
+        <button
+          type="button"
+          aria-label={`Remove ${label.toLowerCase()}`}
+          className="flex size-4 items-center justify-center rounded-sm bg-foreground/10 text-muted-foreground transition-colors hover:text-foreground"
+          onClick={() => onSettle(false)}
+        >
+          <X className="size-3" />
+        </button>
+      </span>
+    );
+    const block = (
+      <div
+        {...shared}
+        tabIndex={isFocusStop ? 0 : -1}
+        onKeyDown={onKeyDown}
+        className={cn(
+          "group wipe-in absolute flex cursor-grab items-center gap-1.5 overflow-hidden rounded-md border border-dashed border-hue/70 bg-hue-fill/15 pr-1 pl-2.5 text-label font-semibold whitespace-nowrap text-hue-foreground outline-none active:cursor-grabbing data-[selected=true]:border-solid",
+          "focus-visible:ring-2 focus-visible:ring-highlight focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          fit === "icon" && "justify-center px-0",
+          isDimmed && "opacity-35",
+        )}
+        style={{ ...place, top: lane.top + 4, height: 24 }}
+      >
+        <Icon className="size-4 shrink-0" />
+        {fit === "full" ? (
+          <span className="min-w-0 truncate">{label}</span>
+        ) : null}
+        {fit === "icon" ? null : <span className="ml-auto">{choice}</span>}
+      </div>
+    );
+    if (fit !== "icon")
+      return <Named name={suggestion.question}>{block}</Named>;
+    return (
+      <Tooltip open={isSelected || isPillOpen} onOpenChange={setIsPillOpen}>
+        <TooltipTrigger render={block} />
+        <TooltipContent side="bottom" className="h-auto p-1">
+          {choice}
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
 
   if (lane.isCollapsed) {
     return (
@@ -390,11 +453,13 @@ function Block({
       )}
       <Grip
         edge="start"
+        isShown={content !== "icon"}
         isActive={stretchEdge === "start"}
         {...drag(region.id, "start")}
       />
       <Grip
         edge="end"
+        isShown={content !== "icon"}
         isActive={stretchEdge === "end"}
         {...drag(region.id, "end")}
       />
@@ -404,9 +469,10 @@ function Block({
 
 function Grip({
   edge,
+  isShown,
   isActive,
   ...dragProps
-}: { edge: RegionDrag; isActive: boolean } & ReturnType<
+}: { edge: RegionDrag; isShown: boolean; isActive: boolean } & ReturnType<
   TimelineDrag["region"]
 >) {
   return (
@@ -417,12 +483,14 @@ function Grip({
       )}
       {...dragProps}
     >
-      <div
-        className={cn(
-          "h-3 w-0.75 rounded-full bg-current opacity-30 group-hover:opacity-100 group-data-[selected=true]:opacity-100",
-          isActive && "opacity-100",
-        )}
-      />
+      {isShown ? (
+        <div
+          className={cn(
+            "h-3 w-0.75 rounded-full bg-current opacity-30 group-hover:opacity-100 group-data-[selected=true]:opacity-100",
+            isActive && "opacity-100",
+          )}
+        />
+      ) : null}
     </div>
   );
 }

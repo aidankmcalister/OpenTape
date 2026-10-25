@@ -17,6 +17,7 @@ import { followPointer } from "@/hooks/usePointerHover";
 export default function FillPicker({ edits }: { edits: Edits }) {
   const { fill } = edits.project.appearance;
   const isColor = fill.kind === "color";
+  const title = isColor ? "Custom color" : "Custom gradient";
   const [selected, setSelected] = useState(0);
   const index = isColor ? 0 : selected;
   const custom = (gradient: ExportGradient) => ({
@@ -27,10 +28,11 @@ export default function FillPicker({ edits }: { edits: Edits }) {
   const change = (gradient: ExportGradient) =>
     edits.setAppearance(custom(gradient));
   return (
-    <CustomSwatch fill={fill.preset === "custom" ? fillCss(fill) : null}>
-      <PopoverTitle>
-        {isColor ? "Custom color" : "Custom gradient"}
-      </PopoverTitle>
+    <CustomSwatch
+      label={title}
+      fill={fill.preset === "custom" ? fillCss(fill) : null}
+    >
+      <PopoverTitle>{title}</PopoverTitle>
       {isColor ? null : (
         <GradientBar
           gradient={fill.custom}

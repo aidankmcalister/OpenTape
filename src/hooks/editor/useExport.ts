@@ -11,7 +11,14 @@ import {
   type ExportSettings,
   type ExportTimeline,
 } from "@/lib/editor/export";
-import type { RingEvent } from "@/lib/editor/cursor";
+import type { CursorImage } from "@/lib/bindings";
+import type { CursorStyle } from "@/lib/editor/appearance";
+import {
+  cursorPictures,
+  type CursorTrack,
+  plainOr,
+  type RingEvent,
+} from "@/lib/editor/cursor";
 import type { Project } from "@/lib/editor/project";
 import type { Size } from "@/lib/geometry";
 import type { Playback } from "./usePlayback";
@@ -28,6 +35,7 @@ export function useExport(
   { appearance, regions, clips }: Project,
   { videoSize, durationMs }: Pick<Playback, "videoSize" | "durationMs">,
   rings: RingEvent[],
+  cursor: CursorTrack,
 ) {
   const [state, setState] = useState<ExportState>({ stage: "idle" });
   const [settings, setSettings] = useState(DEFAULT_EXPORT);
@@ -48,6 +56,14 @@ export function useExport(
     "window",
   );
 
+  useTauriEvent(
+    "export-and-close",
+    () => {
+      if (videoSize) void start(videoSize, true);
+    },
+    "window",
+  );
+
   useEffect(() => {
     if (state.stage !== "done" && state.stage !== "failed") return;
     const timeout = setTimeout(
@@ -57,15 +73,25 @@ export function useExport(
     return () => clearTimeout(timeout);
   }, [state.stage]);
 
-  async function start(size: Size) {
+  async function start(size: Size, closes = false) {
     setState({ stage: "exporting", progress: 0 });
     try {
-      const layout = layoutAt(size, { regions, durationMs, clips, rings });
+      const style = plainOr(appearance.cursor).style;
+      const images = await styledImages(cursor.images, style);
+      const layout = layoutAt(size, {
+        regions,
+        durationMs,
+        clips,
+        rings,
+        cursor: { ...cursor, images },
+      });
+      const chosen = closes ? { ...settings, to: "file" as const } : settings;
       const path = await invoke<string>("export_recording", {
         layout,
-        options: exportOptions(settings),
+        options: exportOptions(chosen),
       });
-      setState({ stage: "done", path, copied: settings.to === "clipboard" });
+      setState({ stage: "done", path, copied: chosen.to === "clipboard" });
+      if (closes) await invoke("close_recording");
     } catch (error) {
       setState({ stage: "failed", reason: String(error) });
     }
@@ -94,3 +120,28 @@ export function useExport(
 }
 
 export type Exporting = ReturnType<typeof useExport>;
+
+async function styledImages(
+  images: CursorImage[],
+  style: CursorStyle,
+): Promise<CursorImage[]> {
+  return Promise.all(
+    cursorPictures(images, style).map(async ({ src, ...picture }) => ({
+      ...picture,
+      png: await pngOf(src, picture.width, picture.height),
+    })),
+  );
+}
+
+async function pngOf(src: string, width: number, height: number) {
+  const prefix = "data:image/png;base64,";
+  if (src.startsWith(prefix)) return src.slice(prefix.length);
+  const image = new Image();
+  image.src = src;
+  await image.decode();
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(width * 8);
+  canvas.height = Math.ceil(height * 8);
+  canvas.getContext("2d")?.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/png").slice(prefix.length);
+}

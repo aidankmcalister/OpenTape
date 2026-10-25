@@ -5,6 +5,7 @@ import { Popover, PopoverContent, PopoverTitle } from "@/components/ui/popover";
 import type { Edits } from "@/hooks/editor/useProject";
 import {
   changeSetting,
+  settingValue,
   REGIONS,
   type Region,
   type RegionKind,
@@ -59,6 +60,7 @@ function Settings({ modifier, edits }: { modifier: Region; edits: Edits }) {
   const { label, settings } = REGIONS[modifier.kind];
   const edit = {
     region: modifier,
+    value: (key: string) => settingValue(modifier, key),
     set: (key: string, value: SettingValue) =>
       edits.setRegion(modifier.id, changeSetting(modifier, key, value)),
     preview: (key: string, value: SettingValue) =>

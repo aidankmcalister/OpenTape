@@ -18,9 +18,37 @@ export type Appearance = {
   borderWidth: number;
   borderOpacity: number;
   borderColor: string;
+  cursor: CursorSettings;
 };
 
-export type Amount = Exclude<keyof Appearance, "fill" | "borderColor">;
+export type CursorMode = "Hidden" | "Plain" | "Styled";
+
+export type CursorSettings = {
+  mode: CursorMode;
+  size: number;
+  style: CursorStyle;
+  alwaysArrow: boolean;
+  smoothing: number;
+  hidesWhenStill: boolean;
+  loops: boolean;
+  stopsBeforeEnd: number;
+  angle: number;
+  tilts: boolean;
+  tilt: number;
+  clickEffect: "None" | "Ring" | "Pulse" | "Ripple";
+  ringColor: MarkColor;
+  ringSize: number;
+  ringsRightClicks: boolean;
+  presses: boolean;
+  removesShakes: boolean;
+  shakeThreshold: number;
+  steadiesChanges: boolean;
+  leadsHovers: boolean;
+};
+
+export type Amount = {
+  [K in keyof Appearance]: Appearance[K] extends number ? K : never;
+}[keyof Appearance];
 
 const OLD_BORDER_COLORS: Record<string, string> = {
   light: "#ffffff",
@@ -40,6 +68,20 @@ export const GRADIENTS: [string, string, string][] = [
 
 export const COLORS = GRADIENTS.map(([, middle]) => middle);
 
+export const PRESET_NAMES: Record<"gradient" | "color", string[]> = {
+  gradient: [
+    "Ember",
+    "Lagoon",
+    "Ocean",
+    "Graphite",
+    "Forest",
+    "Ruby",
+    "Stone",
+    "Night",
+  ],
+  color: ["Orange", "Teal", "Blue", "Gray", "Green", "Red", "Stone", "Black"],
+};
+
 export const AMOUNTS: Record<
   Amount,
   { label: string; max: number; unit: "px" | "%" }
@@ -54,6 +96,64 @@ export const AMOUNTS: Record<
   borderOpacity: { label: "Opacity", max: 100, unit: "%" },
 };
 
+export type CursorLook = {
+  fill: string;
+  edge: string;
+  edgeWidth: number;
+  join: "miter" | "round";
+  shadow: string;
+  shadowX: number;
+  shadowY: number;
+  shadowBlur: number;
+};
+
+const OUTLINED: CursorLook = {
+  fill: "#000000",
+  edge: "#ffffff",
+  edgeWidth: 3,
+  join: "round",
+  shadow: "#00000073",
+  shadowX: 0,
+  shadowY: 1,
+  shadowBlur: 1,
+};
+
+export const CURSOR_STYLES: Record<
+  "macOS" | "Pointy" | "Rounded" | "No stem" | "Dot",
+  CursorLook | null
+> = {
+  macOS: null,
+  Pointy: { ...OUTLINED, edgeWidth: 2.5, join: "miter" },
+  Rounded: OUTLINED,
+  "No stem": OUTLINED,
+  Dot: null,
+};
+
+export type CursorStyle = keyof typeof CURSOR_STYLES;
+
+export const DEFAULT_CURSOR: CursorSettings = {
+  mode: "Styled",
+  size: 100,
+  style: "macOS",
+  alwaysArrow: false,
+  smoothing: 50,
+  hidesWhenStill: true,
+  loops: false,
+  stopsBeforeEnd: 0,
+  angle: 0,
+  tilts: true,
+  tilt: 50,
+  clickEffect: "None",
+  ringColor: "orange",
+  ringSize: 40,
+  ringsRightClicks: false,
+  presses: true,
+  removesShakes: true,
+  shakeThreshold: 8,
+  steadiesChanges: true,
+  leadsHovers: true,
+};
+
 export const DEFAULT_APPEARANCE: Appearance = {
   fill: { kind: "gradient", preset: 0, custom: presetGradient("gradient", 0) },
   padding: 64,
@@ -63,12 +163,27 @@ export const DEFAULT_APPEARANCE: Appearance = {
   shadowBlur: 48,
   shadowOffsetY: 16,
   borderWidth: 0,
-  borderOpacity: 35,
+  borderOpacity: 100,
   borderColor: COLORS[6],
+  cursor: DEFAULT_CURSOR,
 };
 
+function readCursorSettings(saved?: Partial<CursorSettings>): CursorSettings {
+  const cursor = { ...DEFAULT_CURSOR, ...saved };
+  return cursor.style in CURSOR_STYLES
+    ? cursor
+    : { ...cursor, style: DEFAULT_CURSOR.style };
+}
+
 export function readAppearance(saved: Partial<Appearance> = {}): Appearance {
-  const appearance = { ...DEFAULT_APPEARANCE, ...saved };
+  const known = Object.fromEntries(
+    Object.entries(saved).filter(([key]) => key in DEFAULT_APPEARANCE),
+  );
+  const appearance = {
+    ...DEFAULT_APPEARANCE,
+    ...known,
+    cursor: readCursorSettings(saved.cursor),
+  };
   const borderColor = appearance.borderColor.startsWith("#")
     ? appearance.borderColor
     : (OLD_BORDER_COLORS[appearance.borderColor] ??

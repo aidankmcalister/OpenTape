@@ -14,6 +14,9 @@ use anyhow::{Context, Result, anyhow};
 use cidre::cg;
 
 use super::timeline::host_time_now;
+use crate::macos::cursor::KindReader;
+
+const KIND_EVERY: u32 = 24;
 
 pub(super) struct CursorLogger {
     stop: Arc<AtomicBool>,
@@ -66,20 +69,41 @@ fn poll_until_stopped(mut out: BufWriter<File>, stop: &AtomicBool) -> Result<()>
     let mut next_poll = Instant::now();
     let mut last_flush = Instant::now();
     let mut previous: Option<Sample> = None;
+    let kinds = KindReader::new();
+    let mut kind = "";
+    let state = cg::EventSrcState::CombinedSession;
+    let mut keys = state.counter_for_event_type(cg::EventType::KEY_DOWN);
+    let mut polls: u32 = 0;
     while !stop.load(Ordering::Relaxed) {
         if let Some(event) = cg::Event::with_src(None) {
             let location = event.location();
-            let buttons = cg::EventSrcState::CombinedSession;
             let sample = Sample {
                 t: host_time_now(),
                 x: location.x,
                 y: location.y,
-                left: buttons.button_state(cg::MouseButton::Left),
-                right: buttons.button_state(cg::MouseButton::Right),
+                left: state.button_state(cg::MouseButton::Left),
+                right: state.button_state(cg::MouseButton::Right),
             };
             for line in lines_between(previous.as_ref(), &sample) {
                 writeln!(out, "{line}")?;
             }
+            if polls.is_multiple_of(KIND_EVERY) {
+                let now = kinds.current();
+                if now != kind {
+                    kind = now;
+                    writeln!(
+                        out,
+                        r#"{{"type":"cursor","t":{:.6},"x":{:.1},"y":{:.1},"kind":"{kind}"}}"#,
+                        sample.t, sample.x, sample.y
+                    )?;
+                }
+                let typed = state.counter_for_event_type(cg::EventType::KEY_DOWN);
+                if typed != keys {
+                    keys = typed;
+                    writeln!(out, r#"{{"type":"key","t":{:.6}}}"#, sample.t)?;
+                }
+            }
+            polls += 1;
             previous = Some(sample);
         }
         if last_flush.elapsed() >= Duration::from_secs(1) {

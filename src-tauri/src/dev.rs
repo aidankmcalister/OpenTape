@@ -3,14 +3,15 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use tauri::{AppHandle, Manager};
 
-use crate::capture::EVENTS_FILE;
+use crate::capture::{EVENTS_FILE, META_FILE};
 use crate::current_recording::{CurrentRecording, is_video};
 
 const VIDEO_VAR: &str = "EDIT_VIDEO";
+const TEST_CLIP: &str = "Screen Recorder test clip";
 
-pub(crate) fn open_editor_if_asked(app: &AppHandle) {
+pub(crate) fn open_editor_if_asked(app: &AppHandle) -> bool {
     let Ok(choice) = std::env::var(VIDEO_VAR) else {
-        return;
+        return false;
     };
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -18,33 +19,33 @@ pub(crate) fn open_editor_if_asked(app: &AppHandle) {
             eprintln!("could not open the editor on {choice:?}: {err:#}");
         }
     });
+    true
 }
 
 fn open_editor(app: &AppHandle, choice: &str) -> Result<()> {
     let current = app.state::<CurrentRecording>();
-    if choice == "recording" {
-        let folder = current
-            .kept_recordings()?
-            .into_iter()
-            .map(|kept| kept.folder)
-            .find(|folder| {
-                current
-                    .stored(folder)
-                    .is_ok_and(|path| path.join(EVENTS_FILE).exists())
-            })
-            .context("no recording with a cursor log yet; record one first")?;
-        return current.reopen(app, &folder);
-    }
-    let source = if choice == "latest" {
-        newest_video(&app.path().download_dir()?)?
-    } else {
-        PathBuf::from(choice)
+    let downloads = app.path().download_dir()?;
+    let source = match choice {
+        "latest" => newest_video(&downloads)?,
+        "test" => downloads.join(TEST_CLIP).join("recording.mov"),
+        path => PathBuf::from(path),
     };
     let stem = source
         .file_stem()
         .context("the video path has no file name")?;
-    let folder = current.named_folder(&stem.to_string_lossy());
+    let name = if choice == "test" {
+        TEST_CLIP.to_string()
+    } else {
+        stem.to_string_lossy().into_owned()
+    };
+    let folder = current.named_folder(&name);
     std::fs::create_dir_all(&folder)?;
+    for log in [EVENTS_FILE, META_FILE] {
+        let from = source.with_file_name(log);
+        if from.exists() && !folder.join(log).exists() {
+            std::fs::copy(&from, folder.join(log))?;
+        }
+    }
     let name = source
         .file_name()
         .context("the video path has no file name")?;

@@ -3,7 +3,6 @@ import {
   AppWindow,
   ChevronDown,
   CircleAlert,
-  History,
   Mic,
   MicOff,
   Monitor,
@@ -151,16 +150,6 @@ function Setup({
         onClick={options.toggleSystemAudio}
       />
       <PillDivider />
-      <Button
-        variant="ghost"
-        size="pill"
-        aria-label="Recent recordings"
-        className="gap-1 px-3"
-        onClick={(event) => void bar.openRecent(event.currentTarget)}
-      >
-        <History />
-        <ChevronDown />
-      </Button>
       <Button
         variant="ghost"
         size="pill"

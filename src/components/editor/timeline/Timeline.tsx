@@ -10,7 +10,7 @@ import {
   GUTTER_PX,
   laneLayout,
   percentAt,
-  isUnderChip,
+  chipFrom,
   rulerLabels,
   rulerMarks,
   timeLabel,
@@ -96,6 +96,7 @@ export default function Timeline({
           ref={trackRef}
           data-track
           className="absolute inset-x-3 inset-y-0 select-none"
+          {...skim.skimProps}
           onPointerDown={(event) => {
             edits.select([]);
             scrubProps.onPointerDown(event);
@@ -103,13 +104,7 @@ export default function Timeline({
         >
           {durationMs > 0 ? (
             <>
-              <Ruler
-                durationMs={lengthMs}
-                width={trackWidth}
-                playheadMs={(seconds) => at(heldMs ?? seconds * 1000)}
-                clock={clock}
-                skimMs={skim.hoverMs}
-              />
+              <Ruler durationMs={lengthMs} width={trackWidth} />
               <RecordingTrack
                 edits={edits}
                 durationMs={lengthMs}
@@ -130,6 +125,7 @@ export default function Timeline({
               <Playhead
                 clock={clock}
                 durationMs={lengthMs}
+                widthPx={trackWidth}
                 playheadMs={(seconds) => at(heldMs ?? seconds * 1000)}
                 zIndex={regions.length + 2}
               />
@@ -137,6 +133,7 @@ export default function Timeline({
                 <Marker
                   ms={skim.hoverMs}
                   durationMs={lengthMs}
+                  widthPx={trackWidth}
                   zIndex={regions.length + 3}
                   isMuted
                 >
@@ -155,31 +152,9 @@ export default function Timeline({
   );
 }
 
-function Ruler({
-  durationMs,
-  width,
-  playheadMs,
-  clock,
-  skimMs,
-}: {
-  durationMs: number;
-  width: number;
-  playheadMs: (seconds: number) => number;
-  clock: Clock;
-  skimMs: number | null;
-}) {
-  const xOf = (ms: number) => (percentAt(ms, durationMs) / 100) * width;
-  const labels = rulerLabels(durationMs, width);
-  const atPlayhead = useClockValue(clock, (seconds) =>
-    labels
-      .filter((label) => isUnderChip(label, xOf(playheadMs(seconds))))
-      .map(({ ms }) => ms),
-  );
-  const shown = labels.filter(
-    (label) =>
-      !label.isCrowded &&
-      !atPlayhead.includes(label.ms) &&
-      (skimMs === null || !isUnderChip(label, xOf(skimMs))),
+function Ruler({ durationMs, width }: { durationMs: number; width: number }) {
+  const shown = rulerLabels(durationMs, width).filter(
+    ({ isCrowded }) => !isCrowded,
   );
   return rulerMarks(durationMs, width).map(({ ms, isMajor }) => {
     const left = `${percentAt(ms, durationMs)}%`;
@@ -220,32 +195,39 @@ function Ruler({
 function Playhead({
   clock,
   durationMs,
+  widthPx,
   playheadMs,
   zIndex,
 }: {
   clock: Clock;
   durationMs: number;
+  widthPx: number;
   playheadMs: (seconds: number) => number;
   zIndex: number;
 }) {
   const ms = useClockValue(clock, playheadMs);
-  return <Marker ms={ms} durationMs={durationMs} zIndex={zIndex} />;
+  return (
+    <Marker ms={ms} durationMs={durationMs} widthPx={widthPx} zIndex={zIndex} />
+  );
 }
 
 function Marker({
   ms,
   durationMs,
+  widthPx,
   zIndex,
   isMuted = false,
   children,
 }: {
   ms: number;
   durationMs: number;
+  widthPx: number;
   zIndex: number;
   isMuted?: boolean;
   children?: ReactNode;
 }) {
   const color = isMuted ? "bg-muted-foreground" : "bg-highlight";
+  const x = (percentAt(ms, durationMs) / 100) * widthPx;
   return (
     <div
       data-flow={!isMuted || undefined}
@@ -257,9 +239,10 @@ function Marker({
     >
       <div
         className={cn(
-          "absolute top-2 left-1/2 flex h-4 -translate-x-1/2 items-center rounded-sm px-1.5 font-mono text-caption font-semibold text-on-hue",
+          "absolute top-2 flex h-4 items-center rounded-sm px-1.5 font-mono text-caption font-semibold text-on-hue",
           color,
         )}
+        style={{ left: chipFrom(x, widthPx) - x }}
       >
         {timeLabel(ms)}
       </div>

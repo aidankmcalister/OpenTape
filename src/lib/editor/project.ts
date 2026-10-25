@@ -4,18 +4,21 @@ import {
   readAppearance,
 } from "./appearance";
 import { type Clip, fitToClips } from "./clips";
+import { type CursorTrack, withSuggestions } from "./cursor";
 import { type Region, REGIONS } from "./regions";
 
 export type Project = {
   appearance: Appearance;
   regions: Region[];
   clips: Clip[];
+  suggestionsMade: boolean;
 };
 
 export const NEW_PROJECT: Project = {
   appearance: DEFAULT_APPEARANCE,
   regions: [],
   clips: [],
+  suggestionsMade: false,
 };
 
 export const PROJECT_VERSION = 1;
@@ -31,6 +34,7 @@ export function readProject(json: string | null): Project {
     appearance: readAppearance(saved.appearance),
     regions: (saved.regions ?? []).filter(({ kind }) => kind in REGIONS),
     clips: saved.clips ?? [],
+    suggestionsMade: saved.suggestionsMade ?? false,
   };
 }
 
@@ -40,6 +44,16 @@ export function editRegions(
 ): Project {
   const regions = edit(project.regions);
   return regions === project.regions ? project : { ...project, regions };
+}
+
+export function suggest(
+  project: Project,
+  track: Pick<CursorTrack, "clicks" | "keys" | "moves">,
+  durationMs: number,
+): Project {
+  if (project.suggestionsMade) return project;
+  const regions = withSuggestions(track, project.regions, durationMs);
+  return { ...project, regions, suggestionsMade: true };
 }
 
 export function editClips(

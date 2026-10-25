@@ -1,13 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Phase } from "@/lib/bindings";
-import {
-  barLayer,
-  DEFAULT_OPTIONS,
-  elapsedMsAt,
-  parseOptions,
-  recentLabel,
-  recentSummary,
-} from "./bar";
+import { barLayer, DEFAULT_OPTIONS, elapsedMsAt, parseOptions } from "./bar";
 
 test.each([
   ["nothing was saved", null],
@@ -54,49 +47,4 @@ test.each<[string, Phase, number, number, number]>([
 ])("elapsedMsAt %s", (_, phase, receivedAt, now, elapsed) => {
   const status = { phase, error: null, elapsedMs: 5000 };
   expect(elapsedMsAt(status, receivedAt, now)).toBe(elapsed);
-});
-
-test.each([
-  [
-    new Date(2026, 9, 24, 19, 36),
-    12_400_000,
-    true,
-    "Today, 7:36 PM · 12 MB · Edited",
-  ],
-  [new Date(2026, 9, 23, 9, 5), 300_000, false, "Yesterday, 9:05 AM · 1 MB"],
-  [
-    new Date(2026, 9, 18, 23, 29),
-    2_350_000_000,
-    false,
-    "Oct 18, 11:29 PM · 2.4 GB",
-  ],
-])(
-  "recentLabel names %p by day, time and size",
-  (at, sizeBytes, isEdited, label) => {
-    const recording = {
-      folder: "x",
-      modifiedMs: at.getTime(),
-      sizeBytes,
-      isEdited,
-      isRecovered: false,
-    };
-    expect(recentLabel(recording, new Date(2026, 9, 24, 21, 0))).toBe(label);
-  },
-);
-
-test("a recording cut off mid-recording says so first, and the footer adds them up", () => {
-  const cutOff = {
-    folder: "x",
-    modifiedMs: new Date(2026, 9, 24, 19, 36).getTime(),
-    sizeBytes: 4_000_000,
-    isEdited: false,
-    isRecovered: true,
-  };
-  expect(recentLabel(cutOff, new Date(2026, 9, 24, 21, 0))).toBe(
-    "Recovered · Today, 7:36 PM · 4 MB",
-  );
-  expect(recentSummary([cutOff])).toBe("1 recording · 4 MB");
-  expect(recentSummary([cutOff, { ...cutOff, sizeBytes: 1_200_000_000 }])).toBe(
-    "2 recordings · 1.2 GB",
-  );
 });

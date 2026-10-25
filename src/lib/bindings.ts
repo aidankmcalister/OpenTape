@@ -4,7 +4,11 @@ export type Animation = { durationMs: number, ease: [number, number, number, num
 
 export type CaptureSize = { width: number, height: number, };
 
+export type CursorImage = { kind: string, png: string, width: number, height: number, hotX: number, hotY: number, };
+
 export type CursorLog = { meta: string, events: string, };
+
+export type CursorPoint = { t: number, x: number, y: number, angle: number, alpha: number, scale: number, image: number, };
 
 export type Device = { id: string, name: string, };
 
@@ -14,13 +18,15 @@ export type DisplayInfo = { id: number, name: string, frame: Frame, size: Captur
 
 export type ExportBorder = { width: number, color: string, opacity: number, };
 
+export type ExportCursor = { points: Array<CursorPoint>, images: Array<CursorImage>, unit: number, dot: number, };
+
 export type ExportCut = { start: number, end: number, };
 
 export type ExportFormat = "mp4" | "gif";
 
 export type ExportGradient = { angle: number, stops: Array<ExportStop>, };
 
-export type ExportLayout = { width: number, height: number, recording: PixelRect, video: PixelRect, radius: number, shadow: ExportShadow, border: ExportBorder | null, background: ExportGradient, zoom: Array<ExportZoom>, speed: Array<ExportSpeed>, cuts: Array<ExportCut>, rings: Array<ExportRing>, };
+export type ExportLayout = { width: number, height: number, recording: PixelRect, video: PixelRect, radius: number, shadow: ExportShadow, border: ExportBorder | null, background: ExportGradient, zoom: Array<ExportZoom>, speed: Array<ExportSpeed>, cuts: Array<ExportCut>, rings: Array<ExportRing>, cursor: ExportCursor | null, };
 
 export type ExportOptions = { format: ExportFormat, frameRate: number, bitsPerPixel: number, toClipboard: boolean, };
 
@@ -36,11 +42,9 @@ export type ExportZoom = { scale: number, x: number, y: number, };
 
 export type Frame = { x: number, y: number, width: number, height: number, };
 
-export type KeptRecording = { folder: string, modifiedMs: number, sizeBytes: number, isEdited: boolean, isRecovered: boolean, };
-
 export type Mode = "display" | "window" | "area";
 
-export type PageEvent = { "event": "picker-session", "payload": Session } | { "event": "picker-cursor", "payload": Point } | { "event": "picker-recording", "payload": Frame | null } | { "event": "picker-key", "payload": PickerKey } | { "event": "picker-closed" } | { "event": "recording-status", "payload": RecordingStatus } | { "event": "current-recording", "payload": ShownRecording | null } | { "event": "bar-pointer", "payload": Point | null } | { "event": "preview-pointer", "payload": Point | null } | { "event": "preview-key", "payload": PreviewKey } | { "event": "export-progress", "payload": number };
+export type PageEvent = { "event": "picker-session", "payload": Session } | { "event": "picker-cursor", "payload": Point } | { "event": "picker-recording", "payload": Frame | null } | { "event": "picker-key", "payload": PickerKey } | { "event": "picker-closed" } | { "event": "recording-status", "payload": RecordingStatus } | { "event": "current-recording", "payload": ShownRecording | null } | { "event": "bar-pointer", "payload": Point | null } | { "event": "preview-pointer", "payload": Point | null } | { "event": "preview-key", "payload": PreviewKey } | { "event": "export-progress", "payload": number } | { "event": "export-and-close" };
 
 export type Phase = "idle" | "starting" | "recording" | "paused" | "stopping";
 
@@ -58,7 +62,7 @@ export type RingStyle = "ring" | "pulse" | "ripple";
 
 export type Session = { mode: Mode, sources: Sources, pinnedWindowId: number | null, areaDisplayId: number | null, };
 
-export type Settings = { saveFolder: string | null, deleteAfterDays: number | null, };
+export type Settings = { saveFolder: string | null, };
 
 export type Setup = { session: Session, cursor: Point | null, };
 

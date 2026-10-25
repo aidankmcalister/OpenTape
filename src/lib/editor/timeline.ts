@@ -58,6 +58,12 @@ export function laneLayout(kinds: RegionKind[], collapsed: RegionKind[]) {
 
 export type BlockContent = "full" | "value" | "icon";
 
+export function suggestionContent(widthPx: number, label: string) {
+  const withButtonsPx = 74;
+  if (widthPx >= withButtonsPx + 8 + CHAR_PX * label.length) return "full";
+  return widthPx >= withButtonsPx ? "buttons" : "icon";
+}
+
 export function blockContent(
   widthPx: number,
   label: string,
@@ -92,8 +98,7 @@ export function rulerLabel(ms: number): string {
 const CHAR_PX = 7;
 const LABEL_GAP_PX = 6;
 const CHIP_HALF_PX = 30;
-
-export type RulerLabel = ReturnType<typeof rulerLabels>[number];
+const AXIS_ROOM_PX = 8;
 
 export function rulerLabels(durationMs: number, widthPx: number) {
   let shownEnd = -Infinity;
@@ -111,8 +116,9 @@ export function rulerLabels(durationMs: number, widthPx: number) {
     });
 }
 
-export function isUnderChip(label: RulerLabel, chipX: number): boolean {
-  return label.to > chipX - CHIP_HALF_PX && label.from < chipX + CHIP_HALF_PX;
+export function chipFrom(x: number, widthPx: number): number {
+  const last = widthPx + AXIS_ROOM_PX - 2 * CHIP_HALF_PX;
+  return Math.max(-AXIS_ROOM_PX, Math.min(x - CHIP_HALF_PX, last));
 }
 
 export function nextBlock(

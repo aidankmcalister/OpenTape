@@ -5,7 +5,6 @@ import {
   FastForward,
   Highlighter,
   type LucideIcon,
-  MousePointerClick,
   Pencil,
   Type,
   ZoomIn,
@@ -20,7 +19,6 @@ export const REGION_ICONS: Record<RegionKind, LucideIcon> = {
   annotation: Pencil,
   blur: Droplet,
   highlight: Highlighter,
-  clickRing: MousePointerClick,
   titleCard: Type,
 };
 

@@ -1,5 +1,4 @@
 import { Blend, Image, Palette } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsIconTrigger, TabsList } from "@/components/ui/tabs";
 import type { Edits } from "@/hooks/editor/useProject";
@@ -10,12 +9,12 @@ import {
   DEFAULT_APPEARANCE,
   fillCss,
   GRADIENTS,
+  PRESET_NAMES,
   type Amount,
   type Fill,
 } from "@/lib/editor/appearance";
-import { NEW_PROJECT } from "@/lib/editor/project";
 import { ColorSwatches } from "../ColorPicker";
-import { PanelHeader, Section, ValueInput } from "../Panel";
+import { Dim, PanelHeader, Section, ValueInput } from "../Panel";
 import FillPicker from "./FillPicker";
 
 const FILLS: { kind: Fill["kind"]; label: string; Icon: typeof Blend }[] = [
@@ -27,26 +26,24 @@ const FILLS: { kind: Fill["kind"]; label: string; Icon: typeof Blend }[] = [
 const BORDER_OPTIONS = COLORS.map((color, index) => ({
   value: color,
   color,
-  label: `Border color ${index + 1}`,
+  label: PRESET_NAMES.color[index],
 }));
-
-const SECTIONS: { title: string; amounts: Amount[] }[] = [
-  { title: "Frame", amounts: ["padding", "radius", "inset"] },
-  {
-    title: "Shadow",
-    amounts: ["shadowOpacity", "shadowBlur", "shadowOffsetY"],
-  },
-];
 
 export default function AppearancePanel({ edits }: { edits: Edits }) {
   const { appearance } = edits.project;
-  const presets = appearance.fill.kind === "color" ? COLORS : GRADIENTS;
+  const isColor = appearance.fill.kind === "color";
+  const presets = isColor ? COLORS : GRADIENTS;
   const changeFill = (fill: Fill) => edits.setAppearance({ fill });
   return (
     <>
       <PanelHeader
         title="Background"
-        onReset={() => edits.setAppearance(DEFAULT_APPEARANCE)}
+        onReset={() =>
+          edits.setAppearance({
+            ...DEFAULT_APPEARANCE,
+            cursor: appearance.cursor,
+          })
+        }
       />
       <Section title="Fill">
         <Tabs
@@ -70,7 +67,7 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
         <ColorSwatches
           options={presets.map((_, preset) => ({
             value: String(preset),
-            label: `Preset ${preset + 1}`,
+            label: PRESET_NAMES[isColor ? "color" : "gradient"][preset],
             color: fillCss({ ...appearance.fill, preset }),
           }))}
           value={String(appearance.fill.preset)}
@@ -80,35 +77,38 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
           custom={<FillPicker edits={edits} />}
         />
       </Section>
-      {SECTIONS.map(({ title, amounts }) => (
-        <Section key={title} title={title}>
-          {amounts.map((amount) => (
-            <ValueField key={amount} amount={amount} edits={edits} />
-          ))}
-        </Section>
-      ))}
+      <Section title="Frame">
+        <ValueField amount="padding" edits={edits} />
+        <ValueField amount="radius" edits={edits} />
+        <ValueField amount="inset" edits={edits} />
+      </Section>
+      <Section title="Shadow">
+        <ValueField amount="shadowOpacity" edits={edits} />
+        <Dim
+          when={appearance.shadowOpacity === 0}
+          className="flex flex-col gap-2"
+        >
+          <ValueField amount="shadowBlur" edits={edits} />
+          <ValueField amount="shadowOffsetY" edits={edits} />
+        </Dim>
+      </Section>
       <Section title="Border">
         <ValueField amount="borderWidth" edits={edits} />
-        <ValueField amount="borderOpacity" edits={edits} />
-        <ColorSwatches
-          options={BORDER_OPTIONS}
-          value={appearance.borderColor}
-          onChange={(borderColor) => edits.setAppearance({ borderColor })}
-          onPreview={(borderColor) =>
-            edits.setAppearance({ borderColor }, true)
-          }
-          onCommit={edits.commit}
-        />
+        {appearance.borderWidth > 0 ? (
+          <>
+            <ColorSwatches
+              options={BORDER_OPTIONS}
+              value={appearance.borderColor}
+              onChange={(borderColor) => edits.setAppearance({ borderColor })}
+              onPreview={(borderColor) =>
+                edits.setAppearance({ borderColor }, true)
+              }
+              onCommit={edits.commit}
+            />
+            <ValueField amount="borderOpacity" edits={edits} />
+          </>
+        ) : null}
       </Section>
-      <div className="mt-auto p-3">
-        <Button
-          variant="secondary"
-          className="w-full"
-          onClick={() => edits.change(() => NEW_PROJECT)}
-        >
-          Reset all
-        </Button>
-      </div>
     </>
   );
 }

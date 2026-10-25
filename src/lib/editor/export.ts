@@ -7,7 +7,12 @@ import type {
 } from "@/lib/bindings";
 import { type Appearance, fillGradient } from "./appearance";
 import { type Clip, cutSpans } from "./clips";
-import { exportRings, type RingEvent } from "./cursor";
+import {
+  type CursorTrack,
+  exportCursor,
+  exportRings,
+  type RingEvent,
+} from "./cursor";
 import { outputAt, type Region, resolveOverlaps } from "./regions";
 import { zoomTrack } from "./zoom";
 
@@ -16,6 +21,7 @@ export type ExportTimeline = {
   durationMs: number;
   clips: Clip[];
   rings: RingEvent[];
+  cursor: CursorTrack;
 };
 
 export function exportLayout(
@@ -26,6 +32,7 @@ export function exportLayout(
     durationMs = 0,
     clips = [],
     rings = [],
+    cursor,
   }: Partial<ExportTimeline> = {},
 ): ExportLayout {
   const ratio = video.width / video.height;
@@ -78,6 +85,9 @@ export function exportLayout(
       end: outputAt(regions, endMs) / 1000,
     })),
     rings: exportRings(rings, regions, scale),
+    cursor: cursor
+      ? exportCursor(cursor, regions, appearance.cursor, durationMs)
+      : null,
   };
 }
 

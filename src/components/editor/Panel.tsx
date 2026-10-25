@@ -1,6 +1,7 @@
-import type { ComponentProps, ReactNode } from "react";
+import type { ComponentProps, ReactElement, ReactNode } from "react";
 import { Minus, Plus, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogClose,
@@ -9,6 +10,11 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 export function PanelHeader({
@@ -19,17 +25,57 @@ export function PanelHeader({
   onReset: () => void;
 }) {
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between px-3 hairline-b">
+    <header className="flex h-14 shrink-0 items-center justify-between pr-1 pl-3 hairline-b">
       <h2 className="text-heading font-semibold">{title}</h2>
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label={`Reset ${title.toLowerCase()}`}
-        onClick={onReset}
-      >
-        <RotateCcw />
-      </Button>
+      <Named name={`Reset ${title.toLowerCase()}`}>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={`Reset ${title.toLowerCase()}`}
+          onClick={onReset}
+        >
+          <RotateCcw />
+        </Button>
+      </Named>
     </header>
+  );
+}
+
+export function Named({
+  name,
+  children,
+}: {
+  name: string;
+  children: ReactElement;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={children} />
+      <TooltipContent side="bottom">{name}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+export function Dim({
+  when,
+  className,
+  children,
+}: {
+  when: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      inert={when}
+      className={cn(
+        "transition-[opacity,filter]",
+        when && "opacity-40 grayscale",
+        className,
+      )}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -38,16 +84,18 @@ export function Section({
   action,
   children,
 }: {
-  title: string;
+  title?: string;
   action?: ReactNode;
-  children: ReactNode;
+  children?: ReactNode;
 }) {
   return (
     <section className="flex flex-col gap-2 border-b border-hairline p-3">
-      <div className="flex h-6 items-center justify-between">
-        <h3 className="text-ui font-semibold">{title}</h3>
-        {action}
-      </div>
+      {title ? (
+        <div className="flex h-6 items-center justify-between">
+          <h3 className="text-ui font-semibold">{title}</h3>
+          {action}
+        </div>
+      ) : null}
       {children}
     </section>
   );
@@ -117,7 +165,7 @@ export function ValueInput({
 }) {
   const shown = format(value);
   return (
-    <label className="-mr-1.5 inline-flex h-5 cursor-text items-center gap-1 rounded-md px-1.5 font-mono font-medium transition-colors hover:bg-accent focus-within:bg-background focus-within:ring-1 focus-within:ring-ring/60">
+    <label className="-mr-1.5 inline-flex h-6 cursor-text items-center gap-1 rounded-sm px-1.5 font-mono font-medium transition-colors hover:bg-accent focus-within:bg-background focus-within:ring-1 focus-within:ring-primary">
       <input
         key={shown}
         aria-label={label}
@@ -203,5 +251,22 @@ export function DialogSection({
       <h3 className="flex h-8 items-center font-semibold">{title}</h3>
       {children}
     </section>
+  );
+}
+
+export function SwitchField({
+  label,
+  checked,
+  onChange,
+}: {
+  label: ReactNode;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex h-8 items-center justify-between text-label">
+      {label}
+      <Switch checked={checked} onCheckedChange={onChange} />
+    </label>
   );
 }

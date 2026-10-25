@@ -18,7 +18,7 @@ import {
 } from "@/lib/editor/color";
 import { clamp } from "@/lib/geometry";
 import { cn } from "@/lib/utils";
-import { Swatch } from "./Panel";
+import { Named, Swatch } from "./Panel";
 import { followPointer } from "@/hooks/usePointerHover";
 
 export type ColorOption = { value: string; color: string; label: string };
@@ -47,15 +47,16 @@ export function ColorSwatches({
       onValueChange={([next]) => next && next !== "custom" && onChange(next)}
     >
       {options.map((option) => (
-        <Swatch
-          key={option.value}
-          value={option.value}
-          aria-label={option.label}
-          style={{ background: option.color }}
-        />
+        <Named key={option.value} name={option.label}>
+          <Swatch
+            value={option.value}
+            aria-label={option.label}
+            style={{ background: option.color }}
+          />
+        </Named>
       ))}
       {custom ?? (
-        <CustomSwatch fill={chosen ? null : value}>
+        <CustomSwatch label="Custom color" fill={chosen ? null : value}>
           <PopoverTitle>Custom color</PopoverTitle>
           <ColorPicker
             color={chosen?.color ?? value}
@@ -70,29 +71,33 @@ export function ColorSwatches({
 }
 
 export function CustomSwatch({
+  label,
   fill,
   children,
 }: {
+  label: string;
   fill: string | null;
   children: ReactNode;
 }) {
   return (
     <Popover>
-      <PopoverTrigger
-        render={
-          <Swatch
-            value="custom"
-            aria-label="Custom"
-            className={cn(
-              !fill &&
-                "border border-dashed border-muted-foreground text-muted-foreground hover:border-foreground hover:text-foreground data-popup-open:border-highlight data-popup-open:text-highlight",
-            )}
-            style={fill ? { background: fill } : undefined}
-          />
-        }
-      >
-        {fill ? null : <Plus className="size-3.5" />}
-      </PopoverTrigger>
+      <Named name={label}>
+        <PopoverTrigger
+          render={
+            <Swatch
+              value="custom"
+              aria-label={label}
+              className={cn(
+                !fill &&
+                  "border border-dashed border-muted-foreground text-muted-foreground hover:border-foreground hover:text-foreground data-popup-open:border-highlight data-popup-open:text-highlight",
+              )}
+              style={fill ? { background: fill } : undefined}
+            />
+          }
+        >
+          {fill ? null : <Plus className="size-3.5" />}
+        </PopoverTrigger>
+      </Named>
       <PopoverContent
         side="right"
         align="start"

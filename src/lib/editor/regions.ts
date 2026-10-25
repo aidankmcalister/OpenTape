@@ -8,7 +8,6 @@ export type RegionKind =
   | "annotation"
   | "blur"
   | "highlight"
-  | "clickRing"
   | "titleCard";
 
 export type Region = {
@@ -19,6 +18,8 @@ export type Region = {
   amount: number;
   center?: Point;
   settings?: Record<string, SettingValue>;
+  isSuggested?: boolean;
+  path?: (Point & { afterMs: number })[];
 };
 
 export type Span = { startMs: number; endMs: number };
@@ -37,6 +38,8 @@ export type Setting =
       step: number;
       unit: string;
       initial?: number;
+      help?: string;
+      onlyWith?: string;
     }
   | {
       kind: "choice";
@@ -48,7 +51,13 @@ export type Setting =
       initial?: string;
     }
   | { kind: "color"; key: string; label: string; initial: MarkColor }
-  | { kind: "switch"; key: string; label: string; initial?: boolean }
+  | {
+      kind: "switch";
+      key: string;
+      label: string;
+      initial?: boolean;
+      help?: string;
+    }
   | { kind: "focus" }
   | { kind: "hint"; text: string | ((region: Region) => string) };
 
@@ -124,35 +133,6 @@ export const REGIONS: Record<
       },
     ],
     shows: (value) => `${value("amount")}×`,
-  },
-  clickRing: {
-    status: "experimental",
-    label: "Click ring",
-    key: "P",
-    hue: "148 163 184",
-    amount: 0,
-    lengthMs: 1000,
-    settings: [
-      {
-        kind: "choice",
-        key: "style",
-        label: "Style",
-        options: ["Ring", "Pulse", "Ripple"],
-      },
-      { kind: "color", key: "color", label: "Color", initial: "white" },
-      {
-        kind: "slider",
-        key: "size",
-        label: "Size",
-        min: 16,
-        max: 96,
-        step: 4,
-        unit: "px",
-        initial: 48,
-      },
-      { kind: "switch", key: "rightClick", label: "Also on right click" },
-    ],
-    shows: (value) => String(value("style")),
   },
   captions: comingSoon("Captions", "C", "167 139 250"),
   annotation: comingSoon("Annotation", "N", "244 114 182"),
@@ -424,6 +404,24 @@ export function removeRegions(regions: Region[], ids: number[]): Region[] {
   return regions.some((region) => ids.includes(region.id))
     ? regions.filter((region) => !ids.includes(region.id))
     : regions;
+}
+
+export const SUGGESTIONS: Partial<
+  Record<RegionKind, { label: string; question: string }>
+> = {
+  zoom: { label: "Auto zoom", question: "Zoom in on these clicks?" },
+  speed: { label: "Typing", question: "We detected typing. Speed it up?" },
+};
+
+export function settleSuggestion(
+  regions: Region[],
+  id: number,
+  isKept: boolean,
+): Region[] {
+  if (!isKept) return removeRegions(regions, [id]);
+  return regions.map((region) =>
+    region.id === id ? { ...region, isSuggested: undefined } : region,
+  );
 }
 
 export function removeRegionAt(regions: Region[], ms: number): Region[] {

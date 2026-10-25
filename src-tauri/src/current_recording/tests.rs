@@ -6,7 +6,7 @@ struct FakeShell {
     answer: Choice,
     asked: RefCell<Vec<&'static str>>,
     switches: RefCell<Vec<(Window, Window)>>,
-    trashed: RefCell<Vec<PathBuf>>,
+    exports: RefCell<usize>,
 }
 
 impl FakeShell {
@@ -15,7 +15,7 @@ impl FakeShell {
             answer,
             asked: RefCell::default(),
             switches: RefCell::default(),
-            trashed: RefCell::default(),
+            exports: RefCell::default(),
         }
     }
 
@@ -30,8 +30,8 @@ impl Shell for FakeShell {
         self.answer
     }
 
-    fn trash(&self, folder: &Path) -> Result<()> {
-        self.trashed.borrow_mut().push(folder.to_path_buf());
+    fn export_and_close(&self) -> Result<()> {
+        *self.exports.borrow_mut() += 1;
         Ok(())
     }
 
@@ -56,21 +56,22 @@ fn keeping_one(test: &str, shell: &FakeShell) -> (CurrentRecording, PathBuf) {
     (current, folder)
 }
 
-const SAVE_OR_DELETE: &str = "Save this recording before closing, or delete it?";
+const SAVE_FIRST: &str = "Save this recording before closing?";
+const EXPORT_FIRST: &str = "Export this recording before closing?";
 
 #[test]
 fn keep_should_show_the_preview_and_refuse_a_second_recording() {
     let shell = FakeShell::answering(Choice::Cancel);
     let (current, folder) = keeping_one("keep", &shell);
     assert_eq!(*shell.switches.borrow(), [(Window::Bar, Window::Preview)]);
-    let name = current.shown().expect("it's kept").name;
+    let name = current.shown().expect("it's kept").1.name;
     assert_eq!(
         folder.file_name().and_then(|name| name.to_str()),
         Some(&*name)
     );
     let second = current.keep(&shell, folder.join("other.mov"));
     assert!(second.is_err());
-    assert_eq!(current.shown().expect("still kept").name, name);
+    assert_eq!(current.shown().expect("still kept").1.name, name);
     assert_eq!(shell.switches.borrow().len(), 1);
 }
 
@@ -79,45 +80,59 @@ fn closing_unsaved_should_ask_and_cancel_should_keep_it() {
     let shell = FakeShell::answering(Choice::Cancel);
     let (current, folder) = keeping_one("cancel", &shell);
     current.close(&shell).expect("canceling is fine");
-    assert_eq!(*shell.asked.borrow(), [SAVE_OR_DELETE]);
+    assert_eq!(*shell.asked.borrow(), [SAVE_FIRST]);
     assert_eq!(shell.last_switch(), (Window::Bar, Window::Preview));
     assert!(folder.exists());
     assert!(current.shown().is_some());
 }
 
 #[test]
-fn closing_unsaved_with_delete_should_bring_the_bar_back_and_delete() {
+fn closing_unsaved_with_discard_should_bring_the_bar_back_and_delete() {
     let shell = FakeShell::answering(Choice::Second);
     let (current, folder) = keeping_one("delete", &shell);
     current.close(&shell).expect("closes");
-    assert_eq!(*shell.asked.borrow(), [SAVE_OR_DELETE]);
+    assert_eq!(*shell.asked.borrow(), [SAVE_FIRST]);
     assert_eq!(shell.last_switch(), (Window::Preview, Window::Bar));
     assert!(!folder.exists());
     assert!(current.shown().is_none());
 }
 
 #[test]
-fn closing_saved_should_skip_the_alert_and_keep_it() {
+fn closing_saved_should_skip_the_alert_and_still_delete_the_recording() {
     let shell = FakeShell::answering(Choice::Cancel);
     let (current, folder) = keeping_one("saved", &shell);
     let saved_to = folder.with_file_name("saved.mp4");
     std::fs::write(&saved_to, b"").expect("the temp export can be written");
-    lock(&current.kept).as_mut().expect("kept").saved_to = Some(saved_to);
+    lock(&current.kept).as_mut().expect("kept").saved_to = Some(saved_to.clone());
     current.close(&shell).expect("closes");
     assert!(shell.asked.borrow().is_empty());
-    assert!(folder.exists());
+    assert!(!folder.exists());
+    assert!(saved_to.exists());
 }
 
 #[test]
-fn closing_from_the_editor_should_keep_it_without_asking_or_saving() {
-    let shell = FakeShell::answering(Choice::Second);
+fn closing_the_editor_unexported_should_ask_and_hand_export_and_close_to_the_page() {
+    let shell = FakeShell::answering(Choice::First);
     let (current, folder) = keeping_one("editor", &shell);
     current.edit(&shell).expect("edits");
     assert_eq!(shell.last_switch(), (Window::Preview, Window::Editor));
-    current.close(&shell).expect("closes");
-    assert!(shell.asked.borrow().is_empty());
-    assert_eq!(shell.last_switch(), (Window::Editor, Window::Bar));
+    current.close(&shell).expect("asks");
+    assert_eq!(*shell.asked.borrow(), [EXPORT_FIRST]);
+    assert_eq!(*shell.exports.borrow(), 1);
+    assert_eq!(shell.last_switch(), (Window::Preview, Window::Editor));
     assert!(folder.exists());
+    assert!(current.shown().is_some());
+}
+
+#[test]
+fn closing_the_editor_with_discard_should_delete_the_recording_and_its_edits() {
+    let shell = FakeShell::answering(Choice::Second);
+    let (current, folder) = keeping_one("editor-discard", &shell);
+    current.edit(&shell).expect("edits");
+    current.save_project("{}").expect("the folder is writable");
+    current.close(&shell).expect("closes");
+    assert_eq!(shell.last_switch(), (Window::Editor, Window::Bar));
+    assert!(!folder.exists());
     assert!(current.shown().is_none());
     assert!(!current.folders.downloads.exists());
 }
@@ -185,118 +200,51 @@ fn a_project_should_save_next_to_the_video_and_load_back() {
     );
 }
 
-fn stored_recording(current: &CurrentRecording, name: &str, with_project: bool) -> PathBuf {
+fn left_behind(current: &CurrentRecording, name: &str, video: &[u8]) -> PathBuf {
     let folder = current.named_folder(name);
     std::fs::create_dir_all(&folder).expect("the temp folder can be made");
-    std::fs::write(folder.join("recording.mov"), b"video").expect("the temp video can be written");
-    if with_project {
-        std::fs::write(folder.join(PROJECT_FILE), b"{}").expect("the project can be written");
-    }
+    std::fs::write(folder.join("recording.mov"), video).expect("the temp video can be written");
     folder
 }
 
+fn nothing_open(test: &str) -> CurrentRecording {
+    let root = std::env::temp_dir().join(format!("screen-recorder-test-{test}"));
+    let _ = std::fs::remove_dir_all(&root);
+    CurrentRecording::new(Folders {
+        storage: root.join("recordings"),
+        downloads: root.join("Downloads"),
+        copies: root.join("copies"),
+    })
+}
+
 #[test]
-fn kept_recordings_should_list_folders_with_a_video_and_mark_edited_ones() {
+fn recover_should_offer_the_newest_left_behind_recording_and_delete_older_ones() {
     let shell = FakeShell::answering(Choice::Cancel);
-    let (current, open) = keeping_one("list", &shell);
-    stored_recording(&current, "edited", true);
-    std::fs::create_dir_all(current.named_folder("empty")).expect("the temp folder can be made");
-    let recordings = current.kept_recordings().expect("the folder reads");
-    let folders: Vec<_> = recordings.iter().map(|kept| kept.folder.as_str()).collect();
-    assert_eq!(folders.len(), 2);
-    assert!(folders.contains(&"edited"));
-    assert!(folders.contains(&folder_name(&open).as_str()));
-    let edited = recordings
-        .iter()
-        .find(|kept| kept.folder == "edited")
-        .expect("listed");
-    assert!(edited.is_edited);
-    assert_eq!(edited.size_bytes, 7.0);
-    assert!(
-        recordings
-            .windows(2)
-            .all(|pair| pair[0].modified_ms >= pair[1].modified_ms)
+    let current = nothing_open("recover");
+    let older = left_behind(&current, "2026-10-24 09.00.00", b"video");
+    let newest = left_behind(&current, "2026-10-25 09.00.00", b"video");
+    let dev = left_behind(&current, "Screen Recorder test clip", b"video");
+    current.recover(&shell).expect("the folder reads");
+    assert_eq!(*shell.switches.borrow(), [(Window::Bar, Window::Preview)]);
+    assert_eq!(
+        current.shown().expect("offered").1.name,
+        "2026-10-25 09.00.00"
     );
+    assert!(!older.exists());
+    assert!(newest.exists());
+    assert!(dev.exists());
 }
 
 #[test]
-fn kept_recordings_should_be_empty_before_anything_is_recorded() {
-    let current = CurrentRecording::new(Folders {
-        storage: std::env::temp_dir().join("screen-recorder-test-none/recordings"),
-        downloads: PathBuf::new(),
-        copies: PathBuf::new(),
-    });
-    assert!(
-        current
-            .kept_recordings()
-            .expect("a missing folder is fine")
-            .is_empty()
-    );
-}
-
-#[test]
-fn reopen_should_go_straight_to_the_editor_and_refuse_a_second_one() {
+fn recover_should_quietly_drop_an_empty_recording_and_do_nothing_when_none_is_left() {
     let shell = FakeShell::answering(Choice::Cancel);
-    let (current, _) = keeping_one("reopen", &shell);
-    stored_recording(&current, "older", true);
-    let err = current.reopen(&shell, "older").expect_err("one is open");
-    assert!(format!("{err:#}").contains("still open"));
-    *lock(&current.kept) = None;
-    current.reopen(&shell, "older").expect("nothing is open");
-    assert_eq!(shell.last_switch(), (Window::Bar, Window::Editor));
-    assert_eq!(current.shown().expect("it's open").name, "older");
-}
-
-#[test]
-fn reopen_and_trash_should_only_take_folder_names_inside_recordings() {
-    let shell = FakeShell::answering(Choice::Cancel);
-    let (current, _) = keeping_one("names", &shell);
-    for name in ["", "..", "../recordings", "missing"] {
-        assert!(current.reopen(&shell, name).is_err(), "{name:?}");
-        assert!(current.trash(&shell, name).is_err(), "{name:?}");
-    }
-    assert!(shell.trashed.borrow().is_empty());
-}
-
-#[test]
-fn trash_should_refuse_the_open_recording_and_move_others() {
-    let shell = FakeShell::answering(Choice::Cancel);
-    let (current, open) = keeping_one("trash", &shell);
-    let older = stored_recording(&current, "older", false);
-    assert!(current.trash(&shell, &folder_name(&open)).is_err());
-    current.trash(&shell, "older").expect("it's closed");
-    assert_eq!(*shell.trashed.borrow(), [older]);
-}
-
-#[test]
-fn a_recording_cut_off_before_it_was_kept_should_list_first_as_recovered() {
-    let shell = FakeShell::answering(Choice::Cancel);
-    let (current, kept) = keeping_one("recovered", &shell);
-    assert!(!kept.join(RECORDING_MARKER).exists());
-    let cut_off = current.named_folder("cut off");
-    std::fs::create_dir_all(&cut_off).expect("the temp folder can be made");
-    std::fs::write(cut_off.join(RECORDING_MARKER), b"").expect("the marker can be written");
-    std::fs::write(cut_off.join("recording.mov"), b"").expect("the temp video can be written");
-    let recordings = current.kept_recordings().expect("the folder reads");
-    assert_eq!(recordings[0].folder, "cut off");
-    assert!(recordings[0].is_recovered);
-    assert!(recordings[1..].iter().all(|kept| !kept.is_recovered));
-}
-
-#[test]
-fn trash_older_than_should_move_only_closed_recordings_past_the_cutoff() {
-    let shell = FakeShell::answering(Choice::Cancel);
-    let (current, open) = keeping_one("older-than", &shell);
-    let old = stored_recording(&current, "old", true);
-    stored_recording(&current, "new", false);
-    let long_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(40 * 24 * 60 * 60);
-    for folder in [&old, &open] {
-        std::fs::File::open(folder)
-            .and_then(|dir| dir.set_modified(long_ago))
-            .expect("the temp folder's time can be set");
-    }
-    assert_eq!(current.trash_older_than(&shell, 30).expect("it reads"), 1);
-    assert_eq!(*shell.trashed.borrow(), [old]);
+    let current = nothing_open("recover-empty");
+    current.recover(&shell).expect("a missing folder is fine");
+    let empty = left_behind(&current, "2026-10-25 09.00.00", b"");
+    current.recover(&shell).expect("the folder reads");
+    assert!(!empty.exists());
+    assert!(shell.switches.borrow().is_empty());
+    assert!(current.shown().is_none());
 }
 
 #[test]

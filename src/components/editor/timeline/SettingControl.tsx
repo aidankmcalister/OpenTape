@@ -1,9 +1,12 @@
 import type { ReactNode } from "react";
 import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  settingValue,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   type Region,
   type Setting,
   type SettingValue,
@@ -12,7 +15,7 @@ import { MARK_COLORS, type MarkColor } from "@/lib/editor/appearance";
 import { focusBox, focusBoxStyle, focusCenter } from "@/lib/editor/zoom";
 import { clamp } from "@/lib/geometry";
 import { ColorSwatches } from "../ColorPicker";
-import { NumberField, ValueInput } from "../Panel";
+import { NumberField, ValueInput, SwitchField } from "../Panel";
 
 const MARK_OPTIONS = (Object.keys(MARK_COLORS) as MarkColor[]).map((mark) => ({
   value: mark,
@@ -21,11 +24,12 @@ const MARK_OPTIONS = (Object.keys(MARK_COLORS) as MarkColor[]).map((mark) => ({
 }));
 
 type Edit = {
-  region: Region;
+  value: (key: string) => SettingValue;
   set: (key: string, value: SettingValue) => void;
   preview: (key: string, value: SettingValue) => void;
-  change: (change: Partial<Region>) => void;
   commit: () => void;
+  region?: Region;
+  change?: (change: Partial<Region>) => void;
 };
 
 export default function SettingControl({
@@ -35,11 +39,11 @@ export default function SettingControl({
   setting: Setting;
   edit: Edit;
 }) {
-  const { region, set } = edit;
-  const value = (key: string) => settingValue(region, key);
+  const { region, set, value } = edit;
   switch (setting.kind) {
     case "slider": {
-      const { key, label, min, max, step, unit } = setting;
+      const { key, label, min, max, step, unit, help, onlyWith } = setting;
+      if (onlyWith && !value(onlyWith)) return null;
       return (
         <Slider
           min={min}
@@ -49,7 +53,7 @@ export default function SettingControl({
           onValueChange={(next) => edit.preview(key, Number(next))}
           onValueCommitted={edit.commit}
         >
-          <span>{label}</span>
+          <Help text={help}>{label}</Help>
           <ValueInput
             label={label}
             value={Number(value(key))}
@@ -70,6 +74,7 @@ export default function SettingControl({
               {setting.options.map((option) => (
                 <TabsTrigger
                   key={option}
+                  className="text-label"
                   value={option}
                   disabled={setting.disabled?.includes(option)}
                 >
@@ -95,25 +100,41 @@ export default function SettingControl({
       );
     case "switch":
       return (
-        <label className="flex h-8 items-center justify-between text-label">
-          {setting.label}
-          <Switch
-            checked={Boolean(value(setting.key))}
-            onCheckedChange={(checked) => set(setting.key, checked)}
-          />
-        </label>
+        <SwitchField
+          label={<Help text={setting.help}>{setting.label}</Help>}
+          checked={Boolean(value(setting.key))}
+          onChange={(checked) => set(setting.key, checked)}
+        />
       );
     case "focus":
-      return <Focus edit={edit} />;
+      return region && edit.change ? (
+        <Focus region={region} change={edit.change} />
+      ) : null;
     case "hint":
       return (
         <p className="text-label text-muted-foreground">
           {typeof setting.text === "string"
             ? setting.text
-            : setting.text(region)}
+            : region && setting.text(region)}
         </p>
       );
   }
+}
+
+function Help({ text, children }: { text?: string; children: string }) {
+  if (!text) return <span>{children}</span>;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span />}>{children}</TooltipTrigger>
+      <TooltipContent
+        side="bottom"
+        align="start"
+        className="h-auto max-w-64 py-1.5 leading-4"
+      >
+        {text}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 function Row({ label, children }: { label?: string; children: ReactNode }) {
@@ -128,9 +149,15 @@ function Row({ label, children }: { label?: string; children: ReactNode }) {
   );
 }
 
-function Focus({ edit }: { edit: Edit }) {
-  const center = focusCenter(edit.region);
-  const box = focusBox(edit.region);
+function Focus({
+  region,
+  change,
+}: {
+  region: Region;
+  change: (change: Partial<Region>) => void;
+}) {
+  const center = focusCenter(region);
+  const box = focusBox(region);
   const axes = ["x", "y"] as const;
   return (
     <div className="flex gap-2">
@@ -139,7 +166,7 @@ function Focus({ edit }: { edit: Edit }) {
         <div className="absolute inset-x-0 top-1/2 h-px bg-hairline" />
         <div
           className="absolute border border-dashed border-highlight/60"
-          style={focusBoxStyle(edit.region)}
+          style={focusBoxStyle(region)}
         />
         <div
           className="absolute size-2 -translate-1/2 rounded-full bg-highlight"
@@ -157,7 +184,7 @@ function Focus({ edit }: { edit: Edit }) {
             value={Math.round(center[axis] * 100)}
             unit="%"
             onChange={(percent) =>
-              edit.change({
+              change({
                 center: { ...center, [axis]: clamp(percent / 100, 0, 1) },
               })
             }

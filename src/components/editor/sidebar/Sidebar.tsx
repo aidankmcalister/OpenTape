@@ -1,11 +1,5 @@
-import type { ReactNode } from "react";
-import {
-  Captions,
-  CircleHelp,
-  Image,
-  MousePointer2,
-  Volume2,
-} from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Image, MousePointer2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -14,36 +8,37 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { Edits } from "@/hooks/editor/useProject";
+import type { CursorTrack } from "@/lib/editor/cursor";
 import Island from "../Island";
 import SettingsDialog from "./SettingsDialog";
 import ShortcutsSheet from "./ShortcutsSheet";
 import AppearancePanel from "./AppearancePanel";
+import CursorPanel from "./CursorPanel";
 
 const PANELS = [
   { id: "background", label: "Background", Icon: Image },
   { id: "cursor", label: "Cursor", Icon: MousePointer2 },
-  { id: "audio", label: "Audio", Icon: Volume2 },
-  { id: "captions", label: "Captions", Icon: Captions },
 ];
 
-const BUILT = ["background"];
-
-const LINKS = [
-  { label: "Help", Icon: CircleHelp },
-  { label: "GitHub", Icon: GitHubMark },
-];
-
-export default function Sidebar({ edits }: { edits: Edits }) {
+export default function Sidebar({
+  edits,
+  cursor,
+}: {
+  edits: Edits;
+  cursor: CursorTrack;
+}) {
+  const [panel, setPanel] = useState("background");
   return (
     <Island className="flex w-86 shrink-0">
       <nav className="flex w-12 shrink-0 flex-col items-center gap-1 py-3 hairline-r">
         {PANELS.map(({ id, label, Icon }) => (
           <RailTip key={id} label={label}>
             <Button
-              variant={id === "background" ? "selected" : "ghost"}
+              variant={id === panel ? "selected" : "ghost"}
               size="icon"
               aria-label={label}
-              disabled={!BUILT.includes(id)}
+              aria-pressed={id === panel}
+              onClick={() => setPanel(id)}
             >
               <Icon />
             </Button>
@@ -53,19 +48,21 @@ export default function Sidebar({ edits }: { edits: Edits }) {
         <RailTip label="Keyboard shortcuts">
           <ShortcutsSheet />
         </RailTip>
-        {LINKS.map(({ label, Icon }) => (
-          <RailTip key={label} label={label}>
-            <Button variant="ghost" size="icon" aria-label={label} disabled>
-              <Icon />
-            </Button>
-          </RailTip>
-        ))}
+        <RailTip label="GitHub">
+          <Button variant="ghost" size="icon" aria-label="GitHub" disabled>
+            <GitHubMark />
+          </Button>
+        </RailTip>
         <RailTip label="Settings">
           <SettingsDialog />
         </RailTip>
       </nav>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <AppearancePanel edits={edits} />
+      <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+        {panel === "cursor" ? (
+          <CursorPanel edits={edits} track={cursor} />
+        ) : (
+          <AppearancePanel edits={edits} />
+        )}
       </div>
     </Island>
   );
