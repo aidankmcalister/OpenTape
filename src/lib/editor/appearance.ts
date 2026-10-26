@@ -108,14 +108,14 @@ export const AMOUNTS: Record<
   borderOpacity: { label: "Opacity", max: 100, unit: "%" },
 };
 
-export type CursorLook = {
+export type CursorPaint = {
   fill: string;
   edge: string;
   edgeWidth: number;
   join: "miter" | "round";
 };
 
-const OUTLINED: CursorLook = {
+const OUTLINED: CursorPaint = {
   fill: "#000000",
   edge: "#ffffff",
   edgeWidth: 3,
@@ -124,7 +124,7 @@ const OUTLINED: CursorLook = {
 
 export const CURSOR_STYLES: Record<
   "macOS" | "Pointy" | "Rounded" | "No stem" | "Dot",
-  CursorLook | null
+  CursorPaint | null
 > = {
   macOS: null,
   Pointy: { ...OUTLINED, edgeWidth: 2.5, join: "miter" },

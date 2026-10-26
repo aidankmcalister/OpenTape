@@ -6,6 +6,7 @@ import {
   DEFAULT_EXPORT,
   exportLayout,
   exportOptions,
+  readExport,
 } from "./export";
 
 describe("export", () => {
@@ -215,3 +216,18 @@ test.each([
     );
   },
 );
+
+test("readExport keeps known choices and falls back for missing or unknown ones", () => {
+  expect(readExport(null)).toEqual(DEFAULT_EXPORT);
+  expect(readExport({ format: "gif", frameRate: 30, to: "clipboard" })).toEqual(
+    {
+      ...DEFAULT_EXPORT,
+      format: "gif",
+      frameRate: 30,
+      to: "clipboard",
+    },
+  );
+  expect(
+    readExport({ resolution: "8K", quality: "huge", frameRate: 24 }),
+  ).toEqual(DEFAULT_EXPORT);
+});

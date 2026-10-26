@@ -136,6 +136,21 @@ export const DEFAULT_EXPORT: ExportSettings = {
   to: "file",
 };
 
+export function readExport(saved: unknown): ExportSettings {
+  const known = { ...DEFAULT_EXPORT, ...(saved as Partial<ExportSettings>) };
+  return {
+    format: known.format === "gif" ? "gif" : "mp4",
+    frameRate: known.frameRate === 30 ? 30 : 60,
+    resolution:
+      known.resolution in RESOLUTIONS
+        ? known.resolution
+        : DEFAULT_EXPORT.resolution,
+    quality:
+      known.quality in QUALITIES ? known.quality : DEFAULT_EXPORT.quality,
+    to: known.to === "clipboard" ? "clipboard" : "file",
+  };
+}
+
 export function exportOptions(settings: ExportSettings): ExportOptions {
   return {
     format: settings.format,

@@ -80,7 +80,7 @@ export default function CursorPanel({
                 ) : null
               }
             >
-              {title === "Look" ? (
+              {title === "Style" ? (
                 <StyleTiles
                   track={track}
                   style={cursor.style}

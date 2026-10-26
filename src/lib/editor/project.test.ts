@@ -33,6 +33,8 @@ describe("project", () => {
 
   test("no file starts a new project, and an older file fills what it lacks", () => {
     expect(readProject(null)).toBe(NEW_PROJECT);
+    const fresh = changeAppearance(NEW_PROJECT, { padding: 20 });
+    expect(readProject(null, fresh)).toBe(fresh);
     const light = readProject(
       JSON.stringify({ appearance: { borderColor: "light" } }),
     );

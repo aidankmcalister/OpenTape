@@ -62,7 +62,7 @@ export type RingStyle = "ring" | "pulse" | "ripple";
 
 export type Session = { mode: Mode, sources: Sources, pinnedWindowId: number | null, areaDisplayId: number | null, };
 
-export type Settings = { saveFolder: string | null, };
+export type Settings = { saveFolder: string | null, export: unknown, appearance: unknown, suggestsEdits: boolean, };
 
 export type Setup = { session: Session, cursor: Point | null, };
 

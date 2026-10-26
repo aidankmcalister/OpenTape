@@ -1,20 +1,37 @@
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Mutex;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Manager, State, path::BaseDirectory};
 use tauri_plugin_dialog::DialogExt;
 use ts_rs::TS;
 
 use crate::current_recording::CurrentRecording;
 use crate::util::{CmdResult, lock, run_blocking};
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
 #[ts(export, export_to = "bindings.ts")]
 pub(crate) struct Settings {
     pub save_folder: Option<String>,
+    #[ts(type = "unknown")]
+    pub export: Option<serde_json::Value>,
+    #[ts(type = "unknown")]
+    pub appearance: Option<serde_json::Value>,
+    pub suggests_edits: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            save_folder: None,
+            export: None,
+            appearance: None,
+            suggests_edits: true,
+        }
+    }
 }
 
 pub(crate) struct AppSettings {
@@ -88,6 +105,23 @@ pub(crate) async fn choose_save_folder(app: AppHandle) -> CmdResult<Option<Strin
     Ok(chosen)
 }
 
+#[tauri::command]
+pub(crate) async fn open_notices(app: AppHandle) -> CmdResult {
+    let path = app
+        .path()
+        .resolve("THIRD-PARTY-NOTICES.txt", BaseDirectory::Resource)?;
+    run_blocking(move || {
+        let status = Command::new("/usr/bin/open")
+            .arg("-t")
+            .arg(&path)
+            .status()?;
+        ensure!(status.success(), "could not open {}", path.display());
+        Ok(())
+    })
+    .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,6 +138,7 @@ mod tests {
         std::fs::write(&path, r#"{"saveFolder":"/tmp/x","deleteAfterDays":30}"#)
             .expect("the temp file can be written");
         assert_eq!(read(&path).save_folder.as_deref(), Some("/tmp/x"));
+        assert!(read(&path).suggests_edits);
     }
 
     #[test]
@@ -113,6 +148,8 @@ mod tests {
         let settings = AppSettings::load(folder.join("settings.json"));
         let chosen = Settings {
             save_folder: Some("/tmp/exports".into()),
+            suggests_edits: false,
+            ..Settings::default()
         };
         settings
             .save(chosen.clone())

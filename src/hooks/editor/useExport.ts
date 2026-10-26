@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
+import type { AppSettings } from "@/hooks/useAppSettings";
 import { invoke } from "@tauri-apps/api/core";
 import { useTauriEvent } from "@/hooks/useTauri";
 import {
   aboutMegabytes,
-  DEFAULT_EXPORT,
   exportLayout,
   exportOptions,
   RESOLUTIONS,
@@ -35,9 +35,10 @@ export function useExport(
   { videoSize, durationMs }: Pick<Playback, "videoSize" | "durationMs">,
   rings: RingEvent[],
   cursor: CursorTrack,
+  app: AppSettings,
 ) {
   const [state, setState] = useState<ExportState>({ stage: "idle" });
-  const [settings, setSettings] = useState(DEFAULT_EXPORT);
+  const settings = app.exportSettings;
   const layoutAt = (size: Size, timeline?: Partial<ExportTimeline>) =>
     exportLayout(appearance, size, timeline, RESOLUTIONS[settings.resolution]);
 
@@ -99,8 +100,8 @@ export function useExport(
     state,
     start: canStart ? () => void start(videoSize) : null,
     settings,
-    change: (change: Partial<ExportSettings>) =>
-      setSettings((current) => ({ ...current, ...change })),
+    change: (part: Partial<ExportSettings>) =>
+      app.change({ export: { ...settings, ...part } }),
     output: output && {
       width: output.width,
       height: output.height,

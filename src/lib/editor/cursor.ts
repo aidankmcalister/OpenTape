@@ -8,7 +8,7 @@ import type {
 import { clamp } from "@/lib/geometry";
 import {
   CURSOR_STYLES,
-  type CursorLook,
+  type CursorPaint,
   type CursorMode,
   type CursorSettings,
   type CursorStyle,
@@ -102,7 +102,7 @@ export const CURSOR_MODES: Record<CursorMode, string> = {
 
 export const CURSOR_SECTIONS: { title: string; settings: Setting[] }[] = [
   {
-    title: "Look",
+    title: "Style",
     settings: [
       {
         kind: "slider",
@@ -342,11 +342,11 @@ export function cursorPictures(
   images: CursorImage[],
   style: CursorStyle,
 ): CursorPicture[] {
-  const look = CURSOR_STYLES[style];
+  const paint = CURSOR_STYLES[style];
   return images.map(({ png, ...image }) => {
     const shape = SHAPES[style]?.[image.kind];
-    return look && shape
-      ? shapePicture(image.kind, shape, look)
+    return paint && shape
+      ? shapePicture(image.kind, shape, paint)
       : { ...image, src: `data:image/png;base64,${png}` };
   });
 }
@@ -354,18 +354,18 @@ export function cursorPictures(
 function shapePicture(
   kind: string,
   shape: Shape,
-  look: CursorLook,
+  paint: CursorPaint,
 ): CursorPicture {
   const at = (value: number) => SHAPE_PAD + value * SHAPE_SCALE;
   const [width, height] = shape.size.map((side) => at(side) + SHAPE_PAD);
   const stroke = (strokeWidth: number) =>
-    `stroke="${look.edge}" stroke-width="${strokeWidth}" stroke-linejoin="${look.join}" stroke-linecap="round"`;
+    `stroke="${paint.edge}" stroke-width="${strokeWidth}" stroke-linejoin="${paint.join}" stroke-linecap="round"`;
   const svg = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width * SHAPE_RASTER}" height="${height * SHAPE_RASTER}" viewBox="0 0 ${width} ${height}">`,
     `<g transform="translate(${SHAPE_PAD} ${SHAPE_PAD}) scale(${SHAPE_SCALE})">`,
-    `<path d="${shape.path}" fill="${look.fill}" ${stroke(look.edgeWidth / SHAPE_SCALE)} paint-order="stroke"/>`,
+    `<path d="${shape.path}" fill="${paint.fill}" ${stroke(paint.edgeWidth / SHAPE_SCALE)} paint-order="stroke"/>`,
     shape.lines
-      ? `<path d="${shape.lines}" fill="none" ${stroke(look.edgeWidth / 2 / SHAPE_SCALE)}/>`
+      ? `<path d="${shape.lines}" fill="none" ${stroke(paint.edgeWidth / 2 / SHAPE_SCALE)}/>`
       : "",
     `</g>`,
     `</svg>`,

@@ -216,13 +216,15 @@ export function useProject(
 
 export type Edits = ReturnType<typeof useProject>;
 
-export function useSavedProject(edits: Edits) {
+export function useSavedProject(edits: Edits, fresh: Project | null) {
+  const [saved, setSaved] = useState<string | null>();
   const [isLoaded, setIsLoaded] = useState(false);
   const saving = useRef<Promise<unknown>>(Promise.resolve());
-  useInvokeOnMount<string | null>("load_project", (json) => {
-    edits.load(readProject(json));
+  useInvokeOnMount<string | null>("load_project", setSaved);
+  if (!isLoaded && saved !== undefined && fresh) {
     setIsLoaded(true);
-  });
+    edits.load(readProject(saved, fresh));
+  }
   const json = isLoaded ? projectJson(edits.saved) : null;
   useEffect(() => {
     if (json === null) return;

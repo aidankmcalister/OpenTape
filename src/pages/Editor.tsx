@@ -14,6 +14,7 @@ import Sidebar, {
 } from "@/components/editor/sidebar/Sidebar";
 import CommandPalette from "@/components/editor/CommandPalette";
 import { useExport } from "@/hooks/editor/useExport";
+import { useAppSettings } from "@/hooks/useAppSettings";
 import { useElementSize } from "@/hooks/useElementSize";
 import {
   useCursor,
@@ -55,7 +56,8 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
     track.width,
     cursor,
   );
-  useSavedProject(edits);
+  const app = useAppSettings();
+  useSavedProject(edits, app.newProject);
   const lanes = useLanes();
   const editing = edits.project.regions.find(
     ({ id }) => id === edits.editingId,
@@ -71,7 +73,7 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
     : edits.time;
   useTimeMap(playback, time);
   const rings = ringEvents(cursor.clicks, appearance.cursor);
-  const exporting = useExport(edits.project, playback, rings, cursor);
+  const exporting = useExport(edits.project, playback, rings, cursor, app);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [panel, setPanel] = useState<SidebarPanel>("background");
   const [dialog, setDialog] = useState<EditorDialog | null>(null);
@@ -142,6 +144,7 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
         <Sidebar
           edits={edits}
           cursor={cursor}
+          app={app}
           panel={panel}
           onPanelChange={setPanel}
           dialog={dialog}

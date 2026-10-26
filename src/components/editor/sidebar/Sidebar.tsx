@@ -8,6 +8,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { Edits } from "@/hooks/editor/useProject";
+import type { AppSettings } from "@/hooks/useAppSettings";
 import type { CursorTrack } from "@/lib/editor/cursor";
 import Island from "../Island";
 import SettingsDialog from "./SettingsDialog";
@@ -26,6 +27,7 @@ export type EditorDialog = "palette" | "settings" | "shortcuts";
 export default function Sidebar({
   edits,
   cursor,
+  app,
   panel,
   onPanelChange,
   dialog,
@@ -33,6 +35,7 @@ export default function Sidebar({
 }: {
   edits: Edits;
   cursor: CursorTrack;
+  app: AppSettings;
   panel: SidebarPanel;
   onPanelChange: (panel: SidebarPanel) => void;
   dialog: EditorDialog | null;
@@ -68,7 +71,11 @@ export default function Sidebar({
           </Button>
         </RailTip>
         <RailTip label="Settings">
-          <SettingsDialog {...dialogProps("settings")} />
+          <SettingsDialog
+            {...dialogProps("settings")}
+            app={app}
+            appearance={edits.project.appearance}
+          />
         </RailTip>
       </nav>
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
