@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build",
+    "beforeBuildCommand": "bun run notices && bun run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -78,6 +78,7 @@
     },
     "copyright": "Copyright © 2026 Aidan McAlister. MIT License.",
     "category": "Video",
+    "resources": ["THIRD-PARTY-NOTICES.txt"],
     "shortDescription": "A small, free, open-source screen recorder for macOS."
   }
 }

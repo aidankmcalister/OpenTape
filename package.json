@@ -17,7 +17,8 @@
     "lint": "eslint .",
     "format": "prettier --write src",
     "check": "tsc --noEmit && eslint . && prettier --check src && bun test ./src && cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --quiet && git diff --exit-code --stat -- ../src/lib/bindings.ts",
-    "bindings": "cd src-tauri && cargo test --quiet export_bindings"
+    "bindings": "cd src-tauri && cargo test --quiet export_bindings",
+    "notices": "bun scripts/notices.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

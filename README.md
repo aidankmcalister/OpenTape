@@ -12,6 +12,7 @@ Early and macOS only. Recording, pause, restart, the recording preview and Save 
 - Xcode Command Line Tools: `xcode-select --install`.
 - Rust, through [rustup](https://rustup.rs). The crate uses the 2024 edition, so you need Rust 1.85 or later.
 - [bun](https://bun.sh).
+- [cargo-about](https://github.com/EmbarkStudios/cargo-about), only for `tauri build`: `cargo install cargo-about --locked --features cli`.
 
 ## Run it
 
@@ -31,6 +32,8 @@ bun run check
 ```
 
 This runs every check: `tsc`, ESLint, Prettier, `bun test`, `cargo fmt`, Clippy, `cargo test`, and a guard that fails if the generated bindings are stale. Smaller scripts: `bun run lint`, `bun run test`, `bun run format`.
+
+Every `tauri build` regenerates `src-tauri/THIRD-PARTY-NOTICES.txt`, the license notices of the npm packages, Rust crates and fonts that ship in the app, and bundles it. Run `bun run notices` after changing dependencies and commit the result.
 
 The TypeScript types in `src/lib/bindings.ts` are generated from the Rust types by ts-rs. After you change a Rust type the frontend uses, run `bun run bindings` and commit the result.
 
