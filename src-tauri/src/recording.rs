@@ -5,7 +5,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 use ts_rs::TS;
 
-use crate::capture::{self, RunningRecording, Target};
+use crate::capture::{self, Audio, RunningRecording, Target};
 use crate::current_recording::CurrentRecording;
 use crate::macos::{self, Alert, Choice};
 use crate::util::{CmdResult, lock, run_blocking};
@@ -67,6 +67,7 @@ struct Inner {
     error: Option<String>,
     running: Option<RunningRecording>,
     recordings_started: u64,
+    audio: Audio,
 }
 
 impl RecordingState {
@@ -159,6 +160,18 @@ pub(crate) fn recording_status(state: State<'_, RecordingState>) -> RecordingSta
 }
 
 #[tauri::command]
+pub(crate) fn set_capture_audio(
+    state: State<'_, RecordingState>,
+    microphone_id: Option<String>,
+    system_audio: bool,
+) {
+    lock(&state.0).audio = Audio {
+        microphone_id,
+        system_audio,
+    };
+}
+
+#[tauri::command]
 pub(crate) fn pause_recording(app: AppHandle, paused: bool) -> CmdResult {
     app.state::<RecordingState>().set_paused(paused)?;
     announce_status(&app);
@@ -242,12 +255,14 @@ async fn start_capture(app: &AppHandle, target: Target) {
 
 async fn open_capture(app: &AppHandle, target: Target) -> Result<RunningRecording> {
     let folder = app.state::<CurrentRecording>().new_folder()?;
-    let recording_number = app.state::<RecordingState>().next_recording_number();
+    let state = app.state::<RecordingState>();
+    let recording_number = state.next_recording_number();
+    let audio = lock(&state.0).audio.clone();
     let app = app.clone();
     let on_stop = move |reason| {
         tauri::async_runtime::spawn(capture_stopped(app.clone(), recording_number, reason));
     };
-    run_blocking(move || capture::start(target, folder, on_stop)).await
+    run_blocking(move || capture::start(target, audio, folder, on_stop)).await
 }
 
 fn go_idle(app: &AppHandle, error: Option<&anyhow::Error>) {

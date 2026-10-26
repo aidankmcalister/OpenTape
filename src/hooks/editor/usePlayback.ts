@@ -82,6 +82,7 @@ export function usePlayback(src: string) {
         setDurationMs(lengthMs(event.currentTarget));
         setRatio(ratioOf(event.currentTarget));
         setVideoSize(sizeOf(event.currentTarget));
+        playEverySoundTrack(event.currentTarget);
         showFirstFrame(event);
       },
     },
@@ -125,6 +126,13 @@ function ratioOf(video: HTMLVideoElement): number {
 
 function sizeOf(video: HTMLVideoElement): Size {
   return { width: video.videoWidth, height: video.videoHeight };
+}
+
+function playEverySoundTrack(video: HTMLVideoElement) {
+  const { audioTracks } = video as {
+    audioTracks?: ArrayLike<{ enabled: boolean }>;
+  };
+  for (const track of Array.from(audioTracks ?? [])) track.enabled = true;
 }
 
 function showFirstFrame(event: SyntheticEvent<HTMLVideoElement>) {

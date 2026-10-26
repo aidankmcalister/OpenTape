@@ -13,7 +13,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow, bail};
-use cidre::{arc, dispatch, sc};
+use cidre::{arc, av, dispatch, ns, sc};
 
 pub(crate) use plan::{
     CaptureSize, NORMAL_WINDOW_LAYER, Target, display_of, display_scale, shareable_content,
@@ -28,6 +28,37 @@ use crate::util::lock;
 const VIDEO_FILE: &str = "recording.mov";
 pub(crate) const EVENTS_FILE: &str = "events.jsonl";
 pub(crate) const META_FILE: &str = "meta.json";
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Audio {
+    pub microphone_id: Option<String>,
+    pub system_audio: bool,
+}
+
+impl Audio {
+    fn with_allowed_microphone(self) -> Self {
+        if self.microphone_id.is_none() {
+            return self;
+        }
+        let sound = av::MediaType::audio();
+        let is_allowed = match av::CaptureDevice::authorization_status_for_media_type(sound) {
+            Ok(av::AuthorizationStatus::Authorized) => true,
+            Ok(av::AuthorizationStatus::NotDetermined) => matches!(
+                pollster::block_on(av::CaptureDevice::request_access_for_media_type(sound)),
+                Ok(true)
+            ),
+            _ => false,
+        };
+        if is_allowed {
+            return self;
+        }
+        eprintln!("microphone access is off, so this recording has no microphone");
+        Self {
+            microphone_id: None,
+            ..self
+        }
+    }
+}
 
 #[derive(Debug)]
 pub(crate) struct SavedRecording {
@@ -76,6 +107,7 @@ impl RunningRecording {
 
 pub(crate) fn start(
     target: Target,
+    audio: Audio,
     folder: PathBuf,
     on_stop: impl Fn(String) + Send + 'static,
 ) -> Result<RunningRecording> {
@@ -87,8 +119,9 @@ pub(crate) fn start(
         let (target, folder, timeline) = (target.clone(), folder.clone(), Arc::clone(&timeline));
         move || {
             let on_stop = Box::new(on_stop);
-            let saved =
-                record_until_stopped(&target, &folder, timeline, on_stop, &started_tx, &stop_rx);
+            let audio = audio.with_allowed_microphone();
+            let capture = ActiveCapture::start(&target, &audio, &folder, timeline, on_stop);
+            let saved = record_until_stopped(capture, &started_tx, &stop_rx);
             let _ = finished_tx.send(saved);
         }
     });
@@ -105,14 +138,11 @@ pub(crate) fn start(
 }
 
 fn record_until_stopped(
-    target: &Target,
-    folder: &Path,
-    timeline: Arc<Mutex<Timeline>>,
-    on_stop: OnStop,
+    capture: Result<ActiveCapture>,
     started_tx: &Sender<Result<()>>,
     stop_rx: &Receiver<()>,
 ) -> Result<SavedRecording> {
-    let capture = match ActiveCapture::start(target, folder, timeline, on_stop) {
+    let capture = match capture {
         Ok(capture) => capture,
         Err(err) => {
             let _ = started_tx.send(Err(err));
@@ -138,20 +168,43 @@ struct ActiveCapture {
 impl ActiveCapture {
     fn start(
         target: &Target,
+        audio: &Audio,
         folder: &Path,
         timeline: Arc<Mutex<Timeline>>,
         on_stop: OnStop,
     ) -> Result<Self> {
         std::fs::create_dir_all(folder)
             .with_context(|| format!("could not create {}", folder.display()))?;
-        let plan = plan_capture(target)?;
-        let recorder = create_recorder(&folder.join(VIDEO_FILE), plan.size, Arc::clone(&timeline))?;
+        let mut plan = plan_capture(target)?;
+        plan.config.set_captures_audio(audio.system_audio);
+        plan.config.set_excludes_current_process_audio(true);
+        if let Some(microphone_id) = &audio.microphone_id {
+            plan.config.set_capture_mic(true);
+            plan.config
+                .set_mic_capture_device_id(Some(&ns::String::with_str(microphone_id)));
+        }
+        let recorder = create_recorder(
+            &folder.join(VIDEO_FILE),
+            plan.size,
+            audio,
+            Arc::clone(&timeline),
+        )?;
         let stop_watcher = StopWatcher::with(on_stop);
         let stream = sc::Stream::with_delegate(&plan.filter, &plan.config, stop_watcher.as_ref());
         let queue = dispatch::Queue::serial_with_ar_pool();
         stream
             .add_stream_output(recorder.as_ref(), sc::OutputType::Screen, Some(&queue))
             .map_err(|err| anyhow!("could not add stream output: {err:?}"))?;
+        if audio.system_audio {
+            stream
+                .add_stream_output(recorder.as_ref(), sc::OutputType::Audio, Some(&queue))
+                .map_err(|err| anyhow!("could not add system audio output: {err:?}"))?;
+        }
+        if audio.microphone_id.is_some() {
+            stream
+                .add_stream_output(recorder.as_ref(), sc::OutputType::Mic, Some(&queue))
+                .map_err(|err| anyhow!("could not add microphone output: {err:?}"))?;
+        }
         let cursor = CursorLogger::start(&folder.join(EVENTS_FILE))?;
         pollster::block_on(stream.start())
             .map_err(|err| anyhow!("could not start capture: {err:?}"))?;
@@ -169,12 +222,13 @@ impl ActiveCapture {
     }
 
     fn finish(mut self) -> Result<SavedRecording> {
+        let video_end = lock(&self.timeline).video_end(host_time_now());
         if let Err(err) = pollster::block_on(self.stream.stop()) {
             eprintln!("capture had already stopped, keeping what it recorded: {err:?}");
         }
         self.queue.sync(|| {});
         let cursor = self.cursor.stop();
-        let first_frame_time = finish_writing(&mut self.recorder)?;
+        let first_frame_time = finish_writing(&mut self.recorder, video_end)?;
         cursor?;
         let rect = self.plan.screen_rect;
         let pauses = serde_json::to_string(lock(&self.timeline).pauses())

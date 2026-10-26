@@ -1,10 +1,9 @@
 use std::{
     path::{Path, PathBuf},
-    process::Command,
     sync::Mutex,
 };
 
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -214,7 +213,7 @@ impl CurrentRecording {
         }
         let (video, export_name) = self.video()?;
         let output = free_path(&self.output_folder(), &export_name, "mp4", Path::exists);
-        to_mp4(&video, &output)?;
+        export::to_mp4(&video, &output)?;
         if let Some(kept) = lock(&self.kept).as_mut() {
             kept.saved_to = Some(output.clone());
         }
@@ -246,7 +245,7 @@ impl CurrentRecording {
         let (video, export_name) = self.video()?;
         std::fs::create_dir_all(&self.folders.copies)?;
         let output = self.folders.copies.join(file_name(&export_name, "mp4"));
-        to_mp4(&video, &output)?;
+        export::to_mp4(&video, &output)?;
         Ok(output)
     }
 
@@ -312,21 +311,6 @@ fn folder_name(folder: &Path) -> String {
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default()
-}
-
-fn to_mp4(video: &Path, output: &Path) -> Result<()> {
-    let avconvert = Command::new("/usr/bin/avconvert")
-        .args(["--preset", "PresetPassthrough", "--replace", "--source"])
-        .arg(video)
-        .arg("--output")
-        .arg(output)
-        .output()
-        .context("could not start avconvert")?;
-    if !avconvert.status.success() {
-        let stderr = String::from_utf8_lossy(&avconvert.stderr);
-        bail!("could not make the .mp4: {}", stderr.trim());
-    }
-    Ok(())
 }
 
 fn file_name(name: &str, extension: &str) -> String {

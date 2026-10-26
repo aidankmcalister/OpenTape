@@ -5,12 +5,13 @@ use anyhow::{Context, Result, ensure};
 use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2_av_foundation::{
-    AVAssetReader, AVAssetReaderStatus, AVAssetReaderVideoCompositionOutput,
-    AVAsynchronousCIImageFilteringRequest, AVMediaTypeVideo, AVMutableComposition,
-    AVMutableVideoComposition, AVURLAsset,
+    AVAsset, AVAssetReader, AVAssetReaderAudioMixOutput, AVAssetReaderStatus,
+    AVAssetReaderTrackOutput, AVAssetReaderVideoCompositionOutput,
+    AVAsynchronousCIImageFilteringRequest, AVAudioTimePitchAlgorithmVarispeed, AVMediaTypeAudio,
+    AVMediaTypeVideo, AVMutableComposition, AVMutableVideoComposition, AVURLAsset,
 };
 use objc2_core_foundation::{CGAffineTransform, CGPoint, CGRect, CGSize};
-use objc2_core_media::{CMTime, CMTimeRange, kCMTimeZero};
+use objc2_core_media::{CMFormatDescription, CMTime, CMTimeRange, kCMTimeZero};
 use objc2_foundation::{NSArray, NSError, NSString, NSURL};
 use serde::Deserialize;
 use ts_rs::TS;
@@ -25,7 +26,7 @@ pub(crate) use cursor::ExportCursor;
 use cutout::cutout;
 pub(crate) use rings::ExportRing;
 use rings::RingPictures;
-use writers::{write_gif, write_mp4};
+use writers::{h264, write_gif, write_mp4};
 
 #[derive(Debug, Clone, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -229,6 +230,10 @@ pub(crate) fn export(
         frames.setVideoComposition(Some(&composition));
         reader.addOutput(&frames);
     }
+    let sound = match options.format {
+        ExportFormat::Mp4 => mixed_sound(&asset, &reader)?,
+        ExportFormat::Gif => None,
+    };
 
     ensure!(
         unsafe { reader.startReading() },
@@ -245,7 +250,17 @@ pub(crate) fn export(
         }
     };
     match options.format {
-        ExportFormat::Mp4 => write_mp4(&frames, output, layout, options, progress_at)?,
+        ExportFormat::Mp4 => {
+            let settings = h264(layout.width, layout.height, options.bits_per_pixel)?;
+            write_mp4(
+                &frames,
+                sound.as_deref(),
+                output,
+                Some(&settings),
+                None,
+                progress_at,
+            )?
+        }
         ExportFormat::Gif => write_gif(&frames, output, options.frame_rate, duration, progress_at)?,
     }
     ensure!(
@@ -254,6 +269,62 @@ pub(crate) fn export(
         reason(unsafe { reader.error() })
     );
     Ok(())
+}
+
+pub(crate) fn to_mp4(video: &Path, output: &Path) -> Result<()> {
+    let asset = unsafe { AVURLAsset::URLAssetWithURL_options(&file_url(video), None) };
+    let video_type = unsafe { AVMediaTypeVideo }.context("AVFoundation has no video type")?;
+    #[allow(deprecated)]
+    let track = unsafe { asset.tracksWithMediaType(video_type) }
+        .firstObject()
+        .context("the recording has no video")?;
+    let reader = unsafe { AVAssetReader::assetReaderWithAsset_error(&asset) }.map_err(|error| {
+        anyhow::anyhow!("could not read the recording: {}", reason(Some(error)))
+    })?;
+    let frames = unsafe {
+        AVAssetReaderTrackOutput::assetReaderTrackOutputWithTrack_outputSettings(&track, None)
+    };
+    unsafe { reader.addOutput(&frames) };
+    let sound = mixed_sound(&asset, &reader)?;
+    ensure!(
+        unsafe { reader.startReading() },
+        "could not read the recording: {}",
+        reason(unsafe { reader.error() })
+    );
+    let format = unsafe { track.formatDescriptions() }.firstObject();
+    let hint =
+        format.map(|format| unsafe { &*Retained::as_ptr(&format).cast::<CMFormatDescription>() });
+    write_mp4(&frames, sound.as_deref(), output, None, hint, |_| {})?;
+    ensure!(
+        unsafe { reader.status() } == AVAssetReaderStatus::Completed,
+        "could not read the recording to the end: {}",
+        reason(unsafe { reader.error() })
+    );
+    Ok(())
+}
+
+fn mixed_sound(
+    asset: &AVAsset,
+    reader: &AVAssetReader,
+) -> Result<Option<Retained<AVAssetReaderAudioMixOutput>>> {
+    let audio_type = unsafe { AVMediaTypeAudio }.context("AVFoundation has no audio type")?;
+    #[allow(deprecated)]
+    let tracks = unsafe { asset.tracksWithMediaType(audio_type) };
+    if tracks.count() == 0 {
+        return Ok(None);
+    }
+    let sound = unsafe {
+        AVAssetReaderAudioMixOutput::assetReaderAudioMixOutputWithAudioTracks_audioSettings(
+            &tracks, None,
+        )
+    };
+    unsafe {
+        if let Some(varispeed) = AVAudioTimePitchAlgorithmVarispeed {
+            sound.setAudioTimePitchAlgorithm(varispeed);
+        }
+        reader.addOutput(&sound);
+    }
+    Ok(Some(sound))
 }
 
 fn retimed(

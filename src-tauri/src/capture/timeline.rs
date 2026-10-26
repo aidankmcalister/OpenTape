@@ -56,6 +56,10 @@ impl Timeline {
         Some(captured - cut)
     }
 
+    pub(super) fn video_end(&self, now: f64) -> f64 {
+        self.started + self.elapsed(now)
+    }
+
     fn total_paused(&self) -> f64 {
         self.pauses.iter().map(|[start, end]| end - start).sum()
     }
@@ -90,6 +94,7 @@ mod tests {
         assert_eq!(timeline.video_time(19.0), Some(16.0));
         assert_eq!(timeline.video_time(21.0), None);
         assert_eq!(timeline.elapsed(22.0), 7.0);
+        assert_eq!(timeline.video_end(22.0), 17.0);
     }
 
     #[test]
@@ -107,5 +112,6 @@ mod tests {
         assert_eq!(timeline.video_time(0.0), None);
         assert_eq!(timeline.video_time(3.0), Some(1.0));
         assert_eq!(timeline.video_time(9.0), Some(4.0));
+        assert_eq!(timeline.video_end(10.0), 5.0);
     }
 }

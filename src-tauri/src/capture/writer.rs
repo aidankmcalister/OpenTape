@@ -12,13 +12,14 @@ use anyhow::{Context, Result, anyhow, bail};
 use cidre::{
     arc, av,
     av::AssetWriterStatus as Status,
-    cm, define_obj_type, ns, objc,
+    cf, cm, define_obj_type, ns, objc, os,
     sc::{
         self,
         stream::{Delegate, DelegateImpl, Output, OutputImpl},
     },
 };
 
+use super::Audio;
 use super::plan::CaptureSize;
 use super::timeline::Timeline;
 use crate::util::lock;
@@ -27,8 +28,84 @@ pub(super) struct RecorderState {
     writer: arc::R<av::AssetWriter>,
     input: arc::R<av::AssetWriterInput>,
     adaptor: arc::R<av::asset::WriterInputPixelBufAdaptor>,
+    system_audio: Option<SoundTrack>,
+    microphone: Option<SoundTrack>,
     timeline: Arc<Mutex<Timeline>>,
     first_frame_time: Option<f64>,
+}
+
+struct SoundTrack {
+    input: arc::R<av::AssetWriterInput>,
+    end: cm::Time,
+}
+
+impl SoundTrack {
+    fn new(writer: &mut av::AssetWriter, channels: i64) -> Result<Self> {
+        let settings: arc::R<ns::Dictionary<ns::String, ns::Id>> = ns::Dictionary::with_keys_values(
+            &[
+                av::audio::all_formats_keys::id(),
+                av::audio::all_formats_keys::sample_rate(),
+                av::audio::all_formats_keys::number_of_channels(),
+            ],
+            &[
+                ns::Number::with_u32(u32::from_be_bytes(*b"aac ")).as_ref(),
+                ns::Number::with_f64(48_000.0).as_ref(),
+                ns::Number::with_i64(channels).as_ref(),
+            ],
+        );
+        let mut input = av::AssetWriterInput::with_media_type_and_output_settings(
+            av::MediaType::audio(),
+            Some(&settings),
+        )
+        .map_err(|err| anyhow!("audio settings were rejected: {err:?}"))?;
+        input.set_expects_media_data_in_real_time(true);
+        writer
+            .add_input(&input)
+            .map_err(|err| anyhow!("could not add audio input: {err:?}"))?;
+        Ok(Self {
+            input,
+            end: cm::Time::zero(),
+        })
+    }
+
+    fn add(&mut self, sample_buf: &cm::SampleBuf, timeline: &Mutex<Timeline>) {
+        let captured = sample_buf.pts();
+        let Some(video_time) = lock(timeline).video_time(captured.as_secs()) else {
+            return;
+        };
+        let cut = ((captured.as_secs() - video_time) * f64::from(captured.scale)).round() as i64;
+        let pts = cm::Time::new(captured.value - cut, captured.scale);
+        if pts < self.end || !self.input.is_ready_for_more_media_data() {
+            return;
+        }
+        let Ok(timing) = sample_buf.timing_info(0) else {
+            return;
+        };
+        let timing = cm::SampleTimingInfo {
+            pts,
+            dts: cm::Time::invalid(),
+            ..timing
+        };
+        let mut moved = None;
+        let status = unsafe {
+            CMSampleBufferCreateCopyWithNewTiming(None, sample_buf, 1, &timing, &mut moved)
+        };
+        if let Some(moved) = moved.filter(|_| status.is_ok())
+            && matches!(self.input.append_sample_buf(&moved), Ok(true))
+        {
+            self.end = pts.add(sample_buf.duration());
+        }
+    }
+}
+
+unsafe extern "C" {
+    fn CMSampleBufferCreateCopyWithNewTiming(
+        allocator: Option<&cf::Allocator>,
+        original: &cm::SampleBuf,
+        timing_count: cm::ItemCount,
+        timing: &cm::SampleTimingInfo,
+        copy: &mut Option<arc::R<cm::SampleBuf>>,
+    ) -> os::Status;
 }
 
 define_obj_type!(pub Recorder + OutputImpl, RecorderState, RECORDER);
@@ -44,10 +121,20 @@ impl OutputImpl for Recorder {
         sample_buf: &mut cm::SampleBuf,
         kind: sc::OutputType,
     ) {
-        if kind != sc::OutputType::Screen {
+        let state = self.inner_mut();
+        let sound = match kind {
+            sc::OutputType::Screen => None,
+            sc::OutputType::Audio => Some(&mut state.system_audio),
+            sc::OutputType::Mic => Some(&mut state.microphone),
+        };
+        if let Some(sound) = sound {
+            if let Some(track) = sound
+                && state.first_frame_time.is_some()
+            {
+                track.add(sample_buf, &state.timeline);
+            }
             return;
         }
-        let state = self.inner_mut();
         let Some(image) = sample_buf.image_buf() else {
             return;
         };
@@ -102,6 +189,7 @@ fn stop_reason(code: ns::Integer, description: String) -> String {
 pub(super) fn create_recorder(
     path: &Path,
     size: CaptureSize,
+    audio: &Audio,
     timeline: Arc<Mutex<Timeline>>,
 ) -> Result<arc::R<Recorder>> {
     let _ = std::fs::remove_file(path);
@@ -139,6 +227,12 @@ pub(super) fn create_recorder(
         .map_err(|err| anyhow!("could not add video input: {err:?}"))?;
     let adaptor = av::asset::WriterInputPixelBufAdaptor::with_input_writer(&input, None)
         .map_err(|err| anyhow!("could not prepare the video input: {err:?}"))?;
+    let system_audio = (audio.system_audio)
+        .then(|| SoundTrack::new(&mut writer, 2))
+        .transpose()?;
+    let microphone = (audio.microphone_id.as_ref())
+        .map(|_| SoundTrack::new(&mut writer, 1))
+        .transpose()?;
     if !writer.start_writing() {
         return Err(write_error(&writer));
     }
@@ -146,6 +240,8 @@ pub(super) fn create_recorder(
         writer,
         input,
         adaptor,
+        system_audio,
+        microphone,
         timeline,
         first_frame_time: None,
     }))
@@ -166,7 +262,7 @@ fn ending(status: Status, first_frame_time: Option<f64>) -> Ending {
     }
 }
 
-pub(super) fn finish_writing(recorder: &mut Recorder) -> Result<f64> {
+pub(super) fn finish_writing(recorder: &mut Recorder, video_end: f64) -> Result<f64> {
     let state = recorder.inner_mut();
     let first_frame_time = match ending(state.writer.status(), state.first_frame_time) {
         Ending::Finish(time) => time,
@@ -177,6 +273,16 @@ pub(super) fn finish_writing(recorder: &mut Recorder) -> Result<f64> {
         Ending::Failed => return Err(write_error(&state.writer)),
     };
     state.input.mark_as_finished();
+    for sound in [&mut state.system_audio, &mut state.microphone]
+        .into_iter()
+        .flatten()
+    {
+        sound.input.mark_as_finished();
+    }
+    let end = cm::Time::with_secs(video_end.max(first_frame_time), 1_000_000_000);
+    if let Err(err) = state.writer.end_session_at_src_time(end) {
+        eprintln!("could not end the video at the stop time: {err:?}");
+    }
     let (done_tx, done_rx) = mpsc::channel();
     state.writer.finish_writing_with_ch(move || {
         let _ = done_tx.send(());

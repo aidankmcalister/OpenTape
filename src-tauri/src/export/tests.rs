@@ -165,6 +165,15 @@ fn exports_a_recording_in_the_default_appearance() {
 }
 
 #[test]
+#[ignore = "needs a real video"]
+fn saves_a_recording_as_mp4_with_one_mixed_sound_track() {
+    let video = std::env::var("EXPORT_TEST_VIDEO").expect("EXPORT_TEST_VIDEO");
+    let output = std::env::var("EXPORT_TEST_OUTPUT").expect("EXPORT_TEST_OUTPUT");
+    to_mp4(Path::new(&video), Path::new(&output)).unwrap();
+    assert!(Path::new(&output).exists());
+}
+
+#[test]
 fn speed_is_applied_latest_first_so_earlier_spans_keep_their_times() {
     let span = |start| ExportSpeed {
         start,

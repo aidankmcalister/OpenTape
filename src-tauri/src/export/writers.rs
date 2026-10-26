@@ -2,50 +2,89 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use super::{ExportLayout, ExportOptions, file_url, reason};
+use super::{file_url, reason};
 use anyhow::{Context, Result, ensure};
 use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2_av_foundation::{
-    AVAssetReaderVideoCompositionOutput, AVAssetWriter, AVAssetWriterInput, AVAssetWriterStatus,
-    AVFileTypeMPEG4, AVMediaTypeVideo, AVVideoAverageBitRateKey, AVVideoCodecKey,
-    AVVideoCodecTypeH264, AVVideoCompressionPropertiesKey, AVVideoHeightKey,
-    AVVideoMaxKeyFrameIntervalDurationKey, AVVideoWidthKey,
+    AVAssetReaderAudioMixOutput, AVAssetReaderOutput, AVAssetReaderVideoCompositionOutput,
+    AVAssetWriter, AVAssetWriterInput, AVAssetWriterStatus, AVFileTypeMPEG4, AVMediaTypeAudio,
+    AVMediaTypeVideo, AVVideoAverageBitRateKey, AVVideoCodecKey, AVVideoCodecTypeH264,
+    AVVideoCompressionPropertiesKey, AVVideoHeightKey, AVVideoMaxKeyFrameIntervalDurationKey,
+    AVVideoWidthKey,
 };
+use objc2_avf_audio::{AVFormatIDKey, AVNumberOfChannelsKey, AVSampleRateKey};
 use objc2_core_foundation::{CFDictionary, CFNumber, CFString, CFURL};
 use objc2_core_image::{CIContext, CIImage};
-use objc2_core_media::{CMTime, kCMTimeZero};
+use objc2_core_media::{CMFormatDescription, CMTime, kCMTimeZero};
 use objc2_foundation::{NSDictionary, NSNumber, NSString};
 use objc2_image_io::{
     CGImageDestination, kCGImagePropertyGIFDelayTime, kCGImagePropertyGIFDictionary,
     kCGImagePropertyGIFLoopCount,
 };
 
+struct Feed<'a> {
+    samples: &'a AVAssetReaderOutput,
+    input: Retained<AVAssetWriterInput>,
+    is_finished: bool,
+}
+
+impl Feed<'_> {
+    fn write_next(&mut self, writer: &AVAssetWriter) -> Result<Option<CMTime>> {
+        if self.is_finished || !unsafe { self.input.isReadyForMoreMediaData() } {
+            return Ok(None);
+        }
+        let Some(sample) = (unsafe { self.samples.copyNextSampleBuffer() }) else {
+            unsafe { self.input.markAsFinished() };
+            self.is_finished = true;
+            return Ok(None);
+        };
+        ensure!(
+            unsafe { self.input.appendSampleBuffer(&sample) },
+            "could not write the video: {}",
+            reason(unsafe { writer.error() })
+        );
+        Ok(Some(unsafe { sample.presentation_time_stamp() }))
+    }
+}
+
 pub(super) fn write_mp4(
-    frames: &AVAssetReaderVideoCompositionOutput,
+    frames: &AVAssetReaderOutput,
+    samples: Option<&AVAssetReaderAudioMixOutput>,
     output: &Path,
-    layout: &ExportLayout,
-    options: &ExportOptions,
+    settings: Option<&NSDictionary<NSString, AnyObject>>,
+    hint: Option<&CMFormatDescription>,
     progress_at: impl Fn(CMTime),
 ) -> Result<()> {
     let video_type = unsafe { AVMediaTypeVideo }.context("AVFoundation has no video type")?;
     let mp4 = unsafe { AVFileTypeMPEG4 }.context("AVFoundation has no MP4 type")?;
+    let _ = std::fs::remove_file(output);
     let writer =
         unsafe { AVAssetWriter::assetWriterWithURL_fileType_error(&file_url(output), mp4) }
             .map_err(|error| {
                 anyhow::anyhow!("could not start the file: {}", reason(Some(error)))
             })?;
-    let settings = h264(layout.width, layout.height, options.bits_per_pixel)?;
     let input = unsafe {
-        AVAssetWriterInput::assetWriterInputWithMediaType_outputSettings(
-            video_type,
-            Some(&settings),
+        AVAssetWriterInput::assetWriterInputWithMediaType_outputSettings_sourceFormatHint(
+            video_type, settings, hint,
         )
     };
     unsafe {
         input.setExpectsMediaDataInRealTime(false);
         writer.addInput(&input);
+    }
+    let mut feeds = vec![Feed {
+        samples: frames,
+        input,
+        is_finished: false,
+    }];
+    if let Some(samples) = samples {
+        feeds.push(Feed {
+            samples,
+            input: aac_input(&writer)?,
+            is_finished: false,
+        });
     }
     ensure!(
         unsafe { writer.startWriting() },
@@ -53,18 +92,20 @@ pub(super) fn write_mp4(
         reason(unsafe { writer.error() })
     );
     unsafe { writer.startSessionAtSourceTime(kCMTimeZero) };
-    while let Some(frame) = unsafe { frames.copyNextSampleBuffer() } {
-        while !unsafe { input.isReadyForMoreMediaData() } {
+    while feeds.iter().any(|feed| !feed.is_finished) {
+        let mut wrote = false;
+        for (index, feed) in feeds.iter_mut().enumerate() {
+            if let Some(time) = feed.write_next(&writer)? {
+                wrote = true;
+                if index == 0 {
+                    progress_at(time);
+                }
+            }
+        }
+        if !wrote {
             std::thread::sleep(Duration::from_millis(2));
         }
-        ensure!(
-            unsafe { input.appendSampleBuffer(&frame) },
-            "could not write a frame: {}",
-            reason(unsafe { writer.error() })
-        );
-        progress_at(unsafe { frame.presentation_time_stamp() });
     }
-    unsafe { input.markAsFinished() };
     let (finished, wait) = mpsc::channel();
     let on_finish = RcBlock::new(move || {
         let _ = finished.send(());
@@ -130,11 +171,41 @@ pub(super) fn write_gif(
     Ok(())
 }
 
+fn aac_input(writer: &AVAssetWriter) -> Result<Retained<AVAssetWriterInput>> {
+    let key =
+        |key: Option<&'static NSString>| key.context("AVFoundation is missing an audio setting");
+    let audio_type = unsafe { AVMediaTypeAudio }.context("AVFoundation has no audio type")?;
+    let values = [
+        NSNumber::new_u32(u32::from_be_bytes(*b"aac ")),
+        NSNumber::new_f64(48_000.0),
+        NSNumber::new_u32(2),
+    ];
+    let settings = NSDictionary::<NSString, AnyObject>::from_slices(
+        &[
+            key(unsafe { AVFormatIDKey })?,
+            key(unsafe { AVSampleRateKey })?,
+            key(unsafe { AVNumberOfChannelsKey })?,
+        ],
+        &values.each_ref().map(|value| value.as_ref()),
+    );
+    let input = unsafe {
+        AVAssetWriterInput::assetWriterInputWithMediaType_outputSettings(
+            audio_type,
+            Some(&settings),
+        )
+    };
+    unsafe {
+        input.setExpectsMediaDataInRealTime(false);
+        writer.addInput(&input);
+    }
+    Ok(input)
+}
+
 fn hundredths(seconds: f64) -> i32 {
     (seconds * 100.0).round() as i32
 }
 
-fn h264(
+pub(super) fn h264(
     width: u32,
     height: u32,
     bits_per_pixel: f64,

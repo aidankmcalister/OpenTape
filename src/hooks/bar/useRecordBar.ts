@@ -86,12 +86,21 @@ export function useCaptureOptions() {
     parseOptions(localStorage.getItem("capture-options")),
   );
   const oneAtATime = useOneAtATime();
+  const microphone =
+    devices.microphones.find(({ id }) => id === options.microphoneId) ?? null;
+  const microphoneId = microphone?.id ?? null;
+  const { systemAudio } = options;
 
   useInvokeOnMount("list_devices", setDevices);
   useEffect(
     () => localStorage.setItem("capture-options", JSON.stringify(options)),
     [options],
   );
+  useEffect(() => {
+    invoke("set_capture_audio", { microphoneId, systemAudio }).catch(
+      console.error,
+    );
+  }, [microphoneId, systemAudio]);
 
   async function chooseDevice(anchor: HTMLElement, kind: keyof Devices) {
     const key = kind === "cameras" ? "cameraId" : "microphoneId";
@@ -115,9 +124,8 @@ export function useCaptureOptions() {
 
   return {
     camera: devices.cameras.find(({ id }) => id === options.cameraId) ?? null,
-    microphone:
-      devices.microphones.find(({ id }) => id === options.microphoneId) ?? null,
-    systemAudio: options.systemAudio,
+    microphone,
+    systemAudio,
     chooseCamera: (anchor: HTMLElement) => chooseDevice(anchor, "cameras"),
     chooseMicrophone: (anchor: HTMLElement) =>
       chooseDevice(anchor, "microphones"),
