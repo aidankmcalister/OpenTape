@@ -22,7 +22,7 @@ pub(crate) use plan::{
 use self::cursor_log::CursorLogger;
 use self::plan::{CapturePlan, plan_capture};
 use self::timeline::{Timeline, host_time_now};
-use self::writer::{Recorder, create_recorder, finish_writing};
+use self::writer::{OnStop, Recorder, StopWatcher, create_recorder, finish_writing};
 use crate::util::lock;
 
 const VIDEO_FILE: &str = "recording.mov";
@@ -74,7 +74,11 @@ impl RunningRecording {
     }
 }
 
-pub(crate) fn start(target: Target, folder: PathBuf) -> Result<RunningRecording> {
+pub(crate) fn start(
+    target: Target,
+    folder: PathBuf,
+    on_stop: impl Fn(String) + Send + 'static,
+) -> Result<RunningRecording> {
     let (started_tx, started_rx) = mpsc::channel();
     let (stop_tx, stop_rx) = mpsc::channel::<()>();
     let (finished_tx, finished_rx) = mpsc::channel();
@@ -82,7 +86,9 @@ pub(crate) fn start(target: Target, folder: PathBuf) -> Result<RunningRecording>
     thread::spawn({
         let (target, folder, timeline) = (target.clone(), folder.clone(), Arc::clone(&timeline));
         move || {
-            let saved = record_until_stopped(&target, &folder, timeline, &started_tx, &stop_rx);
+            let on_stop = Box::new(on_stop);
+            let saved =
+                record_until_stopped(&target, &folder, timeline, on_stop, &started_tx, &stop_rx);
             let _ = finished_tx.send(saved);
         }
     });
@@ -102,10 +108,11 @@ fn record_until_stopped(
     target: &Target,
     folder: &Path,
     timeline: Arc<Mutex<Timeline>>,
+    on_stop: OnStop,
     started_tx: &Sender<Result<()>>,
     stop_rx: &Receiver<()>,
 ) -> Result<SavedRecording> {
-    let capture = match ActiveCapture::start(target, folder, timeline) {
+    let capture = match ActiveCapture::start(target, folder, timeline, on_stop) {
         Ok(capture) => capture,
         Err(err) => {
             let _ = started_tx.send(Err(err));
@@ -119,6 +126,7 @@ fn record_until_stopped(
 
 struct ActiveCapture {
     stream: arc::R<sc::Stream>,
+    _stop_watcher: arc::R<StopWatcher>,
     queue: arc::R<dispatch::Queue>,
     recorder: arc::R<Recorder>,
     cursor: CursorLogger,
@@ -128,12 +136,18 @@ struct ActiveCapture {
 }
 
 impl ActiveCapture {
-    fn start(target: &Target, folder: &Path, timeline: Arc<Mutex<Timeline>>) -> Result<Self> {
+    fn start(
+        target: &Target,
+        folder: &Path,
+        timeline: Arc<Mutex<Timeline>>,
+        on_stop: OnStop,
+    ) -> Result<Self> {
         std::fs::create_dir_all(folder)
             .with_context(|| format!("could not create {}", folder.display()))?;
         let plan = plan_capture(target)?;
         let recorder = create_recorder(&folder.join(VIDEO_FILE), plan.size, Arc::clone(&timeline))?;
-        let stream = sc::Stream::new(&plan.filter, &plan.config);
+        let stop_watcher = StopWatcher::with(on_stop);
+        let stream = sc::Stream::with_delegate(&plan.filter, &plan.config, stop_watcher.as_ref());
         let queue = dispatch::Queue::serial_with_ar_pool();
         stream
             .add_stream_output(recorder.as_ref(), sc::OutputType::Screen, Some(&queue))
@@ -144,6 +158,7 @@ impl ActiveCapture {
         *lock(&timeline) = Timeline::new(host_time_now());
         Ok(Self {
             stream,
+            _stop_watcher: stop_watcher,
             queue,
             recorder,
             cursor,

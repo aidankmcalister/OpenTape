@@ -113,6 +113,10 @@ impl RecordingState {
         Ok(running)
     }
 
+    fn next_recording_number(&self) -> u64 {
+        lock(&self.0).recordings_started + 1
+    }
+
     fn mark_started(&self, running: RunningRecording) {
         let mut inner = lock(&self.0);
         inner.running = Some(running);
@@ -196,11 +200,34 @@ pub(crate) async fn restart_recording(
 pub(crate) async fn stop_recording(app: AppHandle, state: State<'_, RecordingState>) -> CmdResult {
     let running = state.take_running(Action::Stop, None)?;
     announce_status(&app);
-    let saved = run_blocking(move || running.stop()).await;
-    go_idle(&app, saved.as_ref().err());
-    let video_path = PathBuf::from(saved?.video_path);
-    app.state::<CurrentRecording>().keep(&app, video_path)?;
+    keep_recording(&app, running, None).await?;
     Ok(())
+}
+
+async fn capture_stopped(app: AppHandle, recording_number: u64, reason: String) {
+    let state = app.state::<RecordingState>();
+    let Ok(running) = state.take_running(Action::Stop, Some(recording_number)) else {
+        return;
+    };
+    announce_status(&app);
+    if let Err(err) = keep_recording(&app, running, Some(reason)).await {
+        eprintln!("could not keep the recording after capture stopped: {err:#}");
+    }
+}
+
+async fn keep_recording(
+    app: &AppHandle,
+    running: RunningRecording,
+    reason: Option<String>,
+) -> Result<()> {
+    let saved = run_blocking(move || running.stop()).await;
+    let saved = match reason {
+        Some(reason) => saved.context(reason),
+        None => saved,
+    };
+    go_idle(app, saved.as_ref().err());
+    let video_path = PathBuf::from(saved?.video_path);
+    app.state::<CurrentRecording>().keep(app, video_path)
 }
 
 async fn start_capture(app: &AppHandle, target: Target) {
@@ -215,7 +242,12 @@ async fn start_capture(app: &AppHandle, target: Target) {
 
 async fn open_capture(app: &AppHandle, target: Target) -> Result<RunningRecording> {
     let folder = app.state::<CurrentRecording>().new_folder()?;
-    run_blocking(move || capture::start(target, folder)).await
+    let recording_number = app.state::<RecordingState>().next_recording_number();
+    let app = app.clone();
+    let on_stop = move |reason| {
+        tauri::async_runtime::spawn(capture_stopped(app.clone(), recording_number, reason));
+    };
+    run_blocking(move || capture::start(target, folder, on_stop)).await
 }
 
 fn go_idle(app: &AppHandle, error: Option<&anyhow::Error>) {

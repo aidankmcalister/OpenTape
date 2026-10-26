@@ -103,6 +103,25 @@ fn restart_should_only_restart_the_recording_it_paused() {
 }
 
 #[test]
+fn a_capture_that_stops_by_itself_should_only_stop_its_own_recording() {
+    let state = RecordingState::default();
+    state.claim_start().expect("idle can start");
+    let first = state.next_recording_number();
+    state.mark_started(RunningRecording::fake("/tmp/first.mov"));
+    state
+        .take_running(Action::Restart, None)
+        .expect("recording can restart");
+    let second = state.next_recording_number();
+    state.mark_started(RunningRecording::fake("/tmp/second.mov"));
+    assert!(state.take_running(Action::Stop, Some(first)).is_err());
+    assert_eq!(phase(&state), Phase::Recording);
+    state
+        .take_running(Action::Stop, Some(second))
+        .expect("its own recording stops");
+    assert_eq!(phase(&state), Phase::Stopping);
+}
+
+#[test]
 fn status_should_reach_the_frontend_in_its_shape() {
     let status = RecordingStatus {
         phase: Phase::Paused,

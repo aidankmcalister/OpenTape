@@ -15,7 +15,7 @@ use cidre::{
     cm, define_obj_type, ns, objc,
     sc::{
         self,
-        stream::{Output, OutputImpl},
+        stream::{Delegate, DelegateImpl, Output, OutputImpl},
     },
 };
 
@@ -66,6 +66,36 @@ impl OutputImpl for Recorder {
         if state.input.is_ready_for_more_media_data() {
             let _ = state.adaptor.append_pixel_buf_with_pts(image, pts);
         }
+    }
+}
+
+pub(super) type OnStop = Box<dyn Fn(String) + Send>;
+
+define_obj_type!(pub StopWatcher + DelegateImpl, OnStop, STOP_WATCHER);
+
+impl Delegate for StopWatcher {}
+
+#[objc::add_methods]
+impl DelegateImpl for StopWatcher {
+    extern "C" fn impl_stream_did_stop_with_err(
+        &mut self,
+        _cmd: Option<&objc::Sel>,
+        _stream: &sc::Stream,
+        error: &ns::Error,
+    ) {
+        let reason = stop_reason(error.code(), error.localized_desc().to_string());
+        self.inner()(reason);
+    }
+}
+
+fn stop_reason(code: ns::Integer, description: String) -> String {
+    use sc::error::code::{NO_CAPTURE_SOURCE, NO_DISPLAY_LIST, NO_WINDOW_LIST, USER_DECLINED};
+    match code {
+        USER_DECLINED => "screen recording permission was turned off".to_string(),
+        NO_CAPTURE_SOURCE | NO_DISPLAY_LIST | NO_WINDOW_LIST => {
+            "what you were recording went away".to_string()
+        }
+        _ => description,
     }
 }
 
@@ -179,6 +209,20 @@ mod tests {
         ];
         for (status, first_frame_time, expected) in cases {
             assert_eq!(ending(status, first_frame_time), expected, "{status:?}");
+        }
+    }
+
+    #[test]
+    fn stop_reason_should_name_the_common_causes_and_fall_back_to_apple() {
+        let apple = || "The stream was stopped by the system".to_string();
+        let cases = [
+            (-3801, "screen recording permission was turned off"),
+            (-3815, "what you were recording went away"),
+            (-3814, "what you were recording went away"),
+            (-3821, "The stream was stopped by the system"),
+        ];
+        for (code, expected) in cases {
+            assert_eq!(stop_reason(code, apple()), expected, "{code}");
         }
     }
 }
