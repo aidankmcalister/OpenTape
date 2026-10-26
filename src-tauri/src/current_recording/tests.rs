@@ -200,6 +200,27 @@ fn a_project_should_save_next_to_the_video_and_load_back() {
     );
 }
 
+#[test]
+fn a_background_picture_should_be_copied_beside_the_project_under_a_new_name() {
+    let shell = FakeShell::answering(Choice::Cancel);
+    let (current, folder) = keeping_one("background", &shell);
+    let picture = folder.with_file_name("Beach.JPG");
+    std::fs::write(&picture, b"picture").expect("the temp picture can be written");
+    let first = current
+        .add_background(&picture)
+        .expect("a JPEG is a picture");
+    let second = current
+        .add_background(&picture)
+        .expect("again, beside the first");
+    assert_eq!((&*first, &*second), ("background.jpg", "background 2.jpg"));
+    assert_eq!(
+        std::fs::read(folder.join(&first)).ok().as_deref(),
+        Some(&b"picture"[..])
+    );
+    let text = folder.with_file_name("notes.txt");
+    assert!(current.add_background(&text).is_err());
+}
+
 fn left_behind(current: &CurrentRecording, name: &str, video: &[u8]) -> PathBuf {
     let folder = current.named_folder(name);
     std::fs::create_dir_all(&folder).expect("the temp folder can be made");

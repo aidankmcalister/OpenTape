@@ -139,6 +139,23 @@ test("exportLayout sends the zoom track, and each speed region in seconds", () =
   expect(layout.speed).toEqual([{ start: 2, end: 3.5, amount: 2 }]);
 });
 
+test("exportLayout sends each sound track's volume, and none when muted", () => {
+  const video = { width: 1920, height: 1080 };
+  expect(exportLayout(DEFAULT_APPEARANCE, video).sound).toEqual({
+    microphone: 1,
+    systemAudio: 1,
+  });
+  const sound = { isMuted: false, microphone: 40, systemAudio: 75 };
+  expect(exportLayout(DEFAULT_APPEARANCE, video, { sound }).sound).toEqual({
+    microphone: 0.4,
+    systemAudio: 0.75,
+  });
+  const muted = { ...sound, isMuted: true };
+  expect(
+    exportLayout(DEFAULT_APPEARANCE, video, { sound: muted }).sound,
+  ).toEqual({ microphone: 0, systemAudio: 0 });
+});
+
 test("exportLayout sends each cut in seconds of the sped-up video", () => {
   const regions: Region[] = [
     { id: 1, kind: "speed", startMs: 0, endMs: 2000, amount: 2 },
@@ -186,15 +203,18 @@ test("exportLayout sends each click ring at its output time, sized for the expor
 });
 
 test.each([
-  ["Auto", 1920, 1080, 64],
-  ["Auto", 1080, 1920, 64],
-  ["9:16", 3550, 1446, 120],
-  ["1:1", 1280, 720, 0],
-  ["4:5", 1920, 1200, 200],
+  ["Auto", 1920, 1080, 64, "Letterbox"],
+  ["Auto", 1080, 1920, 64, "Fill"],
+  ["9:16", 3550, 1446, 120, "Letterbox"],
+  ["1:1", 1280, 720, 0, "Letterbox"],
+  ["4:5", 1920, 1200, 200, "Letterbox"],
+  ["9:16", 1920, 1080, 64, "Fill"],
+  ["4:5", 3550, 1446, 120, "Fill"],
+  ["16:9", 1080, 1920, 0, "Fill"],
 ] as const)(
-  "the export frames a %s %ix%i recording with padding %i exactly as the stage does",
-  (size, width, height, padding) => {
-    const appearance = { ...DEFAULT_APPEARANCE, size, padding };
+  "the export frames a %s %ix%i recording with padding %i (%s) exactly as the stage does",
+  (size, width, height, padding, fit) => {
+    const appearance = { ...DEFAULT_APPEARANCE, size, padding, fit };
     const layout = exportLayout(appearance, { width, height });
     const stage = frameLayout(
       appearance,
@@ -214,6 +234,16 @@ test.each([
       share(stage.recording.height, stage.frame.height),
       2,
     );
+    expect(
+      share(layout.video.x - layout.recording.x, layout.recording.width),
+    ).toBeCloseTo(share(stage.video.x, stage.recording.width), 2);
+    expect(
+      share(layout.video.y - layout.recording.y, layout.recording.height),
+    ).toBeCloseTo(share(stage.video.y, stage.recording.height), 2);
+    expect(share(layout.video.height, layout.recording.height)).toBeCloseTo(
+      share(stage.video.height, stage.recording.height),
+      2,
+    );
   },
 );
 
@@ -230,4 +260,38 @@ test("readExport keeps known choices and falls back for missing or unknown ones"
   expect(
     readExport({ resolution: "8K", quality: "huge", frameRate: 24 }),
   ).toEqual(DEFAULT_EXPORT);
+});
+
+test("exportLayout sends the background picture only on the Image tab", () => {
+  const fill = { ...DEFAULT_APPEARANCE.fill, image: "background.png" };
+  const on = (kind: "image" | "gradient") =>
+    exportLayout(
+      { ...DEFAULT_APPEARANCE, fill: { ...fill, kind } },
+      { width: 1920, height: 1080 },
+    ).backgroundImage;
+  expect(on("image")).toBe("background.png");
+  expect(on("gradient")).toBeNull();
+});
+
+test("a 9:16 Fill export of a wide recording fills the frame and zooms past the fill", () => {
+  const layout = exportLayout(
+    { ...DEFAULT_APPEARANCE, size: "9:16", fit: "Fill" },
+    { width: 1920, height: 1080 },
+    { durationMs: 1000 },
+    1080,
+  );
+  expect([layout.width, layout.height]).toEqual([1080, 1920]);
+  const { x, y, width, height } = layout.recording;
+  expect([x, y, width, Math.round(height)]).toEqual([36, 36, 1008, 1848]);
+  const [first] = layout.zoom;
+  expect(layout.video.height * first.scale).toBeCloseTo(1848, 0);
+  expect(layout.zoom.every(({ scale }) => scale === first.scale)).toBe(true);
+  const letterbox = exportLayout(
+    { ...DEFAULT_APPEARANCE, size: "9:16" },
+    { width: 1920, height: 1080 },
+    { durationMs: 1000 },
+    1080,
+  );
+  expect(letterbox.recording.height).toBeCloseTo(567, 0);
+  expect(letterbox.zoom[0].scale).toBe(1);
 });

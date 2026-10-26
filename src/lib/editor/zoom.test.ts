@@ -45,7 +45,7 @@ test("the focus box is the zoomed area, and dragging it back gives the focus", (
     amount: 2,
     center: { x: 1, y: 0.25 },
   };
-  expect(focusBox(zoom)).toEqual({ x: 0.5, y: 0.125, size: 0.5 });
+  expect(focusBox(zoom)).toEqual({ x: 0.5, y: 0.125, width: 0.5, height: 0.5 });
   expect(focusAt({ x: 0.5, y: 0.125 }, 2)).toEqual({ x: 1, y: 0.25 });
   expect(focusAt({ x: -0.2, y: 0.9 }, 2)).toEqual({ x: 0, y: 1 });
 });
@@ -194,4 +194,88 @@ test("the view holds still while the cursor moves around inside its box, then gl
   expect(zoomAt(3700).center.x).toBeCloseTo(held.x, 2);
   expect(zoomAt(8000).center.x).toBeGreaterThan(held.x + 0.3);
   expect(shows(zoomAt(8000), { x: 0.95, y: 0.55 })).toBe(true);
+});
+
+const TALL = { x: 1, y: 3.2 };
+
+const filled = (
+  { scale, center }: { scale: number; center: Point },
+  at?: Point,
+) =>
+  (["x", "y"] as const).every((key) => {
+    const crop = TALL[key];
+    const onScreen = (share: number) =>
+      center[key] + scale * (((crop - 1) / 2 + share) / crop - center[key]);
+    const covers = onScreen(0) <= 1e-9 && onScreen(1) >= 1 - 1e-9;
+    return (
+      covers && (!at || (onScreen(at[key]) >= 0 && onScreen(at[key]) <= 1))
+    );
+  });
+
+test("Fill keeps a wide recording filling a tall frame and follows the cursor across it", () => {
+  const moves = [
+    ...glide(MIDDLE, { x: 0.95, y: 0.5 }, 1000, 2000),
+    ...glide({ x: 0.95, y: 0.5 }, { x: 0.05, y: 0.8 }, 4000, 5000),
+  ];
+  const zoomAt = zoomPath([], { moves, keys: [] }, TALL, 8000);
+  const times = Array.from({ length: 401 }, (_, step) => step * 20);
+  for (const ms of times) {
+    expect(zoomAt(ms).scale).toBe(3.2);
+    expect(filled(zoomAt(ms))).toBe(true);
+  }
+  const lostMs =
+    times.filter((ms) => !filled(zoomAt(ms), positionAt(moves, ms))).length *
+    20;
+  expect(lostMs).toBeLessThanOrEqual(400);
+  expect(filled(zoomAt(3500), { x: 0.95, y: 0.5 })).toBe(true);
+  expect(filled(zoomAt(7000), { x: 0.05, y: 0.8 })).toBe(true);
+});
+
+test("Fill keeps the typing in view while the mouse rests elsewhere", () => {
+  const moves = [{ ms: 0, x: 0.3, y: 0.6 }];
+  const keys = Array.from({ length: 41 }, (_, step) => 1000 + step * 100);
+  const typed = Array.from({ length: 9 }, (_, step) => ({
+    ms: 1000 + step * 500,
+    x: 0.9,
+    y: 0.1,
+  }));
+  const zoomAt = zoomPath([], { moves, keys, typed }, TALL, 8000);
+  for (let ms = 1500; ms <= 5000; ms += 50)
+    expect(filled(zoomAt(ms), { x: 0.9, y: 0.1 })).toBe(true);
+});
+
+test("a zoom in Fill zooms past the fill and the recording still covers the frame", () => {
+  const moves = glide(MIDDLE, CORNER, 1000, 2000);
+  const zoomAt = zoomPath(
+    [following(1000, 4000)],
+    { moves, keys: [] },
+    TALL,
+    6000,
+  );
+  expect(zoomAt(3000).scale).toBeCloseTo(6.4, 5);
+  expect(zoomAt(5500).scale).toBeCloseTo(3.2, 5);
+  for (let ms = 0; ms <= 6000; ms += 10) expect(filled(zoomAt(ms))).toBe(true);
+});
+
+test("in Fill the focus box is the tall area shown, and dragging it back gives the focus", () => {
+  const zoom: Region = {
+    id: 1,
+    kind: "zoom",
+    startMs: 0,
+    endMs: 1000,
+    amount: 2,
+    center: { x: 1, y: 0.5 },
+  };
+  expect(focusBox(zoom, TALL)).toEqual({
+    x: 0.84375,
+    y: 0.25,
+    width: 0.15625,
+    height: 0.5,
+  });
+  const back = focusAt({ x: 0.84375, y: 0.25 }, 2, TALL);
+  expect(back.x).toBeCloseTo(1, 9);
+  expect(back.y).toBeCloseTo(0.5, 9);
+  expect(
+    focusBox({ ...zoom, center: focusAt({ x: 0, y: 0 }, 2, TALL) }, TALL).y,
+  ).toBeCloseTo(0, 9);
 });

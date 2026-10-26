@@ -26,13 +26,15 @@ export type ExportFormat = "mp4" | "gif";
 
 export type ExportGradient = { angle: number, stops: Array<ExportStop>, };
 
-export type ExportLayout = { width: number, height: number, recording: PixelRect, video: PixelRect, radius: number, shadow: ExportShadow, border: ExportBorder | null, background: ExportGradient, zoom: Array<ExportZoom>, zoomRate: number, speed: Array<ExportSpeed>, cuts: Array<ExportCut>, rings: Array<ExportRing>, cursor: ExportCursor | null, };
+export type ExportLayout = { width: number, height: number, recording: PixelRect, video: PixelRect, radius: number, shadow: ExportShadow, border: ExportBorder | null, background: ExportGradient, backgroundImage: string | null, zoom: Array<ExportZoom>, zoomRate: number, speed: Array<ExportSpeed>, cuts: Array<ExportCut>, rings: Array<ExportRing>, cursor: ExportCursor | null, sound: ExportSound, };
 
 export type ExportOptions = { format: ExportFormat, frameRate: number, bitsPerPixel: number, toClipboard: boolean, };
 
 export type ExportRing = { t: number, x: number, y: number, color: string, size: number, style: RingStyle, };
 
 export type ExportShadow = { offsetY: number, blur: number, opacity: number, };
+
+export type ExportSound = { microphone: number, systemAudio: number, };
 
 export type ExportSpeed = { start: number, end: number, amount: number, };
 
@@ -67,6 +69,8 @@ export type Settings = { saveFolder: string | null, export: unknown, appearance:
 export type Setup = { session: Session, cursor: Point | null, };
 
 export type ShownRecording = { videoPath: string, name: string, };
+
+export type SoundTrack = "microphone" | "systemAudio";
 
 export type Sources = { displays: Array<DisplayInfo>, windows: Array<WindowInfo>, icons: { [key in number]: string }, };
 

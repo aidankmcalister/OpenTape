@@ -2,6 +2,7 @@ import type { Size } from "@/lib/geometry";
 import type { ExportFormat, ExportLayout, ExportOptions } from "@/lib/bindings";
 import {
   type Appearance,
+  frameCrop,
   frameShape,
   fillGradient,
   recordingIn,
@@ -14,6 +15,7 @@ import {
   type RingEvent,
 } from "./cursor";
 import { outputAt, type Region, resolveOverlaps } from "./regions";
+import { DEFAULT_SOUND, mixVolumes, type SoundSettings } from "./sound";
 import { FRAME_MS } from "./timeline";
 import { zoomTrack } from "./zoom";
 
@@ -23,6 +25,7 @@ export type ExportTimeline = {
   clips: Clip[];
   rings: RingEvent[];
   cursor: CursorTrack;
+  sound: SoundSettings;
 };
 
 export function exportLayout(
@@ -34,13 +37,16 @@ export function exportLayout(
     clips = [],
     rings = [],
     cursor,
+    sound = DEFAULT_SOUND,
   }: Partial<ExportTimeline> = {},
   side?: number,
 ): ExportLayout {
   const ratio = video.width / video.height;
   const shape = frameShape(appearance, ratio);
+  const crop = frameCrop(appearance, ratio);
   const unit = { width: 1920, height: 1920 / shape };
-  const grow = video.width / recordingIn(unit, appearance, ratio).width;
+  const grow =
+    (video.width * crop.x) / recordingIn(unit, appearance, ratio).width;
   const short =
     appearance.size === "Auto"
       ? unit.height
@@ -49,11 +55,12 @@ export function exportLayout(
   const width = even(unit.width * grow * fit);
   const height = even(unit.height * grow * fit);
   const scale = width / 1920;
+  const shown = { width: video.width * fit, height: video.height * fit };
   const recording = {
-    x: Math.round((width - video.width * fit) / 2),
-    y: Math.round((height - video.height * fit) / 2),
-    width: video.width * fit,
-    height: video.height * fit,
+    x: Math.round((width - shown.width * crop.x) / 2),
+    y: Math.round((height - shown.height * crop.y) / 2),
+    width: shown.width * crop.x,
+    height: shown.height * crop.y,
   };
   const inset = appearance.inset * scale;
   return {
@@ -61,10 +68,10 @@ export function exportLayout(
     height,
     recording,
     video: {
-      x: recording.x - inset,
-      y: recording.y - inset,
-      width: recording.width + inset * 2,
-      height: recording.height + inset * 2,
+      x: recording.x + (recording.width - shown.width) / 2 - inset,
+      y: recording.y + (recording.height - shown.height) / 2 - inset,
+      width: shown.width + inset * 2,
+      height: shown.height + inset * 2,
     },
     border:
       appearance.borderWidth > 0
@@ -81,7 +88,9 @@ export function exportLayout(
       opacity: appearance.shadowOpacity / 100,
     },
     background: fillGradient(appearance.fill),
-    zoom: zoomTrack(regions, durationMs, cursor),
+    backgroundImage:
+      appearance.fill.kind === "image" ? appearance.fill.image : null,
+    zoom: zoomTrack(regions, durationMs, cursor, crop),
     zoomRate: 1000 / FRAME_MS,
     speed: resolveOverlaps(regions, "speed").map(
       ({ startMs, endMs, amount }) => ({
@@ -98,6 +107,7 @@ export function exportLayout(
     cursor: cursor
       ? exportCursor(cursor, regions, appearance.cursor, durationMs)
       : null,
+    sound: mixVolumes(sound),
   };
 }
 

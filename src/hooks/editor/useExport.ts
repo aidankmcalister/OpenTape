@@ -31,7 +31,7 @@ type ExportState =
 const SHOWS_FOR_MS = { done: 4000, failed: 5000 };
 
 export function useExport(
-  { appearance, regions, clips }: Project,
+  { appearance, regions, clips, sound }: Project,
   { videoSize, durationMs }: Pick<Playback, "videoSize" | "durationMs">,
   rings: RingEvent[],
   cursor: CursorTrack,
@@ -81,6 +81,7 @@ export function useExport(
         clips,
         rings,
         cursor: { ...cursor, images },
+        sound,
       });
       const chosen = closes ? { ...settings, to: "file" as const } : settings;
       const path = await invoke<string>("export_recording", {

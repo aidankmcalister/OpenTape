@@ -118,6 +118,7 @@ fn exports_a_recording_in_the_default_appearance() {
                 },
             ],
         },
+        background_image: std::env::var("EXPORT_TEST_BACKGROUND").ok(),
         zoom: (0..180)
             .map(|step| ExportZoom {
                 scale: if (60..120).contains(&step) { 1.5 } else { 1.0 },
@@ -142,6 +143,8 @@ fn exports_a_recording_in_the_default_appearance() {
         cursor: std::env::var("EXPORT_TEST_CURSOR")
             .ok()
             .map(|path| serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()),
+        sound: std::env::var("EXPORT_TEST_SOUND")
+            .map_or(FULL_SOUND, |json| serde_json::from_str(&json).unwrap()),
     };
     let var = |name: &str, or: &str| std::env::var(name).unwrap_or(or.into());
     let options = ExportOptions {
@@ -172,6 +175,27 @@ fn saves_a_recording_as_mp4_with_one_mixed_sound_track() {
     let output = std::env::var("EXPORT_TEST_OUTPUT").expect("EXPORT_TEST_OUTPUT");
     to_mp4(Path::new(&video), Path::new(&output)).unwrap();
     assert!(Path::new(&output).exists());
+}
+
+#[test]
+#[ignore = "needs a real video"]
+fn finds_the_system_audio_and_microphone_tracks() {
+    let video = std::env::var("EXPORT_TEST_VIDEO").expect("EXPORT_TEST_VIDEO");
+    assert_eq!(
+        sound_tracks(Path::new(&video)).unwrap(),
+        [SoundTrack::SystemAudio, SoundTrack::Microphone]
+    );
+}
+
+#[test]
+fn each_track_takes_its_own_volume_from_the_page() {
+    let sound: ExportSound = serde_json::from_str(r#"{"microphone":0.5,"systemAudio":0}"#).unwrap();
+    assert_eq!(sound.volume(SoundTrack::Microphone), 0.5);
+    assert_eq!(sound.volume(SoundTrack::SystemAudio), 0.0);
+    assert_eq!(
+        serde_json::to_string(&SoundTrack::SystemAudio).unwrap(),
+        r#""systemAudio""#
+    );
 }
 
 #[test]

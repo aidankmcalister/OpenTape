@@ -6,6 +6,7 @@ import {
   type CursorMove,
   type CursorTrack,
   positionAt,
+  steadySpots,
   typingStretches,
 } from "./cursor";
 import {
@@ -32,19 +33,45 @@ const FOLLOW = {
 const GROUP = { width: 0.5, height: 0.7 };
 
 const MIDDLE = { x: 0.5, y: 0.5 };
+const WHOLE = { x: 1, y: 1 };
 
-type Following = Pick<CursorTrack, "moves" | "keys">;
+type Following = Pick<CursorTrack, "moves" | "keys"> & {
+  typed?: CursorMove[];
+};
 
 export function zoomPath(
   regions: Region[],
   cursor: Following = { moves: [], keys: [] },
+  crop: Point = WHOLE,
+  durationMs = 0,
 ) {
+  const floor = Math.max(crop.x, crop.y);
   const zooms = resolveOverlaps(regions, "zoom").map((zoom) => ({
     amount: zoom.amount,
     startMs: outputAt(regions, zoom.startMs),
     endMs: outputAt(regions, zoom.endMs),
-    centerAt: followed(zoom, regions, cursor),
+    centerAt: followed(zoom, regions, cursor, crop),
   }));
+  const baseAt =
+    floor > 1
+      ? followed(
+          {
+            id: 0,
+            kind: "zoom",
+            startMs: 0,
+            endMs: durationMs,
+            amount: 1,
+            settings: { focus: "Follow cursor" },
+            path: steadySpots(cursor.typed ?? []).map(({ ms, x, y }) => ({
+              afterMs: ms,
+              ...centeredOn({ x, y }, floor, crop),
+            })),
+          },
+          regions,
+          cursor,
+          crop,
+        )
+      : null;
   return (outputMs: number) => {
     let from = 1;
     let target = 1;
@@ -52,11 +79,26 @@ export function zoomPath(
     let shown: (typeof zooms)[number] | null = null;
     const scaleAt = (ms: number) =>
       from + (target - from) * ease((ms - since) / ZOOM_MS);
-    const now = () => ({
-      scale: scaleAt(outputMs),
-      target,
-      center: shown ? shown.centerAt(outputMs) : MIDDLE,
-    });
+    const now = () => {
+      const relative = scaleAt(outputMs);
+      const own = shown ? shown.centerAt(outputMs) : MIDDLE;
+      if (!baseAt) return { scale: relative, target, center: own };
+      const scale = relative * floor;
+      const share = shown
+        ? clamp((relative - 1) / (shown.amount - 1 || 1), 0, 1)
+        : 0;
+      const base = baseAt(outputMs);
+      const framed = (key: "x" | "y") => {
+        const at = base[key] + (own[key] - base[key]) * share;
+        const edge = edgeOf(crop[key], scale);
+        return (clamp(at, edge, 1 - edge) + (crop[key] - 1) / 2) / crop[key];
+      };
+      return {
+        scale,
+        target: target * floor,
+        center: { x: framed("x"), y: framed("y") },
+      };
+    };
     for (const zoom of zooms) {
       for (const [ms, scale] of [
         [zoom.startMs, zoom.amount],
@@ -73,10 +115,15 @@ export function zoomPath(
   };
 }
 
-function followed(zoom: Region, regions: Region[], cursor: Following) {
+function followed(
+  zoom: Region,
+  regions: Region[],
+  cursor: Following,
+  crop: Point,
+) {
   const startMs = outputAt(regions, zoom.startMs);
   const endMs = outputAt(regions, zoom.endMs);
-  const aimAt = aims(zoom, regions, cursor);
+  const aimAt = aims(zoom, regions, cursor, crop);
   const dt = STEP_MS / 1000;
   const settle = Math.min(1, STEP_MS / FOLLOW.settleMs);
   let eased = focusCenter(zoom);
@@ -109,7 +156,13 @@ function followed(zoom: Region, regions: Region[], cursor: Following) {
   };
 }
 
-function aims(zoom: Region, regions: Region[], { moves, keys }: Following) {
+function aims(
+  zoom: Region,
+  regions: Region[],
+  { moves, keys }: Following,
+  crop: Point,
+) {
+  const amount = zoom.amount * Math.max(crop.x, crop.y);
   const pans = (zoom.path ?? []).map(({ afterMs, x, y }) => ({
     ms: outputAt(regions, zoom.startMs + afterMs) - PAN_MS,
     center: { x, y },
@@ -144,13 +197,17 @@ function aims(zoom: Region, regions: Region[], { moves, keys }: Following) {
       Math.abs(cursor.y - before.y),
     );
     if (moved <= STILL_SHARE) return wanted;
-    group = grouped(group, cursor, 1 / zoom.amount);
+    group = grouped(group, cursor, {
+      x: crop.x / amount,
+      y: crop.y / amount,
+    });
     wanted = centeredOn(
       {
         x: (group.min.x + group.max.x) / 2,
         y: (group.min.y + group.max.y) / 2,
       },
-      zoom.amount,
+      amount,
+      crop,
     );
     return wanted;
   };
@@ -169,7 +226,7 @@ function steadyAt(moves: CursorMove[], ms: number): Point {
 function grouped(
   group: { min: Point; max: Point } | null,
   cursor: Point,
-  size: number,
+  size: Point,
 ) {
   if (!group) return { min: cursor, max: cursor };
   const min = {
@@ -181,37 +238,61 @@ function grouped(
     y: Math.max(group.max.y, cursor.y),
   };
   const fits =
-    max.x - min.x <= GROUP.width * size && max.y - min.y <= GROUP.height * size;
+    max.x - min.x <= GROUP.width * size.x &&
+    max.y - min.y <= GROUP.height * size.y;
   return fits ? { min, max } : { min: cursor, max: cursor };
 }
 
-function centeredOn(spot: Point, amount: number): Point {
+function centeredOn(spot: Point, amount: number, crop: Point): Point {
   const size = 1 / amount;
-  const share = (at: number) => clamp((at - size / 2) / (1 - size), 0, 1);
-  return { x: share(spot.x), y: share(spot.y) };
+  const share = (key: "x" | "y") => {
+    const edge = edgeOf(crop[key], amount);
+    return clamp((spot[key] - size / 2) / (1 - size), edge, 1 - edge);
+  };
+  return { x: share("x"), y: share("y") };
+}
+
+function edgeOf(crop: number, scale: number) {
+  return crop > 1 ? (crop - 1) / (2 * (scale - 1)) : 0;
 }
 
 export function focusCenter(zoom: Region): Point {
   return zoom.center ?? MIDDLE;
 }
 
-export function focusBox(zoom: Region) {
-  const size = 1 / zoom.amount;
-  const { x, y } = focusCenter(zoom);
-  return { x: x * (1 - size), y: y * (1 - size), size };
+export function focusBox(zoom: Region, crop: Point = WHOLE) {
+  const scale = zoom.amount * Math.max(crop.x, crop.y);
+  const center = focusCenter(zoom);
+  const left = (key: "x" | "y") => {
+    const edge = edgeOf(crop[key], scale);
+    const at = clamp(center[key], edge, 1 - edge);
+    return at * (1 - 1 / scale) + (1 - crop[key]) / (2 * scale);
+  };
+  return {
+    x: left("x"),
+    y: left("y"),
+    width: crop.x / scale,
+    height: crop.y / scale,
+  };
 }
 
-export function focusAt(box: Point, amount: number): Point {
-  const room = 1 - 1 / amount;
-  return { x: clamp(box.x / room, 0, 1), y: clamp(box.y / room, 0, 1) };
+export function focusAt(box: Point, amount: number, crop: Point = WHOLE) {
+  const scale = amount * Math.max(crop.x, crop.y);
+  const at = (key: "x" | "y") => {
+    const edge = edgeOf(crop[key], scale);
+    const left = box[key] - (1 - crop[key]) / (2 * scale);
+    return clamp(left / (1 - 1 / scale), edge, 1 - edge);
+  };
+  return { x: at("x"), y: at("y") };
 }
 
 export function zoomTrack(
   regions: Region[],
   durationMs: number,
   cursor?: Following,
+  crop?: Point,
 ): ExportZoom[] {
-  const zoomAt = zoomPath(regions, cursor);
+  const zoomAt = zoomPath(regions, cursor, crop, durationMs);
   const frames = Math.ceil(durationMs / FRAME_MS) + 1;
   return Array.from({ length: frames }, (_, frame) => {
     const { scale, center } = zoomAt(frame * FRAME_MS);
@@ -234,12 +315,12 @@ function ease(progress: number): number {
   return bezier(low, y1, y2);
 }
 
-export function focusBoxStyle(zoom: Region) {
-  const { x, y, size } = focusBox(zoom);
+export function focusBoxStyle(zoom: Region, crop?: Point) {
+  const { x, y, width, height } = focusBox(zoom, crop);
   return {
     left: `${x * 100}%`,
     top: `${y * 100}%`,
-    width: `${size * 100}%`,
-    height: `${size * 100}%`,
+    width: `${width * 100}%`,
+    height: `${height * 100}%`,
   };
 }

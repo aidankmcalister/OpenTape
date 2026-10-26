@@ -1,10 +1,19 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useInvokeOnMount, useRustValue } from "@/hooks/useTauri";
 import type {
   CursorImage,
   CursorLog,
   ShownRecording,
+  SoundTrack,
   TypingSpot,
 } from "@/lib/bindings";
 import {
@@ -38,6 +47,7 @@ import {
 import { MIN_BLOCK_PX } from "@/lib/editor/timeline";
 import {
   changeAppearance,
+  changeSound,
   editClips,
   editRegions,
   historyOf,
@@ -50,6 +60,7 @@ import {
   suggest,
   undo,
 } from "@/lib/editor/project";
+import type { SoundSettings } from "@/lib/editor/sound";
 import type { Clock } from "@/lib/time";
 
 export function useProject(
@@ -167,6 +178,8 @@ export function useProject(
       ),
     setAppearance: (change: Partial<Appearance>, isPreview = false) =>
       apply((project) => changeAppearance(project, change), isPreview),
+    setSound: (change: Partial<SoundSettings>, isPreview = false) =>
+      apply((project) => changeSound(project, change), isPreview),
     setRegion: (
       id: number,
       change: Parameters<typeof changeRegion>[2],
@@ -242,7 +255,36 @@ export function useOpenedRecording() {
   return {
     name: recording.name,
     videoSrc: convertFileSrc(recording.videoPath),
+    fileSrc: (name: string) =>
+      convertFileSrc(recording.videoPath.replace(/[^/]+$/, name)),
   };
+}
+
+export function useBackgroundImage(onAdded: (name: string) => void) {
+  const [isOver, setIsOver] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const latest = useRef(onAdded);
+  useLayoutEffect(() => {
+    latest.current = onAdded;
+  });
+  const add = useCallback((path: string | null) => {
+    setError(null);
+    invoke<string | null>("add_background", { path }).then(
+      (name) => name && latest.current(name),
+      (failed) => setError(String(failed)),
+    );
+  }, []);
+  useEffect(() => {
+    const unlisten = getCurrentWebview().onDragDropEvent(({ payload }) => {
+      setIsOver(payload.type === "enter" || payload.type === "over");
+      if (payload.type === "drop" && payload.paths[0]) add(payload.paths[0]);
+    });
+    unlisten.catch(console.error);
+    return () => {
+      unlisten.then((stop) => stop()).catch(console.error);
+    };
+  }, [add]);
+  return { isOver, error, browse: () => add(null) };
 }
 
 export function useCursor(): CursorTrack {
@@ -271,6 +313,12 @@ export function useCursor(): CursorTrack {
   });
   useInvokeOnMount<CursorImage[]>("cursor_images", setImages);
   return useMemo(() => ({ ...track, images }), [track, images]);
+}
+
+export function useSoundTracks() {
+  const [tracks, setTracks] = useState<SoundTrack[] | null>(null);
+  useInvokeOnMount("sound_tracks", setTracks);
+  return tracks;
 }
 
 export function useVisibleBox(src: string) {

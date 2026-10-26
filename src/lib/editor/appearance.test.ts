@@ -133,4 +133,19 @@ test("readAppearance fills in defaults and turns old border color names into hex
   );
   expect(readAppearance({ size: "4:5" }).size).toBe("4:5");
   expect(readAppearance({ size: "3:2" as "4:5" }).size).toBe("Auto");
+  expect(readAppearance({ size: "9:16" }).fit).toBe("Letterbox");
+});
+
+test("an image fill covers the frame on the Image tab, and falls back to the gradient without one", () => {
+  const src = (name: string) => `asset://localhost/${name}`;
+  const image = fill({ kind: "image", image: "background.png" });
+  const gradient = fillCss(fill({ kind: "gradient" }));
+  expect(fillCss(image, src)).toBe(
+    'center / cover no-repeat url("asset://localhost/background.png")',
+  );
+  expect(fillCss({ ...image, kind: "gradient" }, src)).toBe(gradient);
+  expect(fillCss({ ...image, image: null }, src)).toBe(gradient);
+  const { kind, preset, custom } = DEFAULT_APPEARANCE.fill;
+  const older = { kind, preset, custom } as Fill;
+  expect(readAppearance({ fill: older }).fill.image).toBeNull();
 });

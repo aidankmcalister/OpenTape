@@ -1,14 +1,18 @@
+use std::path::Path;
 use std::ptr::null_mut;
 
-use super::{ExportGradient, ExportLayout, PixelRect};
+use super::{ExportGradient, ExportLayout, PixelRect, file_url};
 use anyhow::{Context, Result};
 use objc2::rc::Retained;
+use objc2::runtime::AnyObject;
 use objc2_core_foundation::{CFRetained, CGPoint, CGRect, CGSize};
 use objc2_core_graphics::{
     CGBitmapContextCreate, CGBitmapContextCreateImage, CGBlendMode, CGColor, CGColorSpace,
-    CGContext, CGGradient, CGGradientDrawingOptions, CGImageAlphaInfo, CGPath, kCGColorSpaceSRGB,
+    CGContext, CGGradient, CGGradientDrawingOptions, CGImage, CGImageAlphaInfo, CGPath,
+    kCGColorSpaceSRGB,
 };
-use objc2_core_image::CIImage;
+use objc2_core_image::{CIContext, CIImage, kCIImageApplyOrientationProperty};
+use objc2_foundation::{NSDictionary, NSNumber, NSString};
 
 pub(super) fn canvas(
     width: usize,
@@ -31,16 +35,26 @@ pub(super) fn canvas(
     Ok((srgb, context))
 }
 
-pub(super) fn cutout(layout: &ExportLayout) -> Result<Retained<CIImage>> {
+pub(super) fn cutout(layout: &ExportLayout, picture: Option<&Path>) -> Result<Retained<CIImage>> {
     let (width, height) = (layout.width as usize, layout.height as usize);
     let (srgb, context) = canvas(width, height)?;
     let context = Some(&*context);
 
-    let gradient = gradient(&srgb, &layout.background)?;
-    let (start, end) = gradient_line(layout.background.angle, width as f64, height as f64);
-    let extend = CGGradientDrawingOptions::DrawsBeforeStartLocation
-        | CGGradientDrawingOptions::DrawsAfterEndLocation;
-    CGContext::draw_linear_gradient(context, Some(&gradient), start, end, extend);
+    if let Some(picture) = picture {
+        let picture = background_picture(picture)?;
+        let size = CGSize::new(
+            CGImage::width(Some(&picture)) as f64,
+            CGImage::height(Some(&picture)) as f64,
+        );
+        let rect = cover(size, width as f64, height as f64);
+        CGContext::draw_image(context, rect, Some(&picture));
+    } else {
+        let gradient = gradient(&srgb, &layout.background)?;
+        let (start, end) = gradient_line(layout.background.angle, width as f64, height as f64);
+        let extend = CGGradientDrawingOptions::DrawsBeforeStartLocation
+            | CGGradientDrawingOptions::DrawsAfterEndLocation;
+        CGContext::draw_linear_gradient(context, Some(&gradient), start, end, extend);
+    }
 
     let hole = rounded_rect(&layout.recording, layout.radius, layout.height);
     CGContext::save_g_state(context);
@@ -69,6 +83,27 @@ pub(super) fn cutout(layout: &ExportLayout) -> Result<Retained<CIImage>> {
 
     let image = CGBitmapContextCreateImage(context).context("could not finish the appearance")?;
     Ok(unsafe { CIImage::imageWithCGImage(&image) })
+}
+
+fn background_picture(path: &Path) -> Result<Retained<CGImage>> {
+    let upright = NSNumber::new_bool(true);
+    let options = NSDictionary::<NSString, AnyObject>::from_slices(
+        &[unsafe { kCIImageApplyOrientationProperty }],
+        &[upright.as_ref()],
+    );
+    let source =
+        unsafe { CIImage::imageWithContentsOfURL_options(&file_url(path), Some(&options)) }
+            .with_context(|| format!("could not read the background picture {}", path.display()))?;
+    let context = unsafe { CIContext::context() };
+    unsafe { context.createCGImage_fromRect(&source, source.extent()) }
+        .context("could not draw the background picture")
+}
+
+fn cover(picture: CGSize, width: f64, height: f64) -> CGRect {
+    let scale = (width / picture.width).max(height / picture.height);
+    let size = CGSize::new(picture.width * scale, picture.height * scale);
+    let origin = CGPoint::new((width - size.width) / 2.0, (height - size.height) / 2.0);
+    CGRect::new(origin, size)
 }
 
 fn gradient(space: &CGColorSpace, background: &ExportGradient) -> Result<CFRetained<CGGradient>> {
@@ -135,6 +170,16 @@ mod tests {
         assert!(close(start, 50.0, 50.0) && close(end, 50.0, 0.0));
         let (start, end) = gradient_line(135.0, 100.0, 100.0);
         assert!(close(start, 0.0, 100.0) && close(end, 100.0, 0.0));
+    }
+
+    #[test]
+    fn a_background_picture_covers_the_frame_from_its_center() {
+        let wide = cover(CGSize::new(400.0, 100.0), 200.0, 100.0);
+        assert!(close(wide.origin, -100.0, 0.0));
+        assert_eq!((wide.size.width, wide.size.height), (400.0, 100.0));
+        let tall = cover(CGSize::new(100.0, 100.0), 200.0, 100.0);
+        assert!(close(tall.origin, 0.0, -50.0));
+        assert_eq!((tall.size.width, tall.size.height), (200.0, 200.0));
     }
 
     #[test]

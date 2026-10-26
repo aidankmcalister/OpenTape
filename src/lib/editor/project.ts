@@ -6,11 +6,13 @@ import {
 import { type Clip, fitToClips } from "./clips";
 import { type CursorTrack, withSuggestions } from "./cursor";
 import { type Region, REGIONS } from "./regions";
+import { DEFAULT_SOUND, type SoundSettings } from "./sound";
 
 export type Project = {
   appearance: Appearance;
   regions: Region[];
   clips: Clip[];
+  sound: SoundSettings;
   suggestionsMade: boolean;
 };
 
@@ -18,6 +20,7 @@ export const NEW_PROJECT: Project = {
   appearance: DEFAULT_APPEARANCE,
   regions: [],
   clips: [],
+  sound: DEFAULT_SOUND,
   suggestionsMade: false,
 };
 
@@ -34,6 +37,7 @@ export function readProject(json: string | null, fresh = NEW_PROJECT): Project {
     appearance: readAppearance(saved.appearance),
     regions: (saved.regions ?? []).filter(({ kind }) => kind in REGIONS),
     clips: saved.clips ?? [],
+    sound: { ...DEFAULT_SOUND, ...saved.sound },
     suggestionsMade: saved.suggestionsMade ?? false,
   };
 }
@@ -73,6 +77,16 @@ export function changeAppearance(
   return JSON.stringify(appearance) === JSON.stringify(project.appearance)
     ? project
     : { ...project, appearance };
+}
+
+export function changeSound(
+  project: Project,
+  change: Partial<SoundSettings>,
+): Project {
+  const sound = { ...project.sound, ...change };
+  return JSON.stringify(sound) === JSON.stringify(project.sound)
+    ? project
+    : { ...project, sound };
 }
 
 type History<T> = { past: T[]; present: T; future: T[] };

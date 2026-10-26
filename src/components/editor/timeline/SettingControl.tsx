@@ -171,8 +171,8 @@ function Focus({
         <div
           className="absolute size-2 -translate-1/2 rounded-full bg-highlight"
           style={{
-            left: `${(box.x + box.size / 2) * 100}%`,
-            top: `${(box.y + box.size / 2) * 100}%`,
+            left: `${(box.x + box.width / 2) * 100}%`,
+            top: `${(box.y + box.height / 2) * 100}%`,
           }}
         />
       </div>

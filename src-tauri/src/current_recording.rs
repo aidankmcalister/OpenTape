@@ -14,6 +14,7 @@ use crate::util::lock;
 
 const NAME_FORMAT: &str = "%Y-%m-%d %H.%M.%S";
 const PROJECT_FILE: &str = "project.json";
+pub(crate) const PICTURE_TYPES: [&str; 5] = ["png", "jpg", "jpeg", "heic", "webp"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Window {
@@ -205,6 +206,18 @@ impl CurrentRecording {
         std::fs::write(&draft, json)
             .with_context(|| format!("could not write {}", draft.display()))?;
         std::fs::rename(&draft, &path).with_context(|| format!("could not save {}", path.display()))
+    }
+
+    fn add_background(&self, picture: &Path) -> Result<String> {
+        let extension = (picture.extension().and_then(|ext| ext.to_str()))
+            .map(str::to_lowercase)
+            .filter(|ext| PICTURE_TYPES.contains(&ext.as_str()))
+            .context("that isn't a PNG, JPEG, HEIC or WebP picture")?;
+        let folder = self.project_path()?.with_file_name("");
+        let copy = free_path(&folder, "background", &extension, Path::exists);
+        std::fs::copy(picture, &copy)
+            .with_context(|| format!("could not copy {}", picture.display()))?;
+        Ok(folder_name(&copy))
     }
 
     fn save(&self) -> Result<PathBuf> {

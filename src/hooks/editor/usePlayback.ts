@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 import { useClockValue, useVideoClock } from "@/hooks/useVideoClock";
+import type { SoundTrack } from "@/lib/bindings";
 import type { TimeMap } from "@/lib/editor/clips";
+import { type SoundSettings, stageSound } from "@/lib/editor/sound";
 import type { Size } from "@/lib/geometry";
 
 export function usePlayback(src: string) {
@@ -82,7 +84,6 @@ export function usePlayback(src: string) {
         setDurationMs(lengthMs(event.currentTarget));
         setRatio(ratioOf(event.currentTarget));
         setVideoSize(sizeOf(event.currentTarget));
-        playEverySoundTrack(event.currentTarget);
         showFirstFrame(event);
       },
     },
@@ -107,6 +108,26 @@ export function useTimeMap(playback: Playback, time: TimeMap) {
   }, [playback, playOn]);
 }
 
+export function useStageSound(
+  playback: Playback,
+  sound: SoundSettings,
+  tracks: SoundTrack[] | null,
+) {
+  const { ref } = playback.videoProps;
+  useEffect(() => {
+    const video = ref.current;
+    if (!video) return;
+    const { volume, enabled } = stageSound(sound, tracks ?? []);
+    video.volume = volume;
+    const { audioTracks } = video as {
+      audioTracks?: ArrayLike<{ enabled: boolean }>;
+    };
+    Array.from(audioTracks ?? []).forEach((track, index) => {
+      track.enabled = enabled[index] ?? true;
+    });
+  }, [ref, sound, tracks, playback.durationMs]);
+}
+
 function togglePlay(video: HTMLVideoElement | null) {
   if (!video) return;
   if (video.paused) void video.play();
@@ -123,13 +144,6 @@ function ratioOf(video: HTMLVideoElement): number {
 
 function sizeOf(video: HTMLVideoElement): Size {
   return { width: video.videoWidth, height: video.videoHeight };
-}
-
-function playEverySoundTrack(video: HTMLVideoElement) {
-  const { audioTracks } = video as {
-    audioTracks?: ArrayLike<{ enabled: boolean }>;
-  };
-  for (const track of Array.from(audioTracks ?? [])) track.enabled = true;
 }
 
 function showFirstFrame(event: SyntheticEvent<HTMLVideoElement>) {

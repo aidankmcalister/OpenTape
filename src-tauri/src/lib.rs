@@ -154,11 +154,13 @@ pub fn run() -> tauri::Result<()> {
             current_recording::commands::cursor_log,
             current_recording::commands::cursor_images,
             current_recording::commands::typing_spots,
+            current_recording::commands::sound_tracks,
             settings::get_settings,
             settings::set_settings,
             settings::choose_save_folder,
             settings::open_notices,
             current_recording::commands::save_project,
+            current_recording::commands::add_background,
             current_recording::commands::export_recording,
             current_recording::commands::show_export_in_finder,
             quit

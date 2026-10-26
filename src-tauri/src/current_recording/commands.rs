@@ -1,10 +1,11 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, ensure};
 use tauri::{AppHandle, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 
-use super::{CurrentRecording, CursorLog, Shell, ShownRecording, Window};
+use super::{CurrentRecording, CursorLog, PICTURE_TYPES, Shell, ShownRecording, Window};
 use crate::PageEvent;
 use crate::export::typing::{TypingSpot, TypingStretch};
 use crate::export::{ExportLayout, ExportOptions};
@@ -134,6 +135,12 @@ pub(crate) async fn typing_spots(
 }
 
 #[tauri::command]
+pub(crate) async fn sound_tracks(app: AppHandle) -> CmdResult<Vec<crate::export::SoundTrack>> {
+    let (video, _) = app.state::<CurrentRecording>().video()?;
+    Ok(run_blocking(move || crate::export::sound_tracks(&video)).await?)
+}
+
+#[tauri::command]
 pub(crate) async fn cursor_images() -> CmdResult<Vec<crate::macos::cursor::CursorImage>> {
     Ok(run_blocking(crate::macos::cursor::cursor_images).await?)
 }
@@ -147,6 +154,35 @@ pub(crate) fn load_project(current: State<'_, CurrentRecording>) -> CmdResult<Op
 pub(crate) async fn save_project(app: AppHandle, json: String) -> CmdResult {
     run_blocking(move || app.state::<CurrentRecording>().save_project(&json)).await?;
     Ok(())
+}
+
+#[tauri::command]
+pub(crate) async fn add_background(
+    app: AppHandle,
+    path: Option<String>,
+) -> CmdResult<Option<String>> {
+    let added = run_blocking(move || {
+        let picture = match path {
+            Some(path) => PathBuf::from(path),
+            None => {
+                let chosen = (app.dialog().file())
+                    .set_title("Choose a background picture")
+                    .add_filter("Pictures", &PICTURE_TYPES)
+                    .blocking_pick_file();
+                let Some(chosen) = chosen else {
+                    return Ok(None);
+                };
+                chosen
+                    .into_path()
+                    .context("that isn't a file on this Mac")?
+            }
+        };
+        app.state::<CurrentRecording>()
+            .add_background(&picture)
+            .map(Some)
+    })
+    .await?;
+    Ok(added)
 }
 
 #[tauri::command]

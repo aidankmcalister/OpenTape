@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
+import { ImageUp } from "lucide-react";
 import { PopoverTitle } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
-import type { Edits } from "@/hooks/editor/useProject";
+import { type Edits, useBackgroundImage } from "@/hooks/editor/useProject";
 import type { ExportGradient } from "@/lib/bindings";
 import {
   changeStop,
@@ -76,6 +77,25 @@ export default function FillPicker({ edits }: { edits: Edits }) {
         )}
       </ColorPicker>
     </CustomSwatch>
+  );
+}
+
+export function ImageDrop({ onAdded }: { onAdded: (name: string) => void }) {
+  const { isOver, error, browse } = useBackgroundImage(onAdded);
+  return (
+    <button
+      type="button"
+      data-over={isOver}
+      onClick={browse}
+      className="flex h-18 w-full items-center justify-center gap-2 rounded-md border border-dashed border-muted-foreground px-3 text-label text-muted-foreground transition-colors hover:border-foreground hover:text-foreground data-[over=true]:border-highlight data-[over=true]:bg-highlight/16 data-[over=true]:text-highlight"
+    >
+      <ImageUp className="size-4 shrink-0" />
+      {error ?? (
+        <span>
+          Drop an image or <span className="text-highlight">browse</span>
+        </span>
+      )}
+    </button>
   );
 }
 

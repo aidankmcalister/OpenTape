@@ -6,6 +6,7 @@ import {
   type Appearance,
   type CursorSettings,
   fillCss,
+  frameCrop,
   frameLayout,
 } from "@/lib/editor/appearance";
 import {
@@ -34,6 +35,7 @@ import { hueOf, REGION_ICONS } from "./timeline/kinds";
 import { followPointer } from "@/hooks/usePointerHover";
 
 export default function Stage({
+  fileSrc,
   appearance,
   ratio,
   clock,
@@ -44,6 +46,7 @@ export default function Stage({
   focus,
   ...props
 }: ComponentProps<"video"> & {
+  fileSrc: (name: string) => string;
   appearance: Appearance;
   ratio: number;
   clock: Clock;
@@ -54,21 +57,24 @@ export default function Stage({
   focus: Focusing | null;
 }) {
   const { ref, size } = useElementSize<HTMLDivElement>();
-  const { frame, recording, radius, shadow, border, video, scale } =
+  const { frame, recording, picture, radius, shadow, border, video, scale } =
     frameLayout(appearance, size, ratio);
   const isFocusing = focus !== null;
+  const { x: cropX, y: cropY } = frameCrop(appearance, ratio);
   const zoomAt = useMemo(() => {
     const shown = isFocusing ? [] : regions;
-    const at = zoomPath(shown, cursor);
+    const at = isFocusing
+      ? zoomPath(shown)
+      : zoomPath(shown, cursor, { x: cropX, y: cropY }, durationMs);
     return (seconds: number) => at(outputAt(shown, seconds * 1000));
-  }, [isFocusing, regions, cursor]);
+  }, [isFocusing, regions, cursor, cropX, cropY, durationMs]);
 
   return (
     <Island className="relative min-h-0 flex-1 bg-canvas dot-grid">
       <div ref={ref} className="grid size-full place-items-center">
         <div
           className="grid place-items-center rounded-lg shadow-stage"
-          style={{ ...frame, background: fillCss(appearance.fill) }}
+          style={{ ...frame, background: fillCss(appearance.fill, fileSrc) }}
         >
           <div className="relative" style={recording}>
             <div
@@ -92,7 +98,11 @@ export default function Stage({
                   scale={scale}
                 />
               </Zoom>
-              {focus ? <FocusBox {...focus} /> : null}
+              {focus ? (
+                <div className="absolute" style={rectStyle(picture)}>
+                  <FocusBox {...focus} crop={{ x: cropX, y: cropY }} />
+                </div>
+              ) : null}
               {border.color ? (
                 <div
                   className="pointer-events-none absolute inset-0"
@@ -299,13 +309,13 @@ type Focusing = {
   onDone: () => void;
 };
 
-function FocusBox({ zoom, onMove, onDone }: Focusing) {
-  const box = focusBox(zoom);
+function FocusBox({ zoom, onMove, onDone, crop }: Focusing & { crop: Point }) {
+  const box = focusBox(zoom, crop);
   return (
     <div data-keeps-editor className="absolute inset-0">
       <div
         className="absolute grid cursor-grab place-items-center rounded-sm border-2 border-highlight bg-highlight/16 active:cursor-grabbing"
-        style={focusBoxStyle(zoom)}
+        style={focusBoxStyle(zoom, crop)}
         onPointerDown={(event) => {
           const { width, height } =
             event.currentTarget.parentElement!.getBoundingClientRect();
@@ -319,6 +329,7 @@ function FocusBox({ zoom, onMove, onDone }: Focusing) {
                     y: box.y + (moved.clientY - y) / height,
                   },
                   zoom.amount,
+                  crop,
                 ),
               ),
             onDone,

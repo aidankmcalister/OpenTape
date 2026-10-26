@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Image, MousePointer2 } from "lucide-react";
+import { Image, MousePointer2, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -9,16 +9,19 @@ import {
 } from "@/components/ui/tooltip";
 import type { Edits } from "@/hooks/editor/useProject";
 import type { AppSettings } from "@/hooks/useAppSettings";
+import type { SoundTrack } from "@/lib/bindings";
 import type { CursorTrack } from "@/lib/editor/cursor";
 import Island from "../Island";
 import SettingsDialog from "./SettingsDialog";
 import ShortcutsSheet from "./ShortcutsSheet";
 import AppearancePanel from "./AppearancePanel";
 import CursorPanel from "./CursorPanel";
+import SoundPanel from "./SoundPanel";
 
 const PANELS = [
   { id: "background", label: "Background", Icon: Image },
   { id: "cursor", label: "Cursor", Icon: MousePointer2 },
+  { id: "sound", label: "Sound", Icon: Volume2 },
 ] as const;
 
 export type SidebarPanel = (typeof PANELS)[number]["id"];
@@ -28,6 +31,7 @@ export default function Sidebar({
   edits,
   cursor,
   app,
+  sound,
   panel,
   onPanelChange,
   dialog,
@@ -36,6 +40,7 @@ export default function Sidebar({
   edits: Edits;
   cursor: CursorTrack;
   app: AppSettings;
+  sound: SoundTrack[] | null;
   panel: SidebarPanel;
   onPanelChange: (panel: SidebarPanel) => void;
   dialog: EditorDialog | null;
@@ -81,6 +86,8 @@ export default function Sidebar({
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
         {panel === "cursor" ? (
           <CursorPanel edits={edits} track={cursor} />
+        ) : panel === "sound" ? (
+          <SoundPanel edits={edits} tracks={sound} />
         ) : (
           <AppearancePanel edits={edits} />
         )}

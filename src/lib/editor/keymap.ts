@@ -22,7 +22,8 @@ export type EditorAction =
   | "openSettings"
   | "openShortcuts"
   | "showBackground"
-  | "showCursor";
+  | "showCursor"
+  | "showSound";
 
 export type Binding = {
   action: EditorAction;
@@ -75,6 +76,7 @@ export const ACTION_NAMES: Record<EditorAction, string> = {
   export: "Export",
   showBackground: "Background panel",
   showCursor: "Cursor panel",
+  showSound: "Sound panel",
   openShortcuts: "Keyboard shortcuts",
   openSettings: "Settings",
   openPalette: "Command palette",

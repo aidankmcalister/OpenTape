@@ -3,6 +3,7 @@ import { DEFAULT_APPEARANCE, frameLayout } from "./appearance";
 import { outputAt, type Region, sourceAt } from "./regions";
 import {
   changeAppearance,
+  changeSound,
   editClips,
   editRegions,
   historyOf,
@@ -14,6 +15,7 @@ import {
   redo,
   undo,
 } from "./project";
+import { DEFAULT_SOUND } from "./sound";
 import { zoomPath, zoomTrack } from "./zoom";
 
 describe("project", () => {
@@ -54,8 +56,20 @@ describe("project", () => {
       appearance: { ...DEFAULT_APPEARANCE, padding: 12 },
       regions: [],
       clips: [],
+      sound: DEFAULT_SOUND,
       suggestionsMade: false,
     });
+    const quiet = readProject(JSON.stringify({ sound: { microphone: 40 } }));
+    expect(quiet.sound).toEqual({ ...DEFAULT_SOUND, microphone: 40 });
+  });
+
+  test("changeSound keeps the same project when nothing changes, so undo skips it", () => {
+    expect(changeSound(NEW_PROJECT, { microphone: 100 })).toBe(NEW_PROJECT);
+    const muted = changeSound(NEW_PROJECT, { isMuted: true });
+    expect(muted.sound).toEqual({ ...DEFAULT_SOUND, isMuted: true });
+    expect(undo(record(historyOf(NEW_PROJECT), muted)).present).toBe(
+      NEW_PROJECT,
+    );
   });
 });
 

@@ -8,17 +8,19 @@ import {
   COLORS,
   DEFAULT_APPEARANCE,
   fillCss,
+  FRAME_FITS,
   FRAME_SIZES,
   GRADIENTS,
   PRESET_NAMES,
   type Amount,
+  type Appearance,
   type Fill,
-  type FrameSize,
 } from "@/lib/editor/appearance";
+import type { SettingValue } from "@/lib/editor/regions";
 import { ColorSwatches } from "../ColorPicker";
 import { Dim, PanelHeader, Section, ValueInput } from "../Panel";
 import SettingControl from "../timeline/SettingControl";
-import FillPicker from "./FillPicker";
+import FillPicker, { ImageDrop } from "./FillPicker";
 
 const FILLS: { kind: Fill["kind"]; label: string; Icon: typeof Blend }[] = [
   { kind: "gradient", label: "Gradient", Icon: Blend },
@@ -37,6 +39,13 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
   const isColor = appearance.fill.kind === "color";
   const presets = isColor ? COLORS : GRADIENTS;
   const changeFill = (fill: Fill) => edits.setAppearance({ fill });
+  const framing = {
+    value: (key: string) => appearance[key as "size" | "fit"],
+    set: (key: string, value: SettingValue) =>
+      edits.setAppearance({ [key]: value } as Partial<Appearance>),
+    preview: () => {},
+    commit: edits.commit,
+  };
   return (
     <>
       <PanelHeader
@@ -55,13 +64,14 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
             key: "size",
             options: Object.keys(FRAME_SIZES),
           }}
-          edit={{
-            value: () => appearance.size,
-            set: (_, size) => edits.setAppearance({ size: size as FrameSize }),
-            preview: () => {},
-            commit: edits.commit,
-          }}
+          edit={framing}
         />
+        {appearance.size !== "Auto" ? (
+          <SettingControl
+            setting={{ kind: "choice", key: "fit", options: FRAME_FITS }}
+            edit={framing}
+          />
+        ) : null}
       </Section>
       <Section title="Fill">
         <Tabs
@@ -77,23 +87,28 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
                 value={kind}
                 icon={<Icon />}
                 label={label}
-                disabled={kind === "image"}
               />
             ))}
           </TabsList>
         </Tabs>
-        <ColorSwatches
-          options={presets.map((_, preset) => ({
-            value: String(preset),
-            label: PRESET_NAMES[isColor ? "color" : "gradient"][preset],
-            color: fillCss({ ...appearance.fill, preset }),
-          }))}
-          value={String(appearance.fill.preset)}
-          onChange={(preset) =>
-            changeFill({ ...appearance.fill, preset: Number(preset) })
-          }
-          custom={<FillPicker edits={edits} />}
-        />
+        {appearance.fill.kind === "image" ? (
+          <ImageDrop
+            onAdded={(image) => changeFill({ ...appearance.fill, image })}
+          />
+        ) : (
+          <ColorSwatches
+            options={presets.map((_, preset) => ({
+              value: String(preset),
+              label: PRESET_NAMES[isColor ? "color" : "gradient"][preset],
+              color: fillCss({ ...appearance.fill, preset }),
+            }))}
+            value={String(appearance.fill.preset)}
+            onChange={(preset) =>
+              changeFill({ ...appearance.fill, preset: Number(preset) })
+            }
+            custom={<FillPicker edits={edits} />}
+          />
+        )}
       </Section>
       <Section title="Frame">
         <ValueField amount="padding" edits={edits} />

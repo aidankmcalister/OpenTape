@@ -4,7 +4,11 @@ import { Button } from "@/components/ui/button";
 import Island from "@/components/editor/Island";
 import Stage from "@/components/editor/Stage";
 import Transport from "@/components/editor/timeline/Transport";
-import { usePlayback, useTimeMap } from "@/hooks/editor/usePlayback";
+import {
+  usePlayback,
+  useStageSound,
+  useTimeMap,
+} from "@/hooks/editor/usePlayback";
 import { useKeymap } from "@/hooks/editor/useKeymap";
 import Timeline from "@/components/editor/timeline/Timeline";
 import ExportButton from "@/components/editor/header/ExportButton";
@@ -22,6 +26,7 @@ import {
   useOpenedRecording,
   useProject,
   useSavedProject,
+  useSoundTracks,
 } from "@/hooks/editor/useProject";
 import { timeMap } from "@/lib/editor/clips";
 import { ringEvents } from "@/lib/editor/cursor";
@@ -38,6 +43,7 @@ export default function Editor() {
           key={recording.videoSrc}
           name={recording.name}
           videoSrc={recording.videoSrc}
+          fileSrc={recording.fileSrc}
         />
       ) : (
         <Header name={null} />
@@ -46,10 +52,19 @@ export default function Editor() {
   );
 }
 
-function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
+function Workspace({
+  name,
+  videoSrc,
+  fileSrc,
+}: {
+  name: string;
+  videoSrc: string;
+  fileSrc: (name: string) => string;
+}) {
   const playback = usePlayback(videoSrc);
   const { ref: trackRef, size: track } = useElementSize<HTMLDivElement>();
   const cursor = useCursor();
+  const soundTracks = useSoundTracks();
   const edits = useProject(
     playback.clock,
     playback.durationMs,
@@ -72,6 +87,7 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
     ? timeMap(clips, soloed, playback.durationMs)
     : edits.time;
   useTimeMap(playback, time);
+  useStageSound(playback, edits.project.sound, soundTracks);
   const rings = ringEvents(cursor.clicks, appearance.cursor);
   const exporting = useExport(edits.project, playback, rings, cursor, app);
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -108,6 +124,7 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
     openShortcuts: () => setDialog("shortcuts"),
     showBackground: () => setPanel("background"),
     showCursor: () => setPanel("cursor"),
+    showSound: () => setPanel("sound"),
   };
   useKeymap(actions, (key) => {
     const kind = regionKindForKey(key);
@@ -145,6 +162,7 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
           edits={edits}
           cursor={cursor}
           app={app}
+          sound={soundTracks}
           panel={panel}
           onPanelChange={setPanel}
           dialog={dialog}
@@ -153,6 +171,7 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <Stage
             src={videoSrc}
+            fileSrc={fileSrc}
             appearance={appearance}
             ratio={playback.ratio}
             clock={playback.clock}

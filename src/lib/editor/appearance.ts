@@ -1,10 +1,11 @@
-import { type Size, clamp, fitInside } from "@/lib/geometry";
+import { type Point, type Size, clamp, fitInside } from "@/lib/geometry";
 import type { ExportGradient, ExportStop } from "@/lib/bindings";
 
 export type Fill = {
   kind: "gradient" | "color" | "image";
   preset: number | "custom";
   custom: ExportGradient;
+  image: string | null;
 };
 
 export const FRAME_SIZES = {
@@ -17,8 +18,13 @@ export const FRAME_SIZES = {
 
 export type FrameSize = keyof typeof FRAME_SIZES;
 
+export const FRAME_FITS = ["Letterbox", "Fill"];
+
+export type FrameFit = "Letterbox" | "Fill";
+
 export type Appearance = {
   size: FrameSize;
+  fit: FrameFit;
   fill: Fill;
   padding: number;
   radius: number;
@@ -161,7 +167,13 @@ export const DEFAULT_CURSOR: CursorSettings = {
 
 export const DEFAULT_APPEARANCE: Appearance = {
   size: "Auto",
-  fill: { kind: "gradient", preset: 0, custom: presetGradient("gradient", 0) },
+  fit: "Letterbox",
+  fill: {
+    kind: "gradient",
+    preset: 0,
+    custom: presetGradient("gradient", 0),
+    image: null,
+  },
   padding: 64,
   radius: 20,
   inset: 0,
@@ -188,6 +200,7 @@ export function readAppearance(saved: Partial<Appearance> = {}): Appearance {
   const appearance = {
     ...DEFAULT_APPEARANCE,
     ...known,
+    fill: { ...DEFAULT_APPEARANCE.fill, ...saved.fill },
     cursor: readCursorSettings(saved.cursor),
   };
   const borderColor = appearance.borderColor.startsWith("#")
@@ -231,7 +244,12 @@ function presetGradient(kind: Fill["kind"], preset: number): ExportGradient {
   return { angle: 135, stops };
 }
 
-export function fillCss(fill: Fill): string {
+export function fillCss(
+  fill: Fill,
+  imageSrc?: (name: string) => string,
+): string {
+  if (fill.kind === "image" && fill.image && imageSrc)
+    return `center / cover no-repeat url("${imageSrc(fill.image)}")`;
   const gradient = fillGradient(fill);
   return fill.kind === "color"
     ? gradient.stops[0].color
@@ -264,13 +282,24 @@ export function frameShape(appearance: Appearance, ratio: number): number {
   return FRAME_SIZES[appearance.size] ?? ratio;
 }
 
+export function frameCrop(appearance: Appearance, ratio: number): Point {
+  if (appearance.fit !== "Fill" || appearance.size === "Auto")
+    return { x: 1, y: 1 };
+  const unit = { width: 1920, height: 1920 / frameShape(appearance, ratio) };
+  const hole = shrink(unit, appearance.padding);
+  const shape = hole.width / hole.height;
+  return { x: Math.max(1, shape / ratio), y: Math.max(1, ratio / shape) };
+}
+
 export function recordingIn(
   frame: Size,
   appearance: Appearance,
   ratio: number,
 ): Size {
   const padding = (appearance.padding * frame.width) / 1920;
-  return fitInside(shrink(frame, padding), ratio);
+  const shown = fitInside(shrink(frame, padding), ratio);
+  const crop = frameCrop(appearance, ratio);
+  return { width: shown.width * crop.x, height: shown.height * crop.y };
 }
 
 function shrink({ width, height }: Size, by: number): Size {
@@ -288,10 +317,20 @@ export function frameLayout(
   const frame = fitInside(shrink(canvas, 48), frameShape(appearance, ratio));
   const scale = frame.width / 1920;
   const recording = recordingIn(frame, appearance, ratio);
+  const crop = frameCrop(appearance, ratio);
+  const picture = {
+    width: recording.width / crop.x,
+    height: recording.height / crop.y,
+  };
+  const at = {
+    x: (recording.width - picture.width) / 2,
+    y: (recording.height - picture.height) / 2,
+  };
   const inset = appearance.inset * scale;
   return {
     frame,
     recording,
+    picture: { ...at, ...picture },
     scale,
     radius: appearance.radius * scale,
     shadow: {
@@ -304,10 +343,10 @@ export function frameLayout(
       color: borderCss(appearance),
     },
     video: {
-      x: -inset,
-      y: -inset,
-      width: recording.width + inset * 2,
-      height: recording.height + inset * 2,
+      x: at.x - inset,
+      y: at.y - inset,
+      width: picture.width + inset * 2,
+      height: picture.height + inset * 2,
     },
   };
 }
