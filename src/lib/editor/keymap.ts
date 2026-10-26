@@ -154,7 +154,7 @@ export const SHORTCUTS: {
   },
 ];
 
-export const KEY_NAMES: Record<string, string> = {
+const KEY_NAMES: Record<string, string> = {
   " ": "Space",
   ArrowLeft: "←",
   ArrowRight: "→",

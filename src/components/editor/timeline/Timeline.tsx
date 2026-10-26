@@ -10,7 +10,7 @@ import {
   GUTTER_PX,
   laneLayout,
   percentAt,
-  chipFrom,
+  chipShift,
   rulerLabels,
   rulerMarks,
   timeLabel,
@@ -104,10 +104,10 @@ export default function Timeline({
         >
           {durationMs > 0 ? (
             <>
-              <Ruler durationMs={lengthMs} width={trackWidth} />
+              <Ruler timelineMs={lengthMs} width={trackWidth} />
               <RecordingTrack
                 edits={edits}
-                durationMs={lengthMs}
+                timelineMs={lengthMs}
                 drag={drag.clip}
                 skim={skim}
               />
@@ -115,7 +115,7 @@ export default function Timeline({
                 edits={edits}
                 lanes={lanes}
                 heightPx={heightPx}
-                durationMs={lengthMs}
+                timelineMs={lengthMs}
                 trackWidth={trackWidth}
                 clock={clock}
                 drag={drag}
@@ -124,7 +124,7 @@ export default function Timeline({
               />
               <Playhead
                 clock={clock}
-                durationMs={lengthMs}
+                timelineMs={lengthMs}
                 widthPx={trackWidth}
                 playheadMs={(seconds) => at(heldMs ?? seconds * 1000)}
                 zIndex={regions.length + 2}
@@ -132,7 +132,7 @@ export default function Timeline({
               {skim.hoverMs !== null ? (
                 <Marker
                   ms={skim.hoverMs}
-                  durationMs={lengthMs}
+                  timelineMs={lengthMs}
                   widthPx={trackWidth}
                   zIndex={regions.length + 3}
                   isMuted
@@ -152,12 +152,12 @@ export default function Timeline({
   );
 }
 
-function Ruler({ durationMs, width }: { durationMs: number; width: number }) {
-  const shown = rulerLabels(durationMs, width).filter(
+function Ruler({ timelineMs, width }: { timelineMs: number; width: number }) {
+  const shown = rulerLabels(timelineMs, width).filter(
     ({ isCrowded }) => !isCrowded,
   );
-  return rulerMarks(durationMs, width).map(({ ms, isMajor }) => {
-    const left = `${percentAt(ms, durationMs)}%`;
+  return rulerMarks(timelineMs, width).map(({ ms, isMajor }) => {
+    const left = `${percentAt(ms, timelineMs)}%`;
     if (!isMajor) {
       return (
         <div
@@ -194,40 +194,40 @@ function Ruler({ durationMs, width }: { durationMs: number; width: number }) {
 
 function Playhead({
   clock,
-  durationMs,
+  timelineMs,
   widthPx,
   playheadMs,
   zIndex,
 }: {
   clock: Clock;
-  durationMs: number;
+  timelineMs: number;
   widthPx: number;
   playheadMs: (seconds: number) => number;
   zIndex: number;
 }) {
   const ms = useClockValue(clock, playheadMs);
   return (
-    <Marker ms={ms} durationMs={durationMs} widthPx={widthPx} zIndex={zIndex} />
+    <Marker ms={ms} timelineMs={timelineMs} widthPx={widthPx} zIndex={zIndex} />
   );
 }
 
 function Marker({
   ms,
-  durationMs,
+  timelineMs,
   widthPx,
   zIndex,
   isMuted = false,
   children,
 }: {
   ms: number;
-  durationMs: number;
+  timelineMs: number;
   widthPx: number;
   zIndex: number;
   isMuted?: boolean;
   children?: ReactNode;
 }) {
   const color = isMuted ? "bg-muted-foreground" : "bg-highlight";
-  const x = (percentAt(ms, durationMs) / 100) * widthPx;
+  const x = (percentAt(ms, timelineMs) / 100) * widthPx;
   return (
     <div
       data-flow={!isMuted || undefined}
@@ -235,14 +235,14 @@ function Marker({
         "pointer-events-none absolute inset-y-0 -ml-px w-0.5",
         color,
       )}
-      style={{ left: `${percentAt(ms, durationMs)}%`, zIndex }}
+      style={{ left: `${percentAt(ms, timelineMs)}%`, zIndex }}
     >
       <div
         className={cn(
-          "absolute top-2 flex h-4 items-center rounded-sm px-1.5 font-mono text-caption font-semibold text-on-hue",
+          "absolute top-2 flex h-4 -translate-x-1/2 items-center rounded-sm px-1.5 font-mono text-caption font-semibold text-on-hue",
           color,
         )}
-        style={{ left: chipFrom(x, widthPx) - x }}
+        style={{ left: `calc(50% + ${chipShift(x, widthPx)}px)` }}
       >
         {timeLabel(ms)}
       </div>

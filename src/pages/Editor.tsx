@@ -4,11 +4,14 @@ import { Button } from "@/components/ui/button";
 import Island from "@/components/editor/Island";
 import Stage from "@/components/editor/Stage";
 import Transport from "@/components/editor/timeline/Transport";
-import { useCuts, usePlayback, useSpeed } from "@/hooks/editor/usePlayback";
+import { usePlayback, useTimeMap } from "@/hooks/editor/usePlayback";
 import { useKeymap } from "@/hooks/editor/useKeymap";
 import Timeline from "@/components/editor/timeline/Timeline";
 import ExportButton from "@/components/editor/header/ExportButton";
-import Sidebar from "@/components/editor/sidebar/Sidebar";
+import Sidebar, {
+  type EditorDialog,
+  type SidebarPanel,
+} from "@/components/editor/sidebar/Sidebar";
 import CommandPalette from "@/components/editor/CommandPalette";
 import { useExport } from "@/hooks/editor/useExport";
 import { useElementSize } from "@/hooks/useElementSize";
@@ -19,6 +22,7 @@ import {
   useProject,
   useSavedProject,
 } from "@/hooks/editor/useProject";
+import { timeMap } from "@/lib/editor/clips";
 import { ringEvents } from "@/lib/editor/cursor";
 import ModifierEditor from "@/components/editor/timeline/ModifierEditor";
 import { KINDS, regionKindForKey } from "@/lib/editor/regions";
@@ -62,13 +66,15 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
   const soloed = lanes.solo
     ? regions.filter(({ kind }) => kind === lanes.solo)
     : regions;
-  useSpeed(playback, soloed);
-  useCuts(playback, clips);
+  const time = lanes.solo
+    ? timeMap(clips, soloed, playback.durationMs)
+    : edits.time;
+  useTimeMap(playback, time);
   const rings = ringEvents(cursor.clicks, appearance.cursor);
   const exporting = useExport(edits.project, playback, rings, cursor);
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [panel, setPanel] = useState("background");
-  const [dialog, setDialog] = useState<string | null>(null);
+  const [panel, setPanel] = useState<SidebarPanel>("background");
+  const [dialog, setDialog] = useState<EditorDialog | null>(null);
   const nudgeOr =
     (drag: "move" | "end", deltaMs: number, step: () => void) => () =>
       edits.selectedIds.length > 0

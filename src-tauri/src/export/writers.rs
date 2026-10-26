@@ -25,6 +25,7 @@ use objc2_image_io::{
 };
 
 struct Feed<'a> {
+    name: &'static str,
     samples: &'a AVAssetReaderOutput,
     input: Retained<AVAssetWriterInput>,
     is_finished: bool,
@@ -42,7 +43,8 @@ impl Feed<'_> {
         };
         ensure!(
             unsafe { self.input.appendSampleBuffer(&sample) },
-            "could not write the video: {}",
+            "could not write the {}: {}",
+            self.name,
             reason(unsafe { writer.error() })
         );
         Ok(Some(unsafe { sample.presentation_time_stamp() }))
@@ -75,12 +77,14 @@ pub(super) fn write_mp4(
         writer.addInput(&input);
     }
     let mut feeds = vec![Feed {
+        name: "video",
         samples: frames,
         input,
         is_finished: false,
     }];
     if let Some(samples) = samples {
         feeds.push(Feed {
+            name: "sound",
             samples,
             input: aac_input(&writer)?,
             is_finished: false,

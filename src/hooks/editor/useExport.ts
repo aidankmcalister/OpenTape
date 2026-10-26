@@ -7,7 +7,6 @@ import {
   exportLayout,
   exportOptions,
   RESOLUTIONS,
-  scaleLayout,
   type ExportSettings,
   type ExportTimeline,
 } from "@/lib/editor/export";
@@ -23,7 +22,7 @@ import type { Project } from "@/lib/editor/project";
 import type { Size } from "@/lib/geometry";
 import type { Playback } from "./usePlayback";
 
-export type ExportState =
+type ExportState =
   | { stage: "idle" }
   | { stage: "exporting"; progress: number }
   | { stage: "done"; path: string; copied: boolean }
@@ -40,11 +39,7 @@ export function useExport(
   const [state, setState] = useState<ExportState>({ stage: "idle" });
   const [settings, setSettings] = useState(DEFAULT_EXPORT);
   const layoutAt = (size: Size, timeline?: Partial<ExportTimeline>) =>
-    scaleLayout(
-      exportLayout(appearance, size, timeline),
-      RESOLUTIONS[settings.resolution],
-      appearance.size,
-    );
+    exportLayout(appearance, size, timeline, RESOLUTIONS[settings.resolution]);
 
   useTauriEvent(
     "export-progress",

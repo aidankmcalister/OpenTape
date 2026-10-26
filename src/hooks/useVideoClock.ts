@@ -13,7 +13,7 @@ import {
   type Clock,
 } from "@/lib/time";
 
-export type VideoClock = Clock & { seek: (seconds: number) => void };
+type VideoClock = Clock & { seek: (seconds: number) => void };
 
 export function useVideoClock(
   video: RefObject<HTMLVideoElement | null>,

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 import { useClockValue, useVideoClock } from "@/hooks/useVideoClock";
-import { type Clip, type KeptTime, playOnAt } from "@/lib/editor/clips";
-import { amountAt, type Region } from "@/lib/editor/regions";
+import type { TimeMap } from "@/lib/editor/clips";
 import type { Size } from "@/lib/geometry";
 
 export function usePlayback(src: string) {
@@ -30,7 +29,7 @@ export function usePlayback(src: string) {
   function skim(ms: number | null) {
     if (ms === null) {
       if (held.current !== null) seek(held.current);
-    } else if (!isPlaying) {
+    } else if (video.current?.paused) {
       if (held.current === null) hold(clock.seconds() * 1000);
       clock.seek(ms / 1000);
     }
@@ -44,7 +43,7 @@ export function usePlayback(src: string) {
     ratio,
     videoSize,
     clock,
-    togglePlay: (time: KeptTime) => {
+    togglePlay: (time: TimeMap) => {
       skim(null);
       const isAtEnd = time.at(clock.seconds() * 1000) >= time.lengthMs;
       if (video.current?.paused && isAtEnd) seek(time.source(0));
@@ -54,9 +53,9 @@ export function usePlayback(src: string) {
     seek,
     skim,
     heldMs,
-    toStart: (time: KeptTime) => seek(time.source(0)),
-    toEnd: (time: KeptTime) => seek(time.source(time.lengthMs)),
-    step: (frames: number, time: KeptTime) => {
+    toStart: (time: TimeMap) => seek(time.source(0)),
+    toEnd: (time: TimeMap) => seek(time.source(time.lengthMs)),
+    step: (frames: number, time: TimeMap) => {
       video.current?.pause();
       seek(time.step(clock.seconds() * 1000, frames));
     },
@@ -69,7 +68,7 @@ export function usePlayback(src: string) {
     },
     speed,
     setSpeed,
-    leap: (ms: number, time: KeptTime) =>
+    leap: (ms: number, time: TimeMap) =>
       seek(time.leap(clock.seconds() * 1000, ms)),
     videoProps: {
       ref: video,
@@ -78,6 +77,7 @@ export function usePlayback(src: string) {
       muted: isMuted,
       onPlay: () => setIsPlaying(true),
       onPause: () => setIsPlaying(false),
+      onEnded: () => setIsPlaying(false),
       onLoadedMetadata: (event: SyntheticEvent<HTMLVideoElement>) => {
         setDurationMs(lengthMs(event.currentTarget));
         setRatio(ratioOf(event.currentTarget));
@@ -91,20 +91,17 @@ export function usePlayback(src: string) {
 
 export type Playback = ReturnType<typeof usePlayback>;
 
-export function useSpeed(playback: Playback, regions: Region[]) {
+export function useTimeMap(playback: Playback, time: TimeMap) {
+  const { isPlaying, isLooping } = playback;
   const rate = useClockValue(playback.clock, (seconds) =>
-    amountAt(regions, "speed", seconds * 1000),
+    time.speedAt(seconds * 1000),
+  );
+  const playOn = useClockValue(playback.clock, (seconds) =>
+    time.playOn(seconds * 1000, isLooping && isPlaying),
   );
   useEffect(() => playback.setRate(rate), [playback, rate]);
-}
-
-export function useCuts(playback: Playback, clips: Clip[]) {
-  const { isPlaying, isLooping, durationMs } = playback;
-  const playOn = useClockValue(playback.clock, (seconds) =>
-    playOnAt(clips, seconds * 1000, durationMs, isLooping && isPlaying),
-  );
   useEffect(() => {
-    if (!playOn) return;
+    if (!playOn || playback.heldMs !== null) return;
     if (playOn.isEnd) playback.pause();
     playback.seek(playOn.ms);
   }, [playback, playOn]);

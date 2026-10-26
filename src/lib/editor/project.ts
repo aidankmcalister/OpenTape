@@ -75,7 +75,7 @@ export function changeAppearance(
     : { ...project, appearance };
 }
 
-export type History<T> = { past: T[]; present: T; future: T[] };
+type History<T> = { past: T[]; present: T; future: T[] };
 
 export function historyOf<T>(present: T): History<T> {
   return { past: [], present, future: [] };

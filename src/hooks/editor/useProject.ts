@@ -30,7 +30,7 @@ import {
 } from "@/lib/editor/regions";
 import {
   type Clip,
-  keptTime,
+  timeMap,
   removeClip,
   splitClip,
   trimClip,
@@ -91,12 +91,12 @@ export function useProject(
     (edit: (shown: Region[], lengthMs: number) => Region[]) =>
     (project: Project) =>
       editRegions(project, (regions) =>
-        keptTime(project.clips, durationMs).edit(regions, edit),
+        timeMap(project.clips, project.regions, durationMs).edit(regions, edit),
       );
   const changeClips = (edit: (clips: Clip[]) => Clip[], isPreview = false) =>
     apply((project) => editClips(project, edit), isPreview);
   const project = draft ?? history.present;
-  const time = keptTime(project.clips, durationMs);
+  const time = timeMap(project.clips, project.regions, durationMs);
   const shown = time.shown(project.regions);
   const minMs =
     trackWidthPx > 0

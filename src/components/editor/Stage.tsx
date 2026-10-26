@@ -59,9 +59,9 @@ export default function Stage({
   const isFocusing = focus !== null;
   const zoomAt = useMemo(() => {
     const shown = isFocusing ? [] : regions;
-    const at = zoomPath(shown, cursor.moves);
+    const at = zoomPath(shown, cursor);
     return (seconds: number) => at(outputAt(shown, seconds * 1000));
-  }, [isFocusing, regions, cursor.moves]);
+  }, [isFocusing, regions, cursor]);
 
   return (
     <Island className="relative min-h-0 flex-1 bg-canvas dot-grid">
@@ -87,6 +87,7 @@ export default function Stage({
                 <ClickRings
                   clock={clock}
                   rings={rings}
+                  regions={regions}
                   video={video}
                   scale={scale}
                 />
@@ -124,16 +125,18 @@ export default function Stage({
 function ClickRings({
   clock,
   rings,
+  regions,
   video,
   scale,
 }: {
   clock: Clock;
   rings: RingEvent[];
+  regions: Region[];
   video: { x: number; y: number; width: number; height: number };
   scale: number;
 }) {
   const shown = useClockValue(clock, (seconds) =>
-    ringsAt(rings, seconds * 1000),
+    ringsAt(rings, regions, seconds * 1000),
   );
   return shown.flatMap(({ index, progress }) => {
     const ring = rings[index];

@@ -3,7 +3,7 @@ export type Activity =
 
 type Job = "save" | "copy";
 
-export type ActivityState = {
+type ActivityState = {
   activity: Activity;
   failure: string;
 };

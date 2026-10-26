@@ -47,9 +47,9 @@ fn zooming_grows_the_recording_about_its_focus() {
 fn the_zoom_is_read_at_the_nearest_step_and_holds_past_the_end() {
     let step = |scale| ExportZoom { scale, ..NO_ZOOM };
     let zoom = [step(1.0), step(1.2), step(1.5)];
-    assert_eq!(zoom_at(&zoom, 0.02), step(1.2));
-    assert_eq!(zoom_at(&zoom, 10.0), step(1.5));
-    assert_eq!(zoom_at(&[], 1.0), NO_ZOOM);
+    assert_eq!(zoom_at(&zoom, 60.0, 0.02), step(1.2));
+    assert_eq!(zoom_at(&zoom, 60.0, 10.0), step(1.5));
+    assert_eq!(zoom_at(&[], 60.0, 1.0), NO_ZOOM);
 }
 
 #[test]
@@ -124,6 +124,7 @@ fn exports_a_recording_in_the_default_appearance() {
                 ..NO_ZOOM
             })
             .collect(),
+        zoom_rate: 60.0,
         speed: std::env::var("EXPORT_TEST_SPEED").map_or(vec![], |amount| {
             vec![ExportSpeed {
                 start: 1.0,

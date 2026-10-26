@@ -26,7 +26,7 @@ export type Span = { startMs: number; endMs: number };
 
 export type SettingValue = string | number | boolean;
 
-export type TypeStatus = "ready" | "experimental" | "soon";
+type TypeStatus = "ready" | "experimental" | "soon";
 
 export type Setting =
   | {

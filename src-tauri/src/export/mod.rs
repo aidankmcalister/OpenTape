@@ -41,6 +41,7 @@ pub(crate) struct ExportLayout {
     border: Option<ExportBorder>,
     background: ExportGradient,
     zoom: Vec<ExportZoom>,
+    zoom_rate: f64,
     speed: Vec<ExportSpeed>,
     cuts: Vec<ExportCut>,
     rings: Vec<ExportRing>,
@@ -159,11 +160,12 @@ pub(crate) fn export(
         .firstObject()
         .context("the recording has no video")?;
     let natural = unsafe { track.naturalSize() };
-    let (recording, video_rect, height, zoom, rings, cursor) = (
+    let (recording, video_rect, height, zoom, zoom_rate, rings, cursor) = (
         layout.recording.clone(),
         layout.video.clone(),
         layout.height,
         layout.zoom.clone(),
+        layout.zoom_rate,
         layout.rings.clone(),
         layout.cursor.clone(),
     );
@@ -181,7 +183,7 @@ pub(crate) fn export(
             let request = unsafe { request.as_ref() };
             unsafe {
                 let now = uncut(&cuts, request.compositionTime().seconds());
-                let zoom = zoom_at(&zoom, now);
+                let zoom = zoom_at(&zoom, zoom_rate, now);
                 let video = zoomed(&video_rect, &recording, zoom);
                 let place = placement(&video, height, natural);
                 let mut frame = request.sourceImage().imageByApplyingTransform(place);
@@ -400,8 +402,8 @@ fn zoomed(rect: &PixelRect, frame: &PixelRect, zoom: ExportZoom) -> PixelRect {
     }
 }
 
-fn zoom_at(zoom: &[ExportZoom], seconds: f64) -> ExportZoom {
-    let step = (seconds * 60.0).round().max(0.0) as usize;
+fn zoom_at(zoom: &[ExportZoom], rate: f64, seconds: f64) -> ExportZoom {
+    let step = (seconds * rate).round().max(0.0) as usize;
     zoom.get(step).or(zoom.last()).copied().unwrap_or(NO_ZOOM)
 }
 

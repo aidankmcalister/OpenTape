@@ -4,8 +4,7 @@ import {
   cutSpans,
   fitToClips,
   keptClips,
-  keptTime,
-  playOnAt,
+  timeMap,
   removeClip,
   splitClip,
   trimClip,
@@ -63,23 +62,23 @@ describe("clips", () => {
       { id: 3, startMs: 6000, endMs: 9000 },
     ];
     const playOn = (ms: number, isLooping = false) =>
-      playOnAt(clips, ms, 10000, isLooping);
+      timeMap(clips, [], 10000).playOn(ms, isLooping);
     expect(playOn(0)).toEqual({ ms: 1000, isEnd: false });
     expect(playOn(5000)).toEqual({ ms: 6000, isEnd: false });
     expect(playOn(2000)).toBeNull();
     expect(playOn(9100)).toEqual({ ms: 9000, isEnd: true });
     expect(playOn(9100, true)).toEqual({ ms: 1000, isEnd: false });
     expect(playOn(9000)).toBeNull();
-    expect(playOnAt(SPLIT, 10000, 10000, false)).toBeNull();
+    expect(timeMap(SPLIT, [], 10000).playOn(10000, false)).toBeNull();
   });
 });
 
-describe("kept time", () => {
+describe("time map", () => {
   const GAP: Clip[] = [
     { id: 1, startMs: 0, endMs: 2000 },
     { id: 3, startMs: 5000, endMs: 10000 },
   ];
-  const time = keptTime(GAP, 10000);
+  const time = timeMap(GAP, [], 10000);
 
   test("deleted stretches close up, so the timeline gets shorter", () => {
     expect(time.lengthMs).toBe(7000);
@@ -147,7 +146,7 @@ describe("kept time", () => {
     expect(time.step(5005, -1)).toBe(2000);
     expect(time.step(1010, 1)).toBeCloseTo(1025, 2);
     expect(
-      keptTime([{ id: 2, startMs: 1000, endMs: 9000 }], 10000).step(8995, 1),
+      timeMap([{ id: 2, startMs: 1000, endMs: 9000 }], [], 10000).step(8995, 1),
     ).toBe(9000);
   });
 });
@@ -183,4 +182,16 @@ describe("fitToClips", () => {
     ];
     expect(fitToClips(spans, KEPT)).toBe(spans);
   });
+});
+
+test("the time map speeds playback inside a speed region and maps output time back", () => {
+  const time = timeMap(
+    [],
+    [{ id: 1, kind: "speed", startMs: 2000, endMs: 6000, amount: 2 }],
+    10000,
+  );
+  expect(time.speedAt(1000)).toBe(1);
+  expect(time.speedAt(3000)).toBe(2);
+  expect(time.output(6000)).toBe(4000);
+  expect(time.recording(4000)).toBe(6000);
 });

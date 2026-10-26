@@ -14,6 +14,7 @@ use super::cutout::{canvas, rgb};
 
 const RING_SECONDS: f64 = 0.5;
 const RING_STEPS: f64 = 60.0;
+const KEPT_PICTURES: usize = 600;
 
 pub(super) type RingPictures = Mutex<HashMap<(RingStyle, String, u64, u32), Retained<CIImage>>>;
 
@@ -78,17 +79,19 @@ impl ExportRing {
         height: u32,
         pictures: &RingPictures,
     ) -> Result<Retained<CIImage>> {
-        let size = self.size * zoom_scale;
+        let size = (self.size * zoom_scale).round();
         let center = (size + 8.0).ceil() / 2.0;
         let step = ((now - self.t) / RING_SECONDS * RING_STEPS).round() as u32;
-        let key = (self.style, self.color.clone(), size.to_bits(), step);
+        let key = (self.style, self.color.clone(), size as u64, step);
         let mut pictures = pictures
             .lock()
             .map_err(|_| anyhow!("could not reuse a click ring"))?;
         let picture = match pictures.get(&key) {
             Some(picture) => picture.clone(),
             None => {
-                pictures.retain(|kept, _| kept.2 == key.2);
+                if pictures.len() >= KEPT_PICTURES {
+                    pictures.clear();
+                }
                 let picture = self.picture(size, f64::from(step) / RING_STEPS)?;
                 pictures.insert(key, picture.clone());
                 picture
@@ -191,6 +194,10 @@ mod tests {
         ring(1.0).image(1.25, &video, 1.0, 100, &pictures).unwrap();
         assert_eq!(count(), 2);
         ring(1.0).image(1.25, &video, 2.0, 100, &pictures).unwrap();
-        assert_eq!(count(), 1);
+        assert_eq!(count(), 3);
+        ring(1.0)
+            .image(1.25, &video, 2.004, 100, &pictures)
+            .unwrap();
+        assert_eq!(count(), 3);
     }
 }

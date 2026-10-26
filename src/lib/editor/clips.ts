@@ -1,8 +1,12 @@
 import { clamp } from "@/lib/geometry";
 import {
+  amountAt,
   covers,
   gapsBetween,
   MIN_REGION_MS,
+  outputAt,
+  type Region,
+  sourceAt,
   type Span,
   stretched,
 } from "./regions";
@@ -73,25 +77,11 @@ export function cutSpans(clips: Clip[], durationMs: number) {
   return gapsBetween(keptClips(clips, durationMs), 0, durationMs);
 }
 
-export function playOnAt(
-  clips: Clip[],
-  ms: number,
-  durationMs: number,
-  isLooping: boolean,
-): { ms: number; isEnd: boolean } | null {
+export type TimeMap = ReturnType<typeof timeMap>;
+
+export function timeMap(clips: Clip[], regions: Region[], durationMs: number) {
   const kept = keptClips(clips, durationMs);
   const lastEndMs = kept[kept.length - 1].endMs;
-  const cut = cutSpans(clips, durationMs).find((span) => covers(span, ms));
-  if (!cut || ms === lastEndMs) return null;
-  if (cut.startMs < lastEndMs) return { ms: cut.endMs, isEnd: false };
-  if (isLooping) return { ms: kept[0].startMs, isEnd: false };
-  return { ms: lastEndMs, isEnd: true };
-}
-
-export type KeptTime = ReturnType<typeof keptTime>;
-
-export function keptTime(clips: Clip[], durationMs: number) {
-  const kept = keptClips(clips, durationMs);
   let lengthMs = 0;
   const placed = kept.map((clip) => {
     const at = lengthMs;
@@ -132,10 +122,21 @@ export function keptTime(clips: Clip[], durationMs: number) {
     at,
     source,
     shown,
+    output: (sourceMs: number) => outputAt(regions, sourceMs),
+    recording: (outputMs: number) => sourceAt(regions, outputMs),
+    speedAt: (sourceMs: number) => amountAt(regions, "speed", sourceMs),
+    playOn(sourceMs: number, isLooping: boolean) {
+      const cut = cutSpans(clips, durationMs).find((span) =>
+        covers(span, sourceMs),
+      );
+      if (!cut || sourceMs === lastEndMs) return null;
+      if (cut.startMs < lastEndMs) return { ms: cut.endMs, isEnd: false };
+      if (isLooping) return { ms: kept[0].startMs, isEnd: false };
+      return { ms: lastEndMs, isEnd: true };
+    },
     leap: (sourceMs: number, deltaMs: number) =>
       source(clamp(at(sourceMs) + deltaMs, 0, lengthMs)),
     step(sourceMs: number, frames: number) {
-      const lastEndMs = placed[placed.length - 1].clip.endMs;
       const next = frameStep(sourceMs, frames, lastEndMs);
       if (kept.some((clip) => covers(clip, next))) return next;
       return source(at(next), frames < 0 ? "end" : "start");
@@ -170,11 +171,11 @@ export function keptTime(clips: Clip[], durationMs: number) {
   };
 }
 
-export const MIN_KEPT_MS = 500;
+const MIN_KEPT_MS = 500;
 
 export function fitToClips<T extends Span>(spans: T[], clips: Clip[]): T[] {
   if (clips.length === 0) return spans;
-  const time = keptTime(clips, 0);
+  const time = timeMap(clips, [], 0);
   const fitted = spans.flatMap((span) => {
     const startMs = time.at(span.startMs);
     const endMs = time.at(span.endMs);

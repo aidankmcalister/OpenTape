@@ -149,7 +149,7 @@ export function LaneTracks({
   edits,
   lanes,
   heightPx,
-  durationMs,
+  timelineMs,
   trackWidth,
   clock,
   drag,
@@ -159,7 +159,7 @@ export function LaneTracks({
   edits: Edits;
   lanes: Lane[];
   heightPx: number;
-  durationMs: number;
+  timelineMs: number;
   trackWidth: number;
   clock: Clock;
   drag: TimelineDrag;
@@ -169,10 +169,10 @@ export function LaneTracks({
   const { shown: regions, time } = edits;
   const { box, marqueeProps } = useMarquee(
     (box, width) =>
-      edits.select(regionsInBox(regions, box, width, durationMs, lanes)),
+      edits.select(regionsInBox(regions, box, width, timelineMs, lanes)),
     (x, width) => {
       edits.select([]);
-      onSeek(msAtX(x, width, durationMs));
+      onSeek(msAtX(x, width, timelineMs));
     },
   );
   const order = blockOrder(regions);
@@ -223,7 +223,7 @@ export function LaneTracks({
             region={region}
             lane={lane}
             regions={regions}
-            durationMs={durationMs}
+            timelineMs={timelineMs}
             trackWidth={trackWidth}
             rank={order.indexOf(region)}
             isSelected={edits.selectedIds.includes(region.id)}
@@ -276,7 +276,7 @@ function Block({
   region,
   lane,
   regions,
-  durationMs,
+  timelineMs,
   trackWidth,
   rank,
   isSelected,
@@ -294,7 +294,7 @@ function Block({
   region: Region;
   lane: Lane;
   regions: Region[];
-  durationMs: number;
+  timelineMs: number;
   trackWidth: number;
   rank: number;
   isSelected: boolean;
@@ -316,7 +316,7 @@ function Block({
   const value = suggestion ? "" : blockValue(region);
   const lengthMs = region.endMs - region.startMs;
   const gapsPx = Number(touches.start) + Number(touches.end);
-  const widthPx = (trackWidth * lengthMs) / durationMs - gapsPx;
+  const widthPx = (trackWidth * lengthMs) / timelineMs - gapsPx;
   const content = blockContent(widthPx, label, value);
   const isActive = useClockValue(clock, (seconds) =>
     covers(region, at(seconds * 1000)),
@@ -324,8 +324,8 @@ function Block({
   const span = `${timeLabel(region.startMs)} to ${timeLabel(region.endMs)}`;
   const place = {
     ...hueOf(region.kind),
-    left: `calc(${percentAt(region.startMs, durationMs)}% + ${touches.start ? 1 : 0}px)`,
-    width: `calc(${percentAt(lengthMs, durationMs)}% - ${gapsPx}px)`,
+    left: `calc(${percentAt(region.startMs, timelineMs)}% + ${touches.start ? 1 : 0}px)`,
+    width: `calc(${percentAt(lengthMs, timelineMs)}% - ${gapsPx}px)`,
     zIndex: isSelected ? regions.length + 1 : rank + 1,
   };
   const shared = {

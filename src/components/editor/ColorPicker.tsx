@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 import { Named, Swatch } from "./Panel";
 import { followPointer } from "@/hooks/usePointerHover";
 
-export type ColorOption = { value: string; color: string; label: string };
+type ColorOption = { value: string; color: string; label: string };
 
 export function ColorSwatches({
   options,

@@ -1,12 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { Region } from "./regions";
-import { DEFAULT_APPEARANCE } from "./appearance";
+import { DEFAULT_APPEARANCE, frameLayout } from "./appearance";
 import {
   aboutMegabytes,
   DEFAULT_EXPORT,
   exportLayout,
   exportOptions,
-  scaleLayout,
 } from "./export";
 
 describe("export", () => {
@@ -25,15 +24,20 @@ describe("export", () => {
     expect(layout.radius).toBeCloseTo((20 * 4326) / 1920);
   });
 
-  test("scaleLayout shrinks the whole export to a height, keeping its shape", () => {
+  test("exportLayout shrinks the whole export to a height, keeping its shape", () => {
     const full = exportLayout(DEFAULT_APPEARANCE, {
       width: 3840,
       height: 2278,
     });
-    const small = scaleLayout(full, 1080);
+    const small = exportLayout(
+      DEFAULT_APPEARANCE,
+      { width: 3840, height: 2278 },
+      {},
+      1080,
+    );
     expect([small.width, small.height]).toEqual([1820, 1080]);
-    expect(small.recording.width).toBeCloseTo((3840 * 1080) / 2566, 5);
-    expect(small.radius).toBeCloseTo((full.radius * 1080) / 2566, 5);
+    expect(small.recording.width).toBeCloseTo((3840 * 1080) / full.height, 0);
+    expect(small.radius).toBeCloseTo((full.radius * 1080) / full.height, 0);
   });
 
   test("exportLayout letterboxes the recording at full size in a chosen shape", () => {
@@ -51,20 +55,13 @@ describe("export", () => {
     expect(layout.recording.x).toBeCloseTo((64 * layout.width) / 1920, 0);
   });
 
-  test("scaleLayout sets the short side of a chosen shape, and the height in Auto", () => {
-    const tall = exportLayout(
-      { ...DEFAULT_APPEARANCE, size: "9:16" },
-      { width: 1920, height: 1080 },
-    );
-    const vertical = scaleLayout(tall, 1080, "9:16");
-    expect([vertical.width, vertical.height]).toEqual([1080, 1920]);
-    const square = exportLayout(
-      { ...DEFAULT_APPEARANCE, size: "1:1" },
-      { width: 1920, height: 1080 },
-    );
-    const scaled = scaleLayout(square, 1080, "1:1");
-    expect([scaled.width, scaled.height]).toEqual([1080, 1080]);
-    expect(scaleLayout(tall, 1080).height).toBe(1080);
+  test("exportLayout sets the short side of a chosen shape, and the height in Auto", () => {
+    const video = { width: 1920, height: 1080 };
+    const at = (size: "9:16" | "1:1" | "Auto") =>
+      exportLayout({ ...DEFAULT_APPEARANCE, size }, video, {}, 1080);
+    expect([at("9:16").width, at("9:16").height]).toEqual([1080, 1920]);
+    expect([at("1:1").width, at("1:1").height]).toEqual([1080, 1080]);
+    expect(at("Auto").height).toBe(1080);
   });
 
   test("aboutMegabytes estimates from the size, length and settings, to a tenth", () => {
@@ -178,7 +175,43 @@ test("exportLayout sends each click ring at its output time, sized for the expor
   expect(layout.rings).toEqual([
     { t: 2, x: 0.5, y: 0.5, color: "#ffffff", size: 48 * scale, style: "ring" },
   ]);
-  expect(scaleLayout(layout, layout.height / 2).rings[0].size).toBeCloseTo(
-    24 * scale,
+  const half = exportLayout(
+    DEFAULT_APPEARANCE,
+    { width: 3840, height: 2160 },
+    { regions, durationMs: 4000, rings: [ring] },
+    layout.height / 2,
   );
+  expect(half.rings[0].size).toBeCloseTo(24 * scale, 0);
 });
+
+test.each([
+  ["Auto", 1920, 1080, 64],
+  ["Auto", 1080, 1920, 64],
+  ["9:16", 3550, 1446, 120],
+  ["1:1", 1280, 720, 0],
+  ["4:5", 1920, 1200, 200],
+] as const)(
+  "the export frames a %s %ix%i recording with padding %i exactly as the stage does",
+  (size, width, height, padding) => {
+    const appearance = { ...DEFAULT_APPEARANCE, size, padding };
+    const layout = exportLayout(appearance, { width, height });
+    const stage = frameLayout(
+      appearance,
+      { width: 1600, height: 1000 },
+      width / height,
+    );
+    const share = (part: number, whole: number) => part / whole;
+    expect(share(layout.width, layout.height)).toBeCloseTo(
+      share(stage.frame.width, stage.frame.height),
+      2,
+    );
+    expect(share(layout.recording.width, layout.width)).toBeCloseTo(
+      share(stage.recording.width, stage.frame.width),
+      2,
+    );
+    expect(share(layout.recording.height, layout.height)).toBeCloseTo(
+      share(stage.recording.height, stage.frame.height),
+      2,
+    );
+  },
+);

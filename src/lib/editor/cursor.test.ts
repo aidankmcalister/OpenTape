@@ -61,10 +61,10 @@ test("the click effect rings left clicks, right clicks only when asked, and noth
 
 test("a ring shows for half a second after its click", () => {
   const rings = ringEvents(CLICKS, PULSE);
-  expect(ringsAt(rings, 999)).toEqual([]);
-  expect(ringsAt(rings, 1250)).toEqual([{ index: 0, progress: 0.5 }]);
-  expect(ringsAt(rings, 1260)).toEqual(ringsAt(rings, 1250));
-  expect(ringsAt(rings, 1500)).toEqual([]);
+  expect(ringsAt(rings, [], 999)).toEqual([]);
+  expect(ringsAt(rings, [], 1250)).toEqual([{ index: 0, progress: 0.5 }]);
+  expect(ringsAt(rings, [], 1260)).toEqual(ringsAt(rings, [], 1250));
+  expect(ringsAt(rings, [], 1500)).toEqual([]);
 });
 
 test("a ring grows and fades, and a ripple sends a second one after it", () => {
@@ -475,4 +475,51 @@ test("a lone flicker far from the spots around it is dropped, but a real move to
   const field = [spot(1500, 0.6, 0.7), spot(2000, 0.62, 0.7)];
   expect(steadySpots([...line, ...field])).toEqual([...line, ...field]);
   expect(steadySpots([flicker])).toEqual([flicker]);
+});
+
+test("the cursor hides while its tip is outside the recording, when that's turned on", () => {
+  const track = {
+    ...TRACK,
+    moves: [
+      { ms: 0, x: 0.5, y: 0.5 },
+      { ms: 1000, x: 1.2, y: 0.5 },
+      { ms: 2000, x: 0.8, y: 0.5 },
+    ],
+  };
+  const hiding = cursorPath(track, { ...RAW, hidesOutside: true }, DURATION);
+  expect(hiding(500)?.alpha).toBe(1);
+  expect(hiding(1000)?.alpha).toBe(0);
+  expect(hiding(2000)?.alpha).toBe(1);
+  const showing = cursorPath(track, RAW, DURATION);
+  expect(showing(1000)?.alpha).toBe(1);
+});
+
+test("leading hovers cancels the smoothing lag, so a steady cursor sits where it really is", () => {
+  const track = {
+    ...TRACK,
+    moves: Array.from({ length: 301 }, (_, step) => ({
+      ms: step * 10,
+      x: 0.1 + step * 0.002,
+      y: 0.5,
+    })),
+  };
+  const lagging = { ...DEFAULT_CURSOR, tilts: false, leadsHovers: false };
+  const leading = { ...lagging, leadsHovers: true };
+  const real = 0.1 + 200 * 0.002;
+  const behind = real - cursorPath(track, lagging, DURATION)(2000)!.x;
+  const off = Math.abs(real - cursorPath(track, leading, DURATION)(2000)!.x);
+  expect(behind).toBeGreaterThan(0.01);
+  expect(off).toBeLessThan(0.003);
+});
+
+test("a click ring plays in output time, so it lasts as long on the stage as in an export", () => {
+  const rings = ringEvents([{ ms: 1000, x: 0.5, y: 0.5, button: "left" }], {
+    ...RAW,
+    clickEffect: "Ring",
+  });
+  const fast: Region[] = [
+    { id: 1, kind: "speed", startMs: 0, endMs: 5000, amount: 2 },
+  ];
+  expect(ringsAt(rings, fast, 1900)).toHaveLength(1);
+  expect(ringsAt(rings, fast, 2000)).toEqual([]);
 });

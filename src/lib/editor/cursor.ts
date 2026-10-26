@@ -23,6 +23,7 @@ import {
   type Setting,
   type Span,
 } from "./regions";
+import { FRAME_MS } from "./timeline";
 
 export type CursorClick = {
   ms: number;
@@ -46,7 +47,7 @@ type Event = {
   kind?: string;
 };
 
-export const RING_MS = 500;
+const RING_MS = 500;
 const RING_FRAMES = 30;
 
 export type CursorMove = { ms: number; x: number; y: number };
@@ -80,7 +81,7 @@ export const NO_CURSOR: CursorTrack = {
 const STEP_MS = 1000 / 120;
 const IDLE_MS = 2000;
 const FADE_MS = 300;
-const LEAD_MS = 70;
+const OUTSIDE_FADE = 0.01;
 const LOOP_MS = 1000;
 const STEADY_MS = 120;
 const SHAKE_MS = 150;
@@ -133,6 +134,12 @@ export const CURSOR_SECTIONS: { title: string; settings: Setting[] }[] = [
         unit: "%",
       },
       { kind: "switch", key: "hidesWhenStill", label: "Hide when still" },
+      {
+        kind: "switch",
+        key: "hidesOutside",
+        label: "Hide outside the recording",
+        help: "Hides the cursor while its tip is outside the recorded area, so it never hangs over the background.",
+      },
       { kind: "switch", key: "loops", label: "Loop back to the start" },
       {
         kind: "slider",
@@ -329,7 +336,7 @@ const SHAPE_SCALE = 1.25;
 const SHAPE_PAD = 4;
 const SHAPE_RASTER = 8;
 
-export type CursorPicture = Omit<CursorImage, "png"> & { src: string };
+type CursorPicture = Omit<CursorImage, "png"> & { src: string };
 
 export function cursorPictures(
   images: CursorImage[],
@@ -414,7 +421,7 @@ export function cursorUnit(track: CursorTrack, settings: CursorSettings) {
   return (track.pointShare * settings.size * CURSOR_SCALE) / 100;
 }
 
-export type CursorSpot = {
+type CursorSpot = {
   x: number;
   y: number;
   angle: number;
@@ -438,11 +445,13 @@ export function cursorPath(
   const stiffness = 600 * 0.1 ** (settings.smoothing / 100);
   const damping = 2 * 0.84 * Math.sqrt(stiffness);
   const dt = STEP_MS / 1000;
-  const targetAt = (ms: number) => {
-    const stopMs = durationMs - settings.stopsBeforeEnd * 1000;
-    const leadMs = settings.leadsHovers && settings.smoothing > 0 ? LEAD_MS : 0;
-    return positionAt(moves, Math.min(ms + leadMs, stopMs));
-  };
+  const leadMs =
+    settings.leadsHovers && settings.smoothing > 0
+      ? (damping / stiffness) * 1000
+      : 0;
+  const stopMs = durationMs - settings.stopsBeforeEnd * 1000;
+  const targetAt = (ms: number) =>
+    positionAt(moves, Math.min(ms + leadMs, stopMs));
   const steps: Omit<CursorSpot, "alpha" | "scale" | "kind">[] = [];
   let [x, y, vx, vy] = [moves[0].x, moves[0].y, 0, 0];
   let [lean, spin] = [0, 0];
@@ -480,9 +489,13 @@ export function cursorPath(
       return at + (steps[0][key] - at) * back;
     };
     const lastMovedMs = movedAt[firstAfter(movedAt, ms) - 1]?.ms ?? 0;
-    const alpha = settings.hidesWhenStill
-      ? clamp(1 - (ms - lastMovedMs - IDLE_MS) / FADE_MS, 0, 1)
-      : 1;
+    const [x, y] = [mix("x"), mix("y")];
+    const outside = Math.max(0, -x, x - 1, -y, y - 1);
+    const alpha =
+      (settings.hidesWhenStill
+        ? clamp(1 - (ms - lastMovedMs - IDLE_MS) / FADE_MS, 0, 1)
+        : 1) *
+      (settings.hidesOutside ? clamp(1 - outside / OUTSIDE_FADE, 0, 1) : 1);
     const kind = settings.alwaysArrow
       ? "arrow"
       : (kinds[firstAfter(kinds, ms) - 1]?.kind ?? "arrow");
@@ -490,8 +503,8 @@ export function cursorPath(
       ? 1 - PRESS_DIP * pressAt(track.presses, ms)
       : 1;
     return {
-      x: mix("x"),
-      y: mix("y"),
+      x,
+      y,
       angle: mix("angle"),
       alpha,
       scale,
@@ -577,7 +590,7 @@ export function exportCursor(
       track.images.findIndex((image) => image.kind === kind),
     );
   const points: CursorPoint[] = [];
-  for (let ms = 0; ms <= durationMs; ms += 1000 / 60) {
+  for (let ms = 0; ms <= durationMs; ms += FRAME_MS) {
     const spot = spotAt(ms);
     if (!spot) continue;
     const { kind, ...rest } = spot;
@@ -787,9 +800,11 @@ export function ringEvents(
     }));
 }
 
-export function ringsAt(rings: RingEvent[], ms: number) {
+export function ringsAt(rings: RingEvent[], regions: Region[], ms: number) {
+  const now = outputAt(regions, ms);
   return rings.flatMap((ring, index) => {
-    const frame = Math.floor(((ms - ring.ms) / RING_MS) * RING_FRAMES);
+    const playedMs = now - outputAt(regions, ring.ms);
+    const frame = Math.floor((playedMs / RING_MS) * RING_FRAMES);
     return frame >= 0 && frame < RING_FRAMES
       ? [{ index, progress: frame / RING_FRAMES }]
       : [];

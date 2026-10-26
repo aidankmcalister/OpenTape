@@ -9,12 +9,12 @@ import { cn } from "@/lib/utils";
 
 export default function RecordingTrack({
   edits,
-  durationMs,
+  timelineMs,
   drag,
   skim: { msAt },
 }: {
   edits: Edits;
-  durationMs: number;
+  timelineMs: number;
   drag: TimelineDrag["clip"];
   skim: Skim;
 }) {
@@ -35,7 +35,7 @@ export default function RecordingTrack({
         <ClipItem
           key={clip.id}
           clip={clip}
-          durationMs={durationMs}
+          timelineMs={timelineMs}
           isSelected={clip.id === edits.selectedClipId}
           onSelect={() => edits.selectClip(clip.id)}
           isFirst={index === 0}
@@ -44,7 +44,7 @@ export default function RecordingTrack({
         />
       ))}
       {clips.slice(1).map(({ startMs: ms }) => (
-        <Seam key={ms} ms={ms} durationMs={durationMs} />
+        <Seam key={ms} ms={ms} timelineMs={timelineMs} />
       ))}
     </div>
   );
@@ -54,7 +54,7 @@ const CUT_GAP_PX = 3;
 
 function ClipItem({
   clip,
-  durationMs,
+  timelineMs,
   isSelected,
   onSelect,
   isFirst,
@@ -62,7 +62,7 @@ function ClipItem({
   drag,
 }: {
   clip: Clip;
-  durationMs: number;
+  timelineMs: number;
   isSelected: boolean;
   onSelect: () => void;
   isFirst: boolean;
@@ -81,8 +81,8 @@ function ClipItem({
       data-flow
       className="group absolute top-1 flex h-7 items-center gap-2 overflow-hidden rounded-sm bg-raised-hover px-4 text-label font-medium text-foreground/80 inset-ring inset-ring-hairline data-[selected=true]:inset-ring-muted-foreground"
       style={{
-        left: `calc(${percentAt(clip.startMs, durationMs)}% + ${startGap}px)`,
-        width: `calc(${percentAt(clip.endMs - clip.startMs, durationMs)}% - ${gaps}px)`,
+        left: `calc(${percentAt(clip.startMs, timelineMs)}% + ${startGap}px)`,
+        width: `calc(${percentAt(clip.endMs - clip.startMs, timelineMs)}% - ${gaps}px)`,
       }}
       onPointerDown={(event) => {
         event.stopPropagation();
@@ -114,12 +114,12 @@ function ClipItem({
   );
 }
 
-function Seam({ ms, durationMs }: { ms: number; durationMs: number }) {
+function Seam({ ms, timelineMs }: { ms: number; timelineMs: number }) {
   return (
     <div
       data-flow
       className="pointer-events-none absolute top-2 grid size-5 -translate-x-1/2 place-items-center rounded-full bg-track-recording text-foreground/80 ring-1 ring-glass-border"
-      style={{ left: `${percentAt(ms, durationMs)}%` }}
+      style={{ left: `${percentAt(ms, timelineMs)}%` }}
     >
       <Scissors className="size-3" />
     </div>

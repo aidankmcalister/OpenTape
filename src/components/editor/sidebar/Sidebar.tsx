@@ -18,7 +18,10 @@ import CursorPanel from "./CursorPanel";
 const PANELS = [
   { id: "background", label: "Background", Icon: Image },
   { id: "cursor", label: "Cursor", Icon: MousePointer2 },
-];
+] as const;
+
+export type SidebarPanel = (typeof PANELS)[number]["id"];
+export type EditorDialog = "palette" | "settings" | "shortcuts";
 
 export default function Sidebar({
   edits,
@@ -30,12 +33,12 @@ export default function Sidebar({
 }: {
   edits: Edits;
   cursor: CursorTrack;
-  panel: string;
-  onPanelChange: (panel: string) => void;
-  dialog: string | null;
-  onDialogChange: (dialog: string | null) => void;
+  panel: SidebarPanel;
+  onPanelChange: (panel: SidebarPanel) => void;
+  dialog: EditorDialog | null;
+  onDialogChange: (dialog: EditorDialog | null) => void;
 }) {
-  const dialogProps = (id: string) => ({
+  const dialogProps = (id: EditorDialog) => ({
     open: dialog === id,
     onOpenChange: (open: boolean) => onDialogChange(open ? id : null),
   });

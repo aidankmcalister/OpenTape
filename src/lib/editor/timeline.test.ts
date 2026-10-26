@@ -4,7 +4,7 @@ import {
   blockContent,
   suggestionContent,
   blockOrder,
-  chipFrom,
+  chipShift,
   nextBlock,
   rulerLabels,
   frameStep,
@@ -183,10 +183,10 @@ describe("ruler labels and block navigation", () => {
 });
 
 test("the playhead chip centers on the line, but slides inward at either end of the track", () => {
-  expect(chipFrom(500, 1000)).toBe(470);
-  expect(chipFrom(0, 1000)).toBe(-8);
-  expect(chipFrom(1000, 1000)).toBe(948);
-  expect(chipFrom(0, 0)).toBe(-8);
+  expect(chipShift(500, 1000)).toBe(0);
+  expect(chipShift(0, 1000)).toBe(22);
+  expect(chipShift(1000, 1000)).toBe(-22);
+  expect(chipShift(0, 0)).toBe(22);
 });
 
 test.each([

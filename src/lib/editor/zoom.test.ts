@@ -66,29 +66,39 @@ test("a zoom with a click path pans to each click, arriving as it happens", () =
   const moving = zoomAt(2500).center;
   expect(moving.x).toBeGreaterThan(0);
   expect(moving.x).toBeLessThan(1);
-  expect(zoomAt(3000).center.x).toBeCloseTo(1, 1);
+  expect(zoomAt(3000).center.x).toBeGreaterThan(0.9);
+  expect(zoomAt(3600).center.x).toBeCloseTo(1, 1);
   expect(zoomAt(5300).center.x).toBeCloseTo(1, 4);
 });
 
-test("a following zoom keeps a cursor gliding to a corner in view, and a fixed one loses it", () => {
+test("a following zoom keeps a cursor gliding to a corner in view, but for a moment, and a fixed one loses it", () => {
   const moves = glide(MIDDLE, CORNER, 1000, 2000);
-  const zoomAt = zoomPath([following(0, 8000)], moves);
-  for (let ms = 0; ms <= 8000; ms += 20)
-    expect(shows(zoomAt(ms), positionAt(moves, ms))).toBe(true);
+  const zoomAt = zoomPath([following(0, 8000)], { moves, keys: [] });
+  const lostMs =
+    Array.from({ length: 401 }, (_, step) => step * 20).filter(
+      (ms) => !shows(zoomAt(ms), positionAt(moves, ms)),
+    ).length * 20;
+  expect(lostMs).toBeLessThanOrEqual(100);
   expect(zoomAt(6000).center.x).toBeGreaterThan(0.9);
-  const fixed = zoomPath([{ ...following(0, 8000), settings: {} }], moves);
+  const fixed = zoomPath([{ ...following(0, 8000), settings: {} }], {
+    moves,
+    keys: [],
+  });
   expect(shows(fixed(6000), CORNER)).toBe(false);
 });
 
-test("small jitter in the middle of the view never moves it", () => {
+test("small jitter in the middle of the view barely moves it", () => {
   const moves = Array.from({ length: 500 }, (_, step) => ({
     ms: step * 16,
-    x: 0.5 + (step % 2 ? 0.03 : -0.03),
-    y: 0.5 + (step % 3 ? 0.02 : -0.02),
+    x: 0.5 + (step % 2 ? 0.01 : -0.01),
+    y: 0.5 + (step % 3 ? 0.01 : -0.01),
   }));
-  const zoomAt = zoomPath([following(0, 8000)], moves);
-  for (let ms = 0; ms <= 8000; ms += 50)
-    expect(zoomAt(ms).center).toEqual(MIDDLE);
+  const zoomAt = zoomPath([following(0, 8000)], { moves, keys: [] });
+  for (let ms = 0; ms <= 8000; ms += 50) {
+    const { center } = zoomAt(ms);
+    expect(Math.abs(center.x - 0.5)).toBeLessThan(0.02);
+    expect(Math.abs(center.y - 0.5)).toBeLessThan(0.02);
+  }
 });
 
 test("a following zoom inside a fast region follows the cursor in recording time", () => {
@@ -97,22 +107,91 @@ test("a following zoom inside a fast region follows the cursor in recording time
     following(0, 8000),
   ];
   const moves = glide(MIDDLE, CORNER, 2000, 4000);
-  const zoomAt = zoomPath(regions, moves);
-  for (let ms = 0; ms <= 4000; ms += 20)
-    expect(shows(zoomAt(ms), positionAt(moves, sourceAt(regions, ms)))).toBe(
-      true,
-    );
+  const zoomAt = zoomPath(regions, { moves, keys: [] });
+  const lostMs =
+    Array.from({ length: 201 }, (_, step) => step * 20).filter(
+      (ms) => !shows(zoomAt(ms), positionAt(moves, sourceAt(regions, ms))),
+    ).length * 20;
+  expect(lostMs).toBeLessThanOrEqual(100);
   expect(zoomAt(3000).center.x).toBeGreaterThan(0.9);
 });
 
 test("the export's zoom track follows the cursor the same way as the stage", () => {
   const moves = glide(MIDDLE, CORNER, 1000, 2000);
   const regions = [following(0, 8000)];
-  const track = zoomTrack(regions, 8000, moves);
-  const zoomAt = zoomPath(regions, moves);
+  const track = zoomTrack(regions, 8000, { moves, keys: [] });
+  const zoomAt = zoomPath(regions, { moves, keys: [] });
   for (const frame of [0, 90, 150, 300]) {
     const { scale, center } = zoomAt(frame * FRAME_MS);
     expect(track[frame]).toEqual({ scale, ...center });
   }
   expect(track[300].x).toBeGreaterThan(0.9);
+});
+
+test("while typing, a jittering mouse never pulls the view off the typing", () => {
+  const moves = Array.from({ length: 600 }, (_, step) => ({
+    ms: step * 10,
+    x: 0.8 + (step % 2 ? 0.01 : 0),
+    y: 0.7 + (step % 3 ? 0.01 : 0),
+  }));
+  const keys = Array.from({ length: 40 }, (_, step) => 1000 + step * 100);
+  const zoomAt = zoomPath(
+    [
+      {
+        ...following(0, 8000),
+        center: MIDDLE,
+        path: [{ afterMs: 1000, x: 1, y: 0 }],
+      },
+    ],
+    { moves, keys },
+  );
+  for (let ms = 1000; ms <= 7000; ms += 50)
+    expect(shows(zoomAt(ms), { x: 0.95, y: 0.1 })).toBe(true);
+});
+
+test("a pan starts and stops gently, with no sudden jolt", () => {
+  const zoomAt = zoomPath([
+    {
+      id: 1,
+      kind: "zoom",
+      startMs: 0,
+      endMs: 6000,
+      amount: 2,
+      center: { x: 0, y: 0 },
+      path: [{ afterMs: 2000, x: 1, y: 1 }],
+    },
+  ]);
+  const dt = 1000 / 60;
+  const xs = Array.from(
+    { length: 300 },
+    (_, frame) => zoomAt(frame * dt).center.x,
+  );
+  const accels = xs
+    .slice(2)
+    .map((x, i) => (x - 2 * xs[i + 1] + xs[i]) / (dt / 1000) ** 2);
+  expect(Math.max(...accels.map(Math.abs))).toBeLessThan(15);
+});
+
+test("a cursor moving steadily is followed in one glide, with no stops", () => {
+  const moves = glide(MIDDLE, { x: 0.74, y: 0.5 }, 1000, 5000);
+  const zoomAt = zoomPath([following(0, 8000)], { moves, keys: [] });
+  const xs = Array.from(
+    { length: 150 },
+    (_, step) => zoomAt(1500 + step * 20).center.x,
+  );
+  const steps = xs.slice(1).map((x, i) => x - xs[i]);
+  expect(Math.min(...steps)).toBeGreaterThan(0);
+});
+
+test("the view holds still while the cursor moves around inside its box, then glides once it leaves", () => {
+  const moves = [
+    ...glide({ x: 0.45, y: 0.5 }, { x: 0.6, y: 0.5 }, 1000, 2000),
+    ...glide({ x: 0.6, y: 0.5 }, { x: 0.45, y: 0.55 }, 2010, 4010),
+    ...glide({ x: 0.45, y: 0.55 }, { x: 0.95, y: 0.55 }, 5010, 6010),
+  ];
+  const zoomAt = zoomPath([following(0, 9000)], { moves, keys: [] });
+  const held = zoomAt(2900).center;
+  expect(zoomAt(3700).center.x).toBeCloseTo(held.x, 2);
+  expect(zoomAt(8000).center.x).toBeGreaterThan(held.x + 0.3);
+  expect(shows(zoomAt(8000), { x: 0.95, y: 0.55 })).toBe(true);
 });

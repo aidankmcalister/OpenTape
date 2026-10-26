@@ -1,6 +1,6 @@
 import type { Phase, RecordingStatus } from "@/lib/bindings";
 
-export type SavedOptions = {
+type SavedOptions = {
   cameraId: string | null;
   microphoneId: string | null;
   systemAudio: boolean;

@@ -41,6 +41,7 @@ export type CursorSettings = {
   alwaysArrow: boolean;
   smoothing: number;
   hidesWhenStill: boolean;
+  hidesOutside: boolean;
   loops: boolean;
   stopsBeforeEnd: number;
   angle: number;
@@ -141,6 +142,7 @@ export const DEFAULT_CURSOR: CursorSettings = {
   alwaysArrow: false,
   smoothing: 50,
   hidesWhenStill: true,
+  hidesOutside: false,
   loops: false,
   stopsBeforeEnd: 0,
   angle: 0,
@@ -258,21 +260,34 @@ export function clampAmount(amount: Amount, value: number): number {
   return Math.round(clamp(value, 0, AMOUNTS[amount].max));
 }
 
+export function frameShape(appearance: Appearance, ratio: number): number {
+  return FRAME_SIZES[appearance.size] ?? ratio;
+}
+
+export function recordingIn(
+  frame: Size,
+  appearance: Appearance,
+  ratio: number,
+): Size {
+  const padding = (appearance.padding * frame.width) / 1920;
+  return fitInside(shrink(frame, padding), ratio);
+}
+
+function shrink({ width, height }: Size, by: number): Size {
+  return {
+    width: Math.max(width - by * 2, 0),
+    height: Math.max(height - by * 2, 0),
+  };
+}
+
 export function frameLayout(
   appearance: Appearance,
   canvas: Size,
   ratio: number,
 ) {
-  const shrink = ({ width, height }: Size, by: number) => ({
-    width: Math.max(width - by * 2, 0),
-    height: Math.max(height - by * 2, 0),
-  });
-  const frame = fitInside(
-    shrink(canvas, 48),
-    FRAME_SIZES[appearance.size] ?? ratio,
-  );
+  const frame = fitInside(shrink(canvas, 48), frameShape(appearance, ratio));
   const scale = frame.width / 1920;
-  const recording = fitInside(shrink(frame, appearance.padding * scale), ratio);
+  const recording = recordingIn(frame, appearance, ratio);
   const inset = appearance.inset * scale;
   return {
     frame,

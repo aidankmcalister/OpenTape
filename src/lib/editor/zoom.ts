@@ -2,7 +2,12 @@ import { type Point, clamp } from "@/lib/geometry";
 import { EASE } from "@/lib/time";
 import type { ExportZoom } from "@/lib/bindings";
 import { FRAME_MS } from "./timeline";
-import { type CursorMove, positionAt } from "./cursor";
+import {
+  type CursorMove,
+  type CursorTrack,
+  positionAt,
+  typingStretches,
+} from "./cursor";
 import {
   outputAt,
   type Region,
@@ -12,19 +17,33 @@ import {
 } from "./regions";
 
 const ZOOM_MS = 600;
-const PAN_MS = 600;
+const PAN_MS = 750;
 const STEP_MS = 1000 / 120;
-const EDGE_SHARE = 0.25;
-const FOLLOW = { stiffness: 120, damping: 22 };
+const STILL_SHARE = 0.015;
+const STILL_MS = 300;
+const TYPING_HOLD_MS = 1500;
+const FOLLOW = {
+  stiffness: 200,
+  damping: 40,
+  mass: 2.25,
+  settleMs: 200,
+  leadMs: 300,
+};
+const GROUP = { width: 0.5, height: 0.7 };
 
 const MIDDLE = { x: 0.5, y: 0.5 };
 
-export function zoomPath(regions: Region[], moves: CursorMove[] = []) {
+type Following = Pick<CursorTrack, "moves" | "keys">;
+
+export function zoomPath(
+  regions: Region[],
+  cursor: Following = { moves: [], keys: [] },
+) {
   const zooms = resolveOverlaps(regions, "zoom").map((zoom) => ({
     amount: zoom.amount,
     startMs: outputAt(regions, zoom.startMs),
     endMs: outputAt(regions, zoom.endMs),
-    centerAt: followed(zoom, regions, moves),
+    centerAt: followed(zoom, regions, cursor),
   }));
   return (outputMs: number) => {
     let from = 1;
@@ -54,33 +73,27 @@ export function zoomPath(regions: Region[], moves: CursorMove[] = []) {
   };
 }
 
-function followed(zoom: Region, regions: Region[], moves: CursorMove[]) {
+function followed(zoom: Region, regions: Region[], cursor: Following) {
   const startMs = outputAt(regions, zoom.startMs);
   const endMs = outputAt(regions, zoom.endMs);
-  const pans = (zoom.path ?? []).map(({ afterMs, x, y }) => ({
-    ms: outputAt(regions, zoom.startMs + afterMs) - PAN_MS,
-    center: { x, y },
-  }));
-  const follows =
-    moves.length > 0 && settingValue(zoom, "focus") === "Follow cursor";
+  const aimAt = aims(zoom, regions, cursor);
   const dt = STEP_MS / 1000;
-  let wanted = focusCenter(zoom);
-  let view = wanted;
+  const settle = Math.min(1, STEP_MS / FOLLOW.settleMs);
+  let eased = focusCenter(zoom);
+  let view = eased;
   let speed = { x: 0, y: 0 };
-  let last: Point | null = null;
-  let next = 0;
   const steps: Point[] = [];
   for (let ms = startMs; ms <= endMs; ms += STEP_MS) {
     steps.push(view);
-    while (next < pans.length && pans[next].ms <= ms)
-      wanted = pans[next++].center;
-    const cursor = follows ? positionAt(moves, sourceAt(regions, ms)) : null;
-    if (cursor && last && (cursor.x !== last.x || cursor.y !== last.y))
-      wanted = keptInView(wanted, cursor, zoom.amount);
-    last = cursor;
+    const wanted = aimAt(ms);
+    eased = {
+      x: eased.x + (wanted.x - eased.x) * settle,
+      y: eased.y + (wanted.y - eased.y) * settle,
+    };
     const pull = (key: "x" | "y") =>
-      FOLLOW.stiffness * (wanted[key] - view[key]) -
-      FOLLOW.damping * speed[key];
+      (FOLLOW.stiffness * (eased[key] - view[key]) -
+        FOLLOW.damping * speed[key]) /
+      FOLLOW.mass;
     speed = { x: speed.x + pull("x") * dt, y: speed.y + pull("y") * dt };
     view = { x: view.x + speed.x * dt, y: view.y + speed.y * dt };
   }
@@ -96,17 +109,86 @@ function followed(zoom: Region, regions: Region[], moves: CursorMove[]) {
   };
 }
 
-function keptInView(center: Point, cursor: Point, amount: number): Point {
-  const size = 1 / amount;
-  const margin = EDGE_SHARE * size;
-  const toward = (share: number, at: number) => {
-    const left = share * (1 - size);
-    if (at < left + margin) return clamp((at - margin) / (1 - size), 0, 1);
-    if (at > left + size - margin)
-      return clamp((at - size + margin) / (1 - size), 0, 1);
-    return share;
+function aims(zoom: Region, regions: Region[], { moves, keys }: Following) {
+  const pans = (zoom.path ?? []).map(({ afterMs, x, y }) => ({
+    ms: outputAt(regions, zoom.startMs + afterMs) - PAN_MS,
+    center: { x, y },
+  }));
+  const follows =
+    moves.length > 0 && settingValue(zoom, "focus") === "Follow cursor";
+  const typing = typingStretches(keys);
+  const isTyping = (sourceMs: number) =>
+    typing.some(
+      ({ startMs, endMs }) =>
+        sourceMs > startMs - TYPING_HOLD_MS &&
+        sourceMs < endMs + TYPING_HOLD_MS,
+    );
+  let wanted = focusCenter(zoom);
+  let group: { min: Point; max: Point } | null = null;
+  let next = 0;
+  return (ms: number) => {
+    while (next < pans.length && pans[next].ms <= ms) {
+      wanted = pans[next++].center;
+      group = null;
+    }
+    if (!follows) return wanted;
+    if (isTyping(sourceAt(regions, ms))) {
+      group = null;
+      return wanted;
+    }
+    const aheadMs = sourceAt(regions, ms + FOLLOW.leadMs);
+    const cursor = steadyAt(moves, aheadMs);
+    const before = steadyAt(moves, aheadMs - STILL_MS);
+    const moved = Math.max(
+      Math.abs(cursor.x - before.x),
+      Math.abs(cursor.y - before.y),
+    );
+    if (moved <= STILL_SHARE) return wanted;
+    group = grouped(group, cursor, 1 / zoom.amount);
+    wanted = centeredOn(
+      {
+        x: (group.min.x + group.max.x) / 2,
+        y: (group.min.y + group.max.y) / 2,
+      },
+      zoom.amount,
+    );
+    return wanted;
   };
-  return { x: toward(center.x, cursor.x), y: toward(center.y, cursor.y) };
+}
+
+function steadyAt(moves: CursorMove[], ms: number): Point {
+  const points = [-100, -50, 0, 50, 100].map((back) =>
+    positionAt(moves, ms - back),
+  );
+  return {
+    x: points.reduce((sum, { x }) => sum + x, 0) / points.length,
+    y: points.reduce((sum, { y }) => sum + y, 0) / points.length,
+  };
+}
+
+function grouped(
+  group: { min: Point; max: Point } | null,
+  cursor: Point,
+  size: number,
+) {
+  if (!group) return { min: cursor, max: cursor };
+  const min = {
+    x: Math.min(group.min.x, cursor.x),
+    y: Math.min(group.min.y, cursor.y),
+  };
+  const max = {
+    x: Math.max(group.max.x, cursor.x),
+    y: Math.max(group.max.y, cursor.y),
+  };
+  const fits =
+    max.x - min.x <= GROUP.width * size && max.y - min.y <= GROUP.height * size;
+  return fits ? { min, max } : { min: cursor, max: cursor };
+}
+
+function centeredOn(spot: Point, amount: number): Point {
+  const size = 1 / amount;
+  const share = (at: number) => clamp((at - size / 2) / (1 - size), 0, 1);
+  return { x: share(spot.x), y: share(spot.y) };
 }
 
 export function focusCenter(zoom: Region): Point {
@@ -127,9 +209,9 @@ export function focusAt(box: Point, amount: number): Point {
 export function zoomTrack(
   regions: Region[],
   durationMs: number,
-  moves: CursorMove[] = [],
+  cursor?: Following,
 ): ExportZoom[] {
-  const zoomAt = zoomPath(regions, moves);
+  const zoomAt = zoomPath(regions, cursor);
   const frames = Math.ceil(durationMs / FRAME_MS) + 1;
   return Array.from({ length: frames }, (_, frame) => {
     const { scale, center } = zoomAt(frame * FRAME_MS);

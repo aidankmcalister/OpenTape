@@ -26,7 +26,7 @@ export type ExportFormat = "mp4" | "gif";
 
 export type ExportGradient = { angle: number, stops: Array<ExportStop>, };
 
-export type ExportLayout = { width: number, height: number, recording: PixelRect, video: PixelRect, radius: number, shadow: ExportShadow, border: ExportBorder | null, background: ExportGradient, zoom: Array<ExportZoom>, speed: Array<ExportSpeed>, cuts: Array<ExportCut>, rings: Array<ExportRing>, cursor: ExportCursor | null, };
+export type ExportLayout = { width: number, height: number, recording: PixelRect, video: PixelRect, radius: number, shadow: ExportShadow, border: ExportBorder | null, background: ExportGradient, zoom: Array<ExportZoom>, zoomRate: number, speed: Array<ExportSpeed>, cuts: Array<ExportCut>, rings: Array<ExportRing>, cursor: ExportCursor | null, };
 
 export type ExportOptions = { format: ExportFormat, frameRate: number, bitsPerPixel: number, toClipboard: boolean, };
 

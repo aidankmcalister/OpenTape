@@ -98,7 +98,7 @@ impl CurrentRecording {
         Ok(folder)
     }
 
-    #[cfg(debug_assertions)]
+    #[cfg(any(debug_assertions, test))]
     pub(crate) fn named_folder(&self, name: &str) -> PathBuf {
         self.folders.storage.join(name)
     }

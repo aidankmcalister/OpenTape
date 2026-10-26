@@ -56,7 +56,7 @@ export function laneLayout(kinds: RegionKind[], collapsed: RegionKind[]) {
   return { lanes, heightPx };
 }
 
-export type BlockContent = "full" | "value" | "icon";
+type BlockContent = "full" | "value" | "icon";
 
 export function suggestionContent(widthPx: number, label: string) {
   const withButtonsPx = 74;
@@ -116,9 +116,10 @@ export function rulerLabels(durationMs: number, widthPx: number) {
     });
 }
 
-export function chipFrom(x: number, widthPx: number): number {
-  const last = widthPx + AXIS_ROOM_PX - 2 * CHIP_HALF_PX;
-  return Math.max(-AXIS_ROOM_PX, Math.min(x - CHIP_HALF_PX, last));
+export function chipShift(x: number, widthPx: number): number {
+  const first = CHIP_HALF_PX - AXIS_ROOM_PX;
+  const last = widthPx + AXIS_ROOM_PX - CHIP_HALF_PX;
+  return Math.max(first, Math.min(x, last)) - x;
 }
 
 export function nextBlock(
