@@ -43,6 +43,7 @@ export function useExport(
     scaleLayout(
       exportLayout(appearance, size, timeline),
       RESOLUTIONS[settings.resolution],
+      appearance.size,
     );
 
   useTauriEvent(

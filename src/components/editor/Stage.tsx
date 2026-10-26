@@ -16,9 +16,10 @@ import {
   plainOr,
   type CursorTrack,
   type RingEvent,
+  ringCircles,
   ringsAt,
 } from "@/lib/editor/cursor";
-import { focusAt, focusBox, focusBoxStyle, zoomAt } from "@/lib/editor/zoom";
+import { focusAt, focusBox, focusBoxStyle, zoomPath } from "@/lib/editor/zoom";
 import { type Point, rectStyle } from "@/lib/geometry";
 import {
   blockValue,
@@ -55,6 +56,12 @@ export default function Stage({
   const { ref, size } = useElementSize<HTMLDivElement>();
   const { frame, recording, radius, shadow, border, video, scale } =
     frameLayout(appearance, size, ratio);
+  const isFocusing = focus !== null;
+  const zoomAt = useMemo(() => {
+    const shown = isFocusing ? [] : regions;
+    const at = zoomPath(shown, cursor.moves);
+    return (seconds: number) => at(outputAt(shown, seconds * 1000));
+  }, [isFocusing, regions, cursor.moves]);
 
   return (
     <Island className="relative min-h-0 flex-1 bg-canvas dot-grid">
@@ -71,7 +78,7 @@ export default function Stage({
                 boxShadow: `0 ${shadow.offsetY}px ${shadow.blur}px ${shadow.color}`,
               }}
             >
-              <Zoom clock={clock} regions={focus ? [] : regions}>
+              <Zoom clock={clock} zoomAt={zoomAt}>
                 <video
                   className="absolute max-w-none object-cover"
                   style={rectStyle(video)}
@@ -103,7 +110,7 @@ export default function Stage({
                 durationMs={durationMs}
                 video={video}
                 size={recording}
-                regions={focus ? [] : regions}
+                zoomAt={zoomAt}
               />
             </div>
           </div>
@@ -128,13 +135,14 @@ function ClickRings({
   const shown = useClockValue(clock, (seconds) =>
     ringsAt(rings, seconds * 1000),
   );
-  return shown.flatMap((ring, at) =>
-    ring.circles.map((circle, index) => {
+  return shown.flatMap(({ index, progress }) => {
+    const ring = rings[index];
+    const line = Math.max(2, ring.size * 0.08) * scale;
+    return ringCircles(ring.style, progress, ring.size).map((circle, at) => {
       const side = circle.radius * 2 * scale;
-      const line = Math.max(2, ring.size * 0.08) * scale;
       return (
         <div
-          key={`${at}-${index}`}
+          key={`${index}-${at}`}
           className="pointer-events-none absolute -translate-1/2 rounded-full"
           style={{
             left: video.x + ring.x * video.width,
@@ -149,8 +157,8 @@ function ClickRings({
           }}
         />
       );
-    }),
-  );
+    });
+  });
 }
 
 function Cursor({
@@ -160,7 +168,7 @@ function Cursor({
   durationMs,
   video,
   size,
-  regions,
+  zoomAt,
 }: {
   clock: Clock;
   track: CursorTrack;
@@ -168,7 +176,7 @@ function Cursor({
   durationMs: number;
   video: { x: number; y: number; width: number; height: number };
   size: { width: number; height: number };
-  regions: Region[];
+  zoomAt: ZoomAt;
 }) {
   const spotAt = useMemo(
     () => cursorPath(track, settings, durationMs),
@@ -181,10 +189,7 @@ function Cursor({
   const seen = useClockValue(clock, (seconds) => {
     const spot = spotAt(seconds * 1000);
     if (!spot) return null;
-    const { scale, center } = zoomAt(
-      regions,
-      outputAt(regions, seconds * 1000),
-    );
+    const { scale, center } = zoomAt(seconds);
     const zoomed = (at: number, share: number, length: number) =>
       share * length + (at - share * length) * scale;
     const tip = {
@@ -259,20 +264,20 @@ function InEffect({ clock, regions }: { clock: Clock; regions: Region[] }) {
   );
 }
 
+type ZoomAt = (seconds: number) => { scale: number; center: Point };
+
 function Zoom({
   clock,
-  regions,
+  zoomAt,
   children,
 }: {
   clock: Clock;
-  regions: Region[];
+  zoomAt: ZoomAt;
   children: ReactNode;
 }) {
-  const at = (seconds: number) =>
-    zoomAt(regions, outputAt(regions, seconds * 1000));
-  const scale = useClockValue(clock, (seconds) => at(seconds).scale);
+  const scale = useClockValue(clock, (seconds) => zoomAt(seconds).scale);
   const origin = useClockValue(clock, (seconds) => {
-    const { center } = at(seconds);
+    const { center } = zoomAt(seconds);
     return `${center.x * 100}% ${center.y * 100}%`;
   });
   return (

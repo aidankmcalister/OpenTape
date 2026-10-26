@@ -5,7 +5,12 @@ import type {
   ExportOptions,
   PixelRect,
 } from "@/lib/bindings";
-import { type Appearance, fillGradient } from "./appearance";
+import {
+  type Appearance,
+  FRAME_SIZES,
+  type FrameSize,
+  fillGradient,
+} from "./appearance";
 import { type Clip, cutSpans } from "./clips";
 import {
   type CursorTrack,
@@ -36,9 +41,11 @@ export function exportLayout(
   }: Partial<ExportTimeline> = {},
 ): ExportLayout {
   const ratio = video.width / video.height;
-  const paddingShare = ((2 * appearance.padding) / 1920) * Math.max(1, ratio);
-  const width = even(video.width / (1 - paddingShare));
-  const height = even(width / ratio);
+  const shape = FRAME_SIZES[appearance.size] ?? ratio;
+  const padding = (2 * appearance.padding) / 1920;
+  const share = Math.min(1 - padding, ratio / shape - ratio * padding);
+  const width = even(video.width / share);
+  const height = even(width / shape);
   const scale = width / 1920;
   const recording = {
     x: Math.round((width - video.width) / 2),
@@ -72,7 +79,7 @@ export function exportLayout(
       opacity: appearance.shadowOpacity / 100,
     },
     background: fillGradient(appearance.fill),
-    zoom: zoomTrack(regions, durationMs),
+    zoom: zoomTrack(regions, durationMs, cursor?.moves),
     speed: resolveOverlaps(regions, "speed").map(
       ({ startMs, endMs, amount }) => ({
         start: startMs / 1000,
@@ -97,9 +104,12 @@ export type Resolution = keyof typeof RESOLUTIONS;
 
 export function scaleLayout(
   layout: ExportLayout,
-  height: number,
+  side: number,
+  size: FrameSize = "Auto",
 ): ExportLayout {
-  const scale = height / layout.height;
+  const short =
+    size === "Auto" ? layout.height : Math.min(layout.width, layout.height);
+  const scale = side / short;
   const { shadow, border } = layout;
   const scaled = (rect: PixelRect) => ({
     x: rect.x * scale,
@@ -110,7 +120,7 @@ export function scaleLayout(
   return {
     ...layout,
     width: even(layout.width * scale),
-    height: even(height),
+    height: even(layout.height * scale),
     recording: scaled(layout.recording),
     video: scaled(layout.video),
     border: border && { ...border, width: border.width * scale },

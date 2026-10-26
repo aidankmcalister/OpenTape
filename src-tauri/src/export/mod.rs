@@ -24,6 +24,7 @@ mod writers;
 pub(crate) use cursor::ExportCursor;
 use cutout::cutout;
 pub(crate) use rings::ExportRing;
+use rings::RingPictures;
 use writers::{write_gif, write_mp4};
 
 #[derive(Debug, Clone, Deserialize, TS)]
@@ -166,6 +167,7 @@ pub(crate) fn export(
         layout.cursor.clone(),
     );
     let pictures = cursor.as_ref().map(ExportCursor::pictures).transpose()?;
+    let ring_pictures = RingPictures::default();
     let mut cuts = layout.cuts.clone();
     cuts.sort_by(|a, b| a.start.total_cmp(&b.start));
     let picture = CGRect::new(
@@ -183,7 +185,7 @@ pub(crate) fn export(
                 let place = placement(&video, height, natural);
                 let mut frame = request.sourceImage().imageByApplyingTransform(place);
                 for ring in rings.iter().filter(|ring| ring.is_showing(now)) {
-                    if let Ok(image) = ring.image(now, &video, zoom.scale, height) {
+                    if let Ok(image) = ring.image(now, &video, zoom.scale, height, &ring_pictures) {
                         frame = image.imageByCompositingOverImage(&frame);
                     }
                 }

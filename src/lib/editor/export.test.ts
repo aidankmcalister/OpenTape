@@ -36,6 +36,37 @@ describe("export", () => {
     expect(small.radius).toBeCloseTo((full.radius * 1080) / 2566, 5);
   });
 
+  test("exportLayout letterboxes the recording at full size in a chosen shape", () => {
+    const layout = exportLayout(
+      { ...DEFAULT_APPEARANCE, size: "9:16" },
+      { width: 1920, height: 1080 },
+    );
+    expect([layout.width, layout.height]).toEqual([2058, 3658]);
+    expect(layout.recording).toEqual({
+      x: 69,
+      y: 1289,
+      width: 1920,
+      height: 1080,
+    });
+    expect(layout.recording.x).toBeCloseTo((64 * layout.width) / 1920, 0);
+  });
+
+  test("scaleLayout sets the short side of a chosen shape, and the height in Auto", () => {
+    const tall = exportLayout(
+      { ...DEFAULT_APPEARANCE, size: "9:16" },
+      { width: 1920, height: 1080 },
+    );
+    const vertical = scaleLayout(tall, 1080, "9:16");
+    expect([vertical.width, vertical.height]).toEqual([1080, 1920]);
+    const square = exportLayout(
+      { ...DEFAULT_APPEARANCE, size: "1:1" },
+      { width: 1920, height: 1080 },
+    );
+    const scaled = scaleLayout(square, 1080, "1:1");
+    expect([scaled.width, scaled.height]).toEqual([1080, 1080]);
+    expect(scaleLayout(tall, 1080).height).toBe(1080);
+  });
+
   test("aboutMegabytes estimates from the size, length and settings, to a tenth", () => {
     const full = exportLayout(DEFAULT_APPEARANCE, {
       width: 1920,

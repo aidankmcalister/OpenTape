@@ -7,7 +7,18 @@ export type Fill = {
   custom: ExportGradient;
 };
 
+export const FRAME_SIZES = {
+  Auto: null,
+  "16:9": 16 / 9,
+  "9:16": 9 / 16,
+  "1:1": 1,
+  "4:5": 4 / 5,
+};
+
+export type FrameSize = keyof typeof FRAME_SIZES;
+
 export type Appearance = {
+  size: FrameSize;
   fill: Fill;
   padding: number;
   radius: number;
@@ -147,6 +158,7 @@ export const DEFAULT_CURSOR: CursorSettings = {
 };
 
 export const DEFAULT_APPEARANCE: Appearance = {
+  size: "Auto",
   fill: { kind: "gradient", preset: 0, custom: presetGradient("gradient", 0) },
   padding: 64,
   radius: 20,
@@ -180,7 +192,8 @@ export function readAppearance(saved: Partial<Appearance> = {}): Appearance {
     ? appearance.borderColor
     : (OLD_BORDER_COLORS[appearance.borderColor] ??
       DEFAULT_APPEARANCE.borderColor);
-  return { ...appearance, borderColor };
+  const size = appearance.size in FRAME_SIZES ? appearance.size : "Auto";
+  return { ...appearance, borderColor, size };
 }
 
 export function fillGradient(fill: Fill): ExportGradient {
@@ -254,7 +267,10 @@ export function frameLayout(
     width: Math.max(width - by * 2, 0),
     height: Math.max(height - by * 2, 0),
   });
-  const frame = fitInside(shrink(canvas, 48), ratio);
+  const frame = fitInside(
+    shrink(canvas, 48),
+    FRAME_SIZES[appearance.size] ?? ratio,
+  );
   const scale = frame.width / 1920;
   const recording = fitInside(shrink(frame, appearance.padding * scale), ratio);
   const inset = appearance.inset * scale;

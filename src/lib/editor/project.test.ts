@@ -14,7 +14,7 @@ import {
   redo,
   undo,
 } from "./project";
-import { zoomAt as zoomAtMs, zoomTrack } from "./zoom";
+import { zoomPath, zoomTrack } from "./zoom";
 
 describe("project", () => {
   test("changeAppearance and editRegions keep the same project when nothing changes", () => {
@@ -61,7 +61,7 @@ describe("the frame at a moment", () => {
   const APPEARANCE = { ...DEFAULT_APPEARANCE, inset: 10, borderWidth: 4 };
   const at = (regions: Region[], outputMs: number, width = 1920 + 96) => ({
     ...frameLayout(APPEARANCE, { width, height: 2000 }, 16 / 9),
-    zoom: zoomAtMs(regions, outputMs),
+    zoom: zoomPath(regions)(outputMs),
     sourceMs: sourceAt(regions, outputMs),
   });
   const region = (

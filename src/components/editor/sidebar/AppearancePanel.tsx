@@ -8,13 +8,16 @@ import {
   COLORS,
   DEFAULT_APPEARANCE,
   fillCss,
+  FRAME_SIZES,
   GRADIENTS,
   PRESET_NAMES,
   type Amount,
   type Fill,
+  type FrameSize,
 } from "@/lib/editor/appearance";
 import { ColorSwatches } from "../ColorPicker";
 import { Dim, PanelHeader, Section, ValueInput } from "../Panel";
+import SettingControl from "../timeline/SettingControl";
 import FillPicker from "./FillPicker";
 
 const FILLS: { kind: Fill["kind"]; label: string; Icon: typeof Blend }[] = [
@@ -45,6 +48,21 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
           })
         }
       />
+      <Section title="Size">
+        <SettingControl
+          setting={{
+            kind: "choice",
+            key: "size",
+            options: Object.keys(FRAME_SIZES),
+          }}
+          edit={{
+            value: () => appearance.size,
+            set: (_, size) => edits.setAppearance({ size: size as FrameSize }),
+            preview: () => {},
+            commit: edits.commit,
+          }}
+        />
+      </Section>
       <Section title="Fill">
         <Tabs
           value={appearance.fill.kind}

@@ -47,6 +47,27 @@ describe("appearance", () => {
     expect(recording.height).toBeCloseTo(348, 5);
   });
 
+  test("frameLayout in Auto takes the recording's shape, as a matching size does", () => {
+    const canvas = { width: 1056, height: 1000 };
+    const auto = frameLayout(DEFAULT_APPEARANCE, canvas, 16 / 9);
+    expect(auto).toEqual(
+      frameLayout({ ...DEFAULT_APPEARANCE, size: "16:9" }, canvas, 16 / 9),
+    );
+    expect(auto.frame).toEqual({ width: 960, height: 540 });
+  });
+
+  test("frameLayout letterboxes a wide recording in a 9:16 frame, inside the padding", () => {
+    const { frame, recording, scale } = frameLayout(
+      { ...DEFAULT_APPEARANCE, size: "9:16" },
+      { width: 1056, height: 1000 },
+      16 / 9,
+    );
+    expect(frame).toEqual({ width: 508.5, height: 904 });
+    expect(recording.width).toBeCloseTo(frame.width - 2 * 64 * scale, 5);
+    expect(recording.width / recording.height).toBeCloseTo(16 / 9, 5);
+    expect(recording.height).toBeLessThan(frame.height / 2);
+  });
+
   test("frameLayout collapses to nothing on a canvas smaller than its margin", () => {
     const { frame, recording } = frameLayout(
       DEFAULT_APPEARANCE,
@@ -110,4 +131,6 @@ test("readAppearance fills in defaults and turns old border color names into hex
   expect(readAppearance({ borderColor: "no-such-name" }).borderColor).toBe(
     DEFAULT_APPEARANCE.borderColor,
   );
+  expect(readAppearance({ size: "4:5" }).size).toBe("4:5");
+  expect(readAppearance({ size: "3:2" as "4:5" }).size).toBe("Auto");
 });

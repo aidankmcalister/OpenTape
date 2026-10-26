@@ -97,7 +97,6 @@ export const REGIONS: Record<
         kind: "choice",
         key: "focus",
         options: ["Fixed point", "Follow cursor"],
-        disabled: ["Follow cursor"],
       },
       { kind: "focus" },
     ],

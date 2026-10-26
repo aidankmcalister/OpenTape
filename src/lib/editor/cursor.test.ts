@@ -62,7 +62,8 @@ test("the click effect rings left clicks, right clicks only when asked, and noth
 test("a ring shows for half a second after its click", () => {
   const rings = ringEvents(CLICKS, PULSE);
   expect(ringsAt(rings, 999)).toEqual([]);
-  expect(ringsAt(rings, 1250)[0].circles[0].alpha).toBeCloseTo(0.25);
+  expect(ringsAt(rings, 1250)).toEqual([{ index: 0, progress: 0.5 }]);
+  expect(ringsAt(rings, 1260)).toEqual(ringsAt(rings, 1250));
   expect(ringsAt(rings, 1500)).toEqual([]);
 });
 

@@ -47,6 +47,7 @@ type Event = {
 };
 
 export const RING_MS = 500;
+const RING_FRAMES = 30;
 
 export type CursorMove = { ms: number; x: number; y: number };
 
@@ -540,7 +541,7 @@ function ease(share: number) {
   return share * share * (3 - 2 * share);
 }
 
-function positionAt(moves: CursorMove[], ms: number) {
+export function positionAt(moves: CursorMove[], ms: number) {
   const after = firstAfter(moves, ms);
   if (after === moves.length) return moves[moves.length - 1];
   if (after === 0) return moves[0];
@@ -759,6 +760,7 @@ export function suggestedZooms(
       amount,
       center,
       path,
+      settings: { focus: "Follow cursor" },
       isSuggested: true,
     });
   }
@@ -786,12 +788,12 @@ export function ringEvents(
 }
 
 export function ringsAt(rings: RingEvent[], ms: number) {
-  return rings
-    .filter((ring) => ms >= ring.ms && ms < ring.ms + RING_MS)
-    .map((ring) => ({
-      ...ring,
-      circles: ringCircles(ring.style, (ms - ring.ms) / RING_MS, ring.size),
-    }));
+  return rings.flatMap((ring, index) => {
+    const frame = Math.floor(((ms - ring.ms) / RING_MS) * RING_FRAMES);
+    return frame >= 0 && frame < RING_FRAMES
+      ? [{ index, progress: frame / RING_FRAMES }]
+      : [];
+  });
 }
 
 export function ringCircles(style: RingStyle, progress: number, size: number) {

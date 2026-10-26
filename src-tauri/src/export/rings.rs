@@ -1,4 +1,7 @@
-use anyhow::{Context, Result};
+use std::collections::HashMap;
+use std::sync::Mutex;
+
+use anyhow::{Context, Result, anyhow};
 use objc2::rc::Retained;
 use objc2_core_foundation::{CGAffineTransform, CGPoint, CGRect, CGSize};
 use objc2_core_graphics::{CGBitmapContextCreateImage, CGColor, CGContext};
@@ -10,8 +13,11 @@ use super::PixelRect;
 use super::cutout::{canvas, rgb};
 
 const RING_SECONDS: f64 = 0.5;
+const RING_STEPS: f64 = 60.0;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
+pub(super) type RingPictures = Mutex<HashMap<(RingStyle, String, u64, u32), Retained<CIImage>>>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
 #[ts(export, export_to = "bindings.ts")]
 pub(crate) enum RingStyle {
@@ -70,15 +76,43 @@ impl ExportRing {
         video: &PixelRect,
         zoom_scale: f64,
         height: u32,
+        pictures: &RingPictures,
     ) -> Result<Retained<CIImage>> {
         let size = self.size * zoom_scale;
+        let center = (size + 8.0).ceil() / 2.0;
+        let step = ((now - self.t) / RING_SECONDS * RING_STEPS).round() as u32;
+        let key = (self.style, self.color.clone(), size.to_bits(), step);
+        let mut pictures = pictures
+            .lock()
+            .map_err(|_| anyhow!("could not reuse a click ring"))?;
+        let picture = match pictures.get(&key) {
+            Some(picture) => picture.clone(),
+            None => {
+                pictures.retain(|kept, _| kept.2 == key.2);
+                let picture = self.picture(size, f64::from(step) / RING_STEPS)?;
+                pictures.insert(key, picture.clone());
+                picture
+            }
+        };
+        let move_to = CGAffineTransform {
+            a: 1.0,
+            b: 0.0,
+            c: 0.0,
+            d: 1.0,
+            tx: video.x + self.x * video.width - center,
+            ty: f64::from(height) - (video.y + self.y * video.height) - center,
+        };
+        Ok(unsafe { picture.imageByApplyingTransform(move_to) })
+    }
+
+    fn picture(&self, size: f64, progress: f64) -> Result<Retained<CIImage>> {
         let side = (size + 8.0).ceil();
         let center = side / 2.0;
         let [red, green, blue] = rgb(&self.color)?;
         let (_, context) = canvas(side as usize, side as usize)?;
         let context = Some(&*context);
         CGContext::set_line_width(context, (size * 0.08).max(2.0));
-        for circle in circles(self.style, (now - self.t) / RING_SECONDS, size) {
+        for circle in circles(self.style, progress, size) {
             let color = CGColor::new_srgb(red, green, blue, circle.alpha);
             let rect = CGRect::new(
                 CGPoint::new(center - circle.radius, center - circle.radius),
@@ -93,15 +127,7 @@ impl ExportRing {
             }
         }
         let image = CGBitmapContextCreateImage(context).context("could not finish a click ring")?;
-        let move_to = CGAffineTransform {
-            a: 1.0,
-            b: 0.0,
-            c: 0.0,
-            d: 1.0,
-            tx: video.x + self.x * video.width - center,
-            ty: f64::from(height) - (video.y + self.y * video.height) - center,
-        };
-        Ok(unsafe { CIImage::imageWithCGImage(&image).imageByApplyingTransform(move_to) })
+        Ok(unsafe { CIImage::imageWithCGImage(&image) })
     }
 }
 
@@ -139,5 +165,32 @@ mod tests {
         assert!(ring.is_showing(2.0));
         assert!(ring.is_showing(2.49));
         assert!(!ring.is_showing(2.5));
+    }
+
+    #[test]
+    fn rings_at_the_same_step_and_size_share_one_picture() {
+        let ring = |t: f64| ExportRing {
+            t,
+            x: 0.5,
+            y: 0.5,
+            color: "#ffffff".into(),
+            size: 48.0,
+            style: RingStyle::Ripple,
+        };
+        let video = PixelRect {
+            x: 0.0,
+            y: 0.0,
+            width: 200.0,
+            height: 100.0,
+        };
+        let pictures = RingPictures::default();
+        let count = || pictures.lock().unwrap().len();
+        ring(1.0).image(1.2, &video, 1.0, 100, &pictures).unwrap();
+        ring(3.001).image(3.2, &video, 1.0, 100, &pictures).unwrap();
+        assert_eq!(count(), 1);
+        ring(1.0).image(1.25, &video, 1.0, 100, &pictures).unwrap();
+        assert_eq!(count(), 2);
+        ring(1.0).image(1.25, &video, 2.0, 100, &pictures).unwrap();
+        assert_eq!(count(), 1);
     }
 }
