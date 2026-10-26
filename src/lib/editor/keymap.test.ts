@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { actionFor, keyLabel, KEYMAP, SHORTCUTS, type Binding } from "./keymap";
+import {
+  ACTION_NAMES,
+  actionFor,
+  keyLabel,
+  KEYMAP,
+  paletteCommands,
+  SHORTCUTS,
+  type Binding,
+} from "./keymap";
+import { KINDS, REGIONS } from "./regions";
 
 const PRESS = {
   key: "",
@@ -43,6 +52,11 @@ describe("keymap", () => {
     expect(actionFor({ ...PRESS, key: " ", ctrlKey: true })).toBeNull();
   });
 
+  test("a ready modifier's key isn't taken by a binding", () => {
+    for (const kind of KINDS)
+      expect(actionFor({ ...PRESS, key: REGIONS[kind].key })).toBeNull();
+  });
+
   test("a key that isn't in the keymap does nothing", () => {
     expect(actionFor({ ...PRESS, key: "q" })).toBeNull();
   });
@@ -79,7 +93,39 @@ describe("shortcuts sheet", () => {
     ["deselect", "Esc"],
     ["export", "⌘E"],
     ["redo", "⇧⌘Z"],
+    ["openPalette", "⌘K"],
   ] as const)("keyLabel(%p) is %p", (action, label) => {
     expect(keyLabel(action)).toBe(label);
+  });
+});
+
+describe("command palette", () => {
+  const commands = paletteCommands().flatMap(({ commands }) => commands);
+
+  test("adds each ready modifier type with its key", () => {
+    const adds = commands.flatMap((command) =>
+      "kind" in command ? [[command.kind, command.keys]] : [],
+    );
+    expect(adds).toEqual(KINDS.map((kind) => [kind, REGIONS[kind].key]));
+  });
+
+  test("runs every other action once, named and with its shortcut", () => {
+    const actions = commands.flatMap((command) =>
+      "action" in command ? [command] : [],
+    );
+    expect(actions.map(({ action }) => action as string).sort()).toEqual(
+      Object.keys(ACTION_NAMES)
+        .filter((action) => action !== "openPalette" && action !== "openAdd")
+        .sort(),
+    );
+    for (const { action, label, keys } of actions) {
+      expect(label).toBe(ACTION_NAMES[action]);
+      expect(keys).toBe(keyLabel(action));
+    }
+  });
+
+  test("names are unique, so typing finds one of each", () => {
+    const labels = commands.map(({ label }) => label);
+    expect(new Set(labels).size).toBe(labels.length);
   });
 });

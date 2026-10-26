@@ -1,18 +1,22 @@
+import type { ComponentProps } from "react";
 import { Keyboard } from "lucide-react";
 import { Kbd } from "@/components/ui/kbd";
-import { keyLabel, SHORTCUTS } from "@/lib/editor/keymap";
+import { ACTION_NAMES, keyLabel, SHORTCUTS } from "@/lib/editor/keymap";
 import { DialogPanel, DialogSection } from "../Panel";
 
-export default function ShortcutsSheet() {
+export default function ShortcutsSheet(
+  props: Pick<ComponentProps<typeof DialogPanel>, "open" | "onOpenChange">,
+) {
   return (
     <DialogPanel
+      {...props}
       title="Keyboard shortcuts"
       icon={<Keyboard />}
       className="sm:max-w-120"
     >
       {SHORTCUTS.map(({ group, rows }) => (
         <DialogSection key={group} title={group}>
-          {rows.map(({ label, actions, keys }) => (
+          {rows.map(({ actions, label = ACTION_NAMES[actions![0]], keys }) => (
             <div
               key={label}
               className="flex h-8 items-center justify-between text-ui"

@@ -1,12 +1,16 @@
+import type { ComponentProps } from "react";
 import { SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DialogPanel, DialogSection } from "../Panel";
 import { useAppSettings } from "@/hooks/useAppSettings";
 
-export default function SettingsDialog() {
+export default function SettingsDialog(
+  props: Pick<ComponentProps<typeof DialogPanel>, "open" | "onOpenChange">,
+) {
   const app = useAppSettings();
   return (
     <DialogPanel
+      {...props}
       title="Settings"
       icon={<SlidersHorizontal />}
       className="sm:max-w-130"

@@ -148,11 +148,11 @@ describe("ruler labels and block navigation", () => {
     });
   });
 
-  test("a crowded label is measured against the last label shown, so the end keeps one", () => {
-    const labels = rulerLabels(10_000, 120);
-    expect(labels.filter(({ isCrowded }) => !isCrowded).length).toBeGreaterThan(
-      0,
-    );
+  test("a crowded label is measured against the last label shown, not a hidden one", () => {
+    const shown = rulerLabels(3_600_000, 200)
+      .filter(({ isCrowded }) => !isCrowded)
+      .map(({ text }) => text);
+    expect(shown).toEqual(["0:00", "20:00", "40:00"]);
   });
 
   const zoom = (id: number, startMs: number): Region => ({

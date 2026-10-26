@@ -55,7 +55,7 @@ export default function Timeline({
       lengthMs,
       ...lanes.map(({ kind, isCollapsed }) => kind + isCollapsed),
     ].join(),
-    drag.stretch?.track === "clip",
+    drag.stretch !== null,
   );
   const skim = useSkim(lengthMs, (ms) =>
     onSkim(ms === null ? null : time.source(ms)),

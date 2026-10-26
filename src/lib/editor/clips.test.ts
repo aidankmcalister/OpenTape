@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   type Clip,
-  cutEndAt,
   cutSpans,
   fitToClips,
   keptClips,
   keptTime,
+  playOnAt,
   removeClip,
   splitClip,
   trimClip,
@@ -55,8 +55,22 @@ describe("clips", () => {
       { startMs: 9000, endMs: 10000 },
     ]);
     expect(cutSpans(SPLIT, 10000)).toEqual([]);
-    expect(cutEndAt(clips, 5000, 10000)).toBe(6000);
-    expect(cutEndAt(clips, 2000, 10000)).toBeNull();
+  });
+
+  test("playback skips each cut, and the last kept frame is the end", () => {
+    const clips = [
+      { id: 2, startMs: 1000, endMs: 4000 },
+      { id: 3, startMs: 6000, endMs: 9000 },
+    ];
+    const playOn = (ms: number, isLooping = false) =>
+      playOnAt(clips, ms, 10000, isLooping);
+    expect(playOn(0)).toEqual({ ms: 1000, isEnd: false });
+    expect(playOn(5000)).toEqual({ ms: 6000, isEnd: false });
+    expect(playOn(2000)).toBeNull();
+    expect(playOn(9100)).toEqual({ ms: 9000, isEnd: true });
+    expect(playOn(9100, true)).toEqual({ ms: 1000, isEnd: false });
+    expect(playOn(9000)).toBeNull();
+    expect(playOnAt(SPLIT, 10000, 10000, false)).toBeNull();
   });
 });
 
@@ -103,6 +117,38 @@ describe("kept time", () => {
       { id: 2, startMs: 3000, endMs: 4000 },
     ]);
     expect(time.edit(regions, (shown) => shown)).toBe(regions);
+  });
+
+  test("an edit keeps the regions in their order, hidden ones too", () => {
+    const regions = [
+      { id: 2, startMs: 3000, endMs: 4000 },
+      { id: 1, startMs: 6000, endMs: 7000 },
+      { id: 3, startMs: 8000, endMs: 9000 },
+    ];
+    const moved = time.edit(regions, (shown) => [
+      ...shown
+        .filter(({ id }) => id !== 3)
+        .map((span) => ({ ...span, startMs: 500, endMs: 1500 })),
+      { id: 4, startMs: 6000, endMs: 6500 },
+    ]);
+    expect(moved.map(({ id }) => id)).toEqual([2, 1, 4]);
+    expect(moved[1]).toEqual({ id: 1, startMs: 500, endMs: 1500 });
+  });
+
+  test("leaps move in kept time, so they jump over deleted footage", () => {
+    expect(time.leap(1900, 1000)).toBe(5900);
+    expect(time.leap(5500, -1000)).toBe(1500);
+    expect(time.leap(9500, 1000)).toBe(10000);
+    expect(time.leap(500, -1000)).toBe(0);
+  });
+
+  test("a frame step across a join lands on the first frame past it", () => {
+    expect(time.step(1990, 1)).toBe(5000);
+    expect(time.step(5005, -1)).toBe(2000);
+    expect(time.step(1010, 1)).toBeCloseTo(1025, 2);
+    expect(
+      keptTime([{ id: 2, startMs: 1000, endMs: 9000 }], 10000).step(8995, 1),
+    ).toBe(9000);
   });
 });
 

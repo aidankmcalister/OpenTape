@@ -9,6 +9,7 @@ import { useKeymap } from "@/hooks/editor/useKeymap";
 import Timeline from "@/components/editor/timeline/Timeline";
 import ExportButton from "@/components/editor/header/ExportButton";
 import Sidebar from "@/components/editor/sidebar/Sidebar";
+import CommandPalette from "@/components/editor/CommandPalette";
 import { useExport } from "@/hooks/editor/useExport";
 import { useElementSize } from "@/hooks/useElementSize";
 import {
@@ -21,6 +22,7 @@ import {
 import { ringEvents } from "@/lib/editor/cursor";
 import ModifierEditor from "@/components/editor/timeline/ModifierEditor";
 import { KINDS, regionKindForKey } from "@/lib/editor/regions";
+import type { EditorAction } from "@/lib/editor/keymap";
 
 export default function Editor() {
   const recording = useOpenedRecording();
@@ -65,43 +67,46 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
   const rings = ringEvents(cursor.clicks, appearance.cursor);
   const exporting = useExport(edits.project, playback, rings, cursor);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [panel, setPanel] = useState("background");
+  const [dialog, setDialog] = useState<string | null>(null);
   const nudgeOr =
     (drag: "move" | "end", deltaMs: number, step: () => void) => () =>
       edits.selectedIds.length > 0
         ? edits.retime(edits.selectedIds, drag, deltaMs)
         : step();
-  useKeymap(
-    {
-      togglePlay: playback.togglePlay,
-      stepBack: nudgeOr("move", -100, () => playback.step(-1)),
-      stepForward: nudgeOr("move", 100, () => playback.step(1)),
-      leapBack: nudgeOr("move", -1000, () => playback.leap(-1000)),
-      leapForward: nudgeOr("move", 1000, () => playback.leap(1000)),
-      toStart: nudgeOr("end", -100, playback.toStart),
-      toEnd: nudgeOr("end", 100, playback.toEnd),
-      toggleLoop: playback.toggleLoop,
-      toggleSound: playback.toggleSound,
-      export: () => exporting.start?.(),
-      addZoom: () => edits.add("zoom"),
-      addSpeed: () => edits.add("speed"),
-      toggleCut: () => edits.setCutting(!edits.isCutting),
-      openAdd: () => setIsAddOpen(true),
-      remove: edits.remove,
-      selectAll: edits.selectAll,
-      deselect: () => {
-        edits.select([]);
-        edits.setCutting(false);
-      },
-      undo: edits.undo,
-      redo: edits.redo,
+  const actions: Record<EditorAction, () => void> = {
+    togglePlay: () => playback.togglePlay(edits.time),
+    stepBack: nudgeOr("move", -100, () => playback.step(-1, edits.time)),
+    stepForward: nudgeOr("move", 100, () => playback.step(1, edits.time)),
+    leapBack: nudgeOr("move", -1000, () => playback.leap(-1000, edits.time)),
+    leapForward: nudgeOr("move", 1000, () => playback.leap(1000, edits.time)),
+    toStart: nudgeOr("end", -100, () => playback.toStart(edits.time)),
+    toEnd: nudgeOr("end", 100, () => playback.toEnd(edits.time)),
+    toggleLoop: playback.toggleLoop,
+    toggleSound: playback.toggleSound,
+    export: () => exporting.start?.(),
+    toggleCut: () => edits.setCutting(!edits.isCutting),
+    openAdd: () => setIsAddOpen(true),
+    remove: edits.remove,
+    selectAll: edits.selectAll,
+    deselect: () => {
+      edits.select([]);
+      edits.setCutting(false);
     },
-    (key) => {
-      const kind = regionKindForKey(key);
-      if (!kind || !KINDS.includes(kind)) return false;
-      edits.add(kind);
-      return true;
-    },
-  );
+    undo: edits.undo,
+    redo: edits.redo,
+    openPalette: () => setDialog("palette"),
+    openSettings: () => setDialog("settings"),
+    openShortcuts: () => setDialog("shortcuts"),
+    showBackground: () => setPanel("background"),
+    showCursor: () => setPanel("cursor"),
+  };
+  useKeymap(actions, (key) => {
+    const kind = regionKindForKey(key);
+    if (!kind || !KINDS.includes(kind)) return false;
+    edits.add(kind);
+    return true;
+  });
   return (
     <>
       <Header name={name}>
@@ -128,7 +133,14 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
         </div>
       </Header>
       <main className="flex min-h-0 flex-1 gap-2 px-2 pb-2">
-        <Sidebar edits={edits} cursor={cursor} />
+        <Sidebar
+          edits={edits}
+          cursor={cursor}
+          panel={panel}
+          onPanelChange={setPanel}
+          dialog={dialog}
+          onDialogChange={setDialog}
+        />
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <Stage
             src={videoSrc}
@@ -171,6 +183,15 @@ function Workspace({ name, videoSrc }: { name: string; videoSrc: string }) {
           <ModifierEditor edits={edits} />
         </div>
       </main>
+      <CommandPalette
+        open={dialog === "palette"}
+        onOpenChange={(open) => setDialog(open ? "palette" : null)}
+        onRun={(command) =>
+          "kind" in command
+            ? edits.add(command.kind)
+            : actions[command.action]()
+        }
+      />
     </>
   );
 }

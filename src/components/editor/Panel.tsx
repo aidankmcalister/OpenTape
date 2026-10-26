@@ -199,14 +199,18 @@ export function DialogPanel({
   icon,
   className,
   children,
+  open,
+  onOpenChange,
 }: {
   title: string;
   icon: ReactNode;
   className?: string;
   children: ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger
         render={<Button variant="ghost" size="icon" aria-label={title} />}
       >

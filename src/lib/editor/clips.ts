@@ -6,6 +6,7 @@ import {
   type Span,
   stretched,
 } from "./regions";
+import { frameStep } from "./timeline";
 
 export type Clip = Span & { id: number };
 
@@ -72,13 +73,19 @@ export function cutSpans(clips: Clip[], durationMs: number) {
   return gapsBetween(keptClips(clips, durationMs), 0, durationMs);
 }
 
-export function cutEndAt(
+export function playOnAt(
   clips: Clip[],
   ms: number,
   durationMs: number,
-): number | null {
+  isLooping: boolean,
+): { ms: number; isEnd: boolean } | null {
+  const kept = keptClips(clips, durationMs);
+  const lastEndMs = kept[kept.length - 1].endMs;
   const cut = cutSpans(clips, durationMs).find((span) => covers(span, ms));
-  return cut?.endMs ?? null;
+  if (!cut || ms === lastEndMs) return null;
+  if (cut.startMs < lastEndMs) return { ms: cut.endMs, isEnd: false };
+  if (isLooping) return { ms: kept[0].startMs, isEnd: false };
+  return { ms: lastEndMs, isEnd: true };
 }
 
 export type KeptTime = ReturnType<typeof keptTime>;
@@ -125,6 +132,14 @@ export function keptTime(clips: Clip[], durationMs: number) {
     at,
     source,
     shown,
+    leap: (sourceMs: number, deltaMs: number) =>
+      source(clamp(at(sourceMs) + deltaMs, 0, lengthMs)),
+    step(sourceMs: number, frames: number) {
+      const lastEndMs = placed[placed.length - 1].clip.endMs;
+      const next = frameStep(sourceMs, frames, lastEndMs);
+      if (kept.some((clip) => covers(clip, next))) return next;
+      return source(at(next), frames < 0 ? "end" : "start");
+    },
     edit<T extends Span & { id: number }>(
       spans: T[],
       change: (shownSpans: T[], lengthMs: number) => T[],
@@ -132,20 +147,24 @@ export function keptTime(clips: Clip[], durationMs: number) {
       const before = shown(spans);
       const after = change(before, lengthMs);
       if (after === before) return spans;
-      const hidden = spans.filter(
-        ({ id }) => !before.some((span) => span.id === id),
-      );
+      const back = (span: T) => {
+        const original = spans.find(({ id }) => id === span.id);
+        if (original && before.includes(span)) return original;
+        return {
+          ...span,
+          startMs: source(span.startMs, "start"),
+          endMs: source(span.endMs, "end"),
+        };
+      };
+      const has = (list: T[], id: number) =>
+        list.some((span) => span.id === id);
       return [
-        ...after.map((span) => {
-          const original = spans.find(({ id }) => id === span.id);
-          if (original && before.includes(span)) return original;
-          return {
-            ...span,
-            startMs: source(span.startMs, "start"),
-            endMs: source(span.endMs, "end"),
-          };
+        ...spans.flatMap((span) => {
+          if (!has(before, span.id)) return [span];
+          const edited = after.find(({ id }) => id === span.id);
+          return edited ? [back(edited)] : [];
         }),
-        ...hidden,
+        ...after.filter(({ id }) => !has(spans, id)).map(back),
       ];
     },
   };

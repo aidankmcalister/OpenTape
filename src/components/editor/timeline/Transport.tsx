@@ -70,7 +70,7 @@ export default function Transport({
           variant="ghost"
           size="icon"
           aria-label="Back to the start"
-          onClick={playback.toStart}
+          onClick={() => playback.toStart(edits.time)}
         >
           <SkipBack />
         </Button>
@@ -78,7 +78,7 @@ export default function Transport({
           variant="ghost"
           size="icon"
           aria-label={playback.isPlaying ? "Pause" : "Play"}
-          onClick={playback.togglePlay}
+          onClick={() => playback.togglePlay(edits.time)}
         >
           {playback.isPlaying ? <Pause /> : <Play />}
         </Button>
@@ -86,7 +86,7 @@ export default function Transport({
           variant="ghost"
           size="icon"
           aria-label="Skip to the end"
-          onClick={playback.toEnd}
+          onClick={() => playback.toEnd(edits.time)}
         >
           <SkipForward />
         </Button>

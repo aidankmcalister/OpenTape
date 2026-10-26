@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 import { useClockValue, useVideoClock } from "@/hooks/useVideoClock";
-import { type Clip, cutEndAt } from "@/lib/editor/clips";
+import { type Clip, type KeptTime, playOnAt } from "@/lib/editor/clips";
 import { amountAt, type Region } from "@/lib/editor/regions";
-import { frameStep } from "@/lib/editor/timeline";
-import { clamp } from "@/lib/geometry";
 import type { Size } from "@/lib/geometry";
 
 export function usePlayback(src: string) {
@@ -46,20 +44,21 @@ export function usePlayback(src: string) {
     ratio,
     videoSize,
     clock,
-    togglePlay: () => {
+    togglePlay: (time: KeptTime) => {
       skim(null);
+      const isAtEnd = time.at(clock.seconds() * 1000) >= time.lengthMs;
+      if (video.current?.paused && isAtEnd) seek(time.source(0));
       togglePlay(video.current);
     },
+    pause: () => video.current?.pause(),
     seek,
     skim,
     heldMs,
-    toStart: () => seek(0),
-    toEnd: () => seek(durationMs),
-    step: (frames: number) => {
-      const element = video.current;
-      if (!element) return;
-      element.pause();
-      seek(frameStep(clock.seconds() * 1000, frames, durationMs));
+    toStart: (time: KeptTime) => seek(time.source(0)),
+    toEnd: (time: KeptTime) => seek(time.source(time.lengthMs)),
+    step: (frames: number, time: KeptTime) => {
+      video.current?.pause();
+      seek(time.step(clock.seconds() * 1000, frames));
     },
     toggleLoop: () => setIsLooping((isOn) => !isOn),
     toggleSound: () => setIsMuted((isOn) => !isOn),
@@ -70,8 +69,8 @@ export function usePlayback(src: string) {
     },
     speed,
     setSpeed,
-    leap: (ms: number) =>
-      seek(clamp(clock.seconds() * 1000 + ms, 0, durationMs)),
+    leap: (ms: number, time: KeptTime) =>
+      seek(time.leap(clock.seconds() * 1000, ms)),
     videoProps: {
       ref: video,
       preload: "auto",
@@ -99,12 +98,15 @@ export function useSpeed(playback: Playback, regions: Region[]) {
 }
 
 export function useCuts(playback: Playback, clips: Clip[]) {
-  const cutEndMs = useClockValue(playback.clock, (seconds) =>
-    cutEndAt(clips, seconds * 1000, playback.durationMs),
+  const { isPlaying, isLooping, durationMs } = playback;
+  const playOn = useClockValue(playback.clock, (seconds) =>
+    playOnAt(clips, seconds * 1000, durationMs, isLooping && isPlaying),
   );
   useEffect(() => {
-    if (playback.isPlaying && cutEndMs !== null) playback.seek(cutEndMs);
-  }, [playback, cutEndMs]);
+    if (!playOn) return;
+    if (playOn.isEnd) playback.pause();
+    playback.seek(playOn.ms);
+  }, [playback, playOn]);
 }
 
 function togglePlay(video: HTMLVideoElement | null) {
@@ -126,5 +128,6 @@ function sizeOf(video: HTMLVideoElement): Size {
 }
 
 function showFirstFrame(event: SyntheticEvent<HTMLVideoElement>) {
-  event.currentTarget.currentTime = 0.001;
+  const video = event.currentTarget;
+  if (video.currentTime === 0) video.currentTime = 0.001;
 }

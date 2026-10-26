@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Image, MousePointer2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -23,11 +23,22 @@ const PANELS = [
 export default function Sidebar({
   edits,
   cursor,
+  panel,
+  onPanelChange,
+  dialog,
+  onDialogChange,
 }: {
   edits: Edits;
   cursor: CursorTrack;
+  panel: string;
+  onPanelChange: (panel: string) => void;
+  dialog: string | null;
+  onDialogChange: (dialog: string | null) => void;
 }) {
-  const [panel, setPanel] = useState("background");
+  const dialogProps = (id: string) => ({
+    open: dialog === id,
+    onOpenChange: (open: boolean) => onDialogChange(open ? id : null),
+  });
   return (
     <Island className="flex w-86 shrink-0">
       <nav className="flex w-12 shrink-0 flex-col items-center gap-1 py-3 hairline-r">
@@ -38,7 +49,7 @@ export default function Sidebar({
               size="icon"
               aria-label={label}
               aria-pressed={id === panel}
-              onClick={() => setPanel(id)}
+              onClick={() => onPanelChange(id)}
             >
               <Icon />
             </Button>
@@ -46,7 +57,7 @@ export default function Sidebar({
         ))}
         <Separator className="mt-auto mb-1 w-6" />
         <RailTip label="Keyboard shortcuts">
-          <ShortcutsSheet />
+          <ShortcutsSheet {...dialogProps("shortcuts")} />
         </RailTip>
         <RailTip label="GitHub">
           <Button variant="ghost" size="icon" aria-label="GitHub" disabled>
@@ -54,7 +65,7 @@ export default function Sidebar({
           </Button>
         </RailTip>
         <RailTip label="Settings">
-          <SettingsDialog />
+          <SettingsDialog {...dialogProps("settings")} />
         </RailTip>
       </nav>
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
