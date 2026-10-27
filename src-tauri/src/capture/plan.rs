@@ -3,7 +3,9 @@ use cidre::{arc, cg, cm, ns, sc, sys};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use super::CAPTURE_LIMIT;
 use crate::geometry::{to_display_relative, to_global};
+use crate::util::wait;
 
 pub(crate) const NORMAL_WINDOW_LAYER: isize = 0;
 
@@ -54,8 +56,12 @@ impl CaptureSize {
 }
 
 pub(crate) fn shareable_content() -> Result<arc::R<sc::ShareableContent>> {
-    pollster::block_on(sc::ShareableContent::current())
-        .map_err(|err| anyhow!("could not read the screen (is Screen Recording allowed?): {err:?}"))
+    wait(
+        "reading the screen",
+        CAPTURE_LIMIT,
+        sc::ShareableContent::current(),
+    )?
+    .map_err(|err| anyhow!("could not read the screen (is Screen Recording allowed?): {err:?}"))
 }
 
 pub(crate) fn display_of(

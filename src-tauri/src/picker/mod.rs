@@ -49,7 +49,7 @@ pub(crate) async fn open_picker(
     announce_session(&app);
     watch_screen(app.clone());
     if let Err(err) = PickerKey::take(&app) {
-        eprintln!("could not take the picker keys, so only the bar works: {err}");
+        log::warn!("could not take the picker keys, so only the bar works: {err}");
     }
     Ok(())
 }
@@ -60,7 +60,7 @@ pub(crate) fn prepare(app: AppHandle) {
             return;
         };
         if let Err(err) = prepare_overlays(&app, &sources.displays) {
-            eprintln!("could not make the picker overlays ahead of time: {err:#}");
+            log::warn!("could not make the picker overlays ahead of time: {err:#}");
         }
     });
 }
@@ -150,7 +150,7 @@ impl KeySet for PickerKey {
     fn press(self, app: &AppHandle) {
         if self == Self::Escape {
             if let Err(err) = close(app, None) {
-                eprintln!("{err:#}");
+                log::error!("{err:#}");
             }
             return;
         }

@@ -35,4 +35,4 @@ body:
     id: logs
     attributes:
       label: Logs or screenshots
-      description: Anything printed in the terminal running `bun tauri dev`, or a screenshot.
+      description: The app's log, `~/Library/Logs/com.aidankmcalister.screen-recorder/screen-recorder.log` (in Finder, Go > Go to Folder and paste the folder). It holds only warnings, errors and crashes, and the app never sends it anywhere. Paste the end of it, and add a screenshot if it helps.

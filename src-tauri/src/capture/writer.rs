@@ -5,14 +5,15 @@
 
 use std::{
     path::Path,
-    sync::{Arc, Mutex, mpsc},
+    sync::{Arc, Mutex},
+    time::Duration,
 };
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Result, anyhow, bail};
 use cidre::{
     arc, av,
     av::AssetWriterStatus as Status,
-    cf, cm, define_obj_type, ns, objc, os,
+    blocks, cf, cm, define_obj_type, ns, objc, os,
     sc::{
         self,
         stream::{Delegate, DelegateImpl, Output, OutputImpl},
@@ -22,7 +23,7 @@ use cidre::{
 use super::Audio;
 use super::plan::CaptureSize;
 use super::timeline::Timeline;
-use crate::util::lock;
+use crate::util::{lock, wait};
 
 pub(super) struct RecorderState {
     writer: arc::R<av::AssetWriter>,
@@ -281,13 +282,11 @@ pub(super) fn finish_writing(recorder: &mut Recorder, video_end: f64) -> Result<
     }
     let end = cm::Time::with_secs(video_end.max(first_frame_time), 1_000_000_000);
     if let Err(err) = state.writer.end_session_at_src_time(end) {
-        eprintln!("could not end the video at the stop time: {err:?}");
+        log::warn!("could not end the video at the stop time: {err:?}");
     }
-    let (done_tx, done_rx) = mpsc::channel();
-    state.writer.finish_writing_with_ch(move || {
-        let _ = done_tx.send(());
-    });
-    done_rx.recv().context("the file writer never finished")?;
+    let (done, mut on_done) = blocks::comp0();
+    state.writer.finish_writing_with_ch_block(&mut on_done);
+    wait("finishing the video", Duration::from_secs(30), done)?;
     if state.writer.status() != Status::Completed {
         return Err(write_error(&state.writer));
     }

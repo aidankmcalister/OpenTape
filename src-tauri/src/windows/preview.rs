@@ -58,6 +58,6 @@ fn hold_keys(app: &AppHandle, is_over: bool) {
         PreviewKey::give_back(app)
     };
     if let Err(err) = keys {
-        eprintln!("could not take or give back the preview keys: {err}");
+        log::warn!("could not take or give back the preview keys: {err}");
     }
 }

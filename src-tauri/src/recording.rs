@@ -1,4 +1,9 @@
-use std::{path::PathBuf, sync::Mutex};
+use std::{
+    path::PathBuf,
+    sync::Mutex,
+    thread,
+    time::{Duration, Instant},
+};
 
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
@@ -210,29 +215,43 @@ pub(crate) async fn restart_recording(
 }
 
 #[tauri::command]
-pub(crate) async fn stop_recording(app: AppHandle, state: State<'_, RecordingState>) -> CmdResult {
-    let running = state.take_running(Action::Stop, None)?;
-    announce_status(&app);
-    keep_recording(&app, running, None).await?;
+pub(crate) async fn stop_recording(app: AppHandle) -> CmdResult {
+    stop(&app, None, None).await?;
     Ok(())
 }
 
 async fn capture_stopped(app: AppHandle, recording_number: u64, reason: String) {
-    let state = app.state::<RecordingState>();
-    let Ok(running) = state.take_running(Action::Stop, Some(recording_number)) else {
-        return;
-    };
-    announce_status(&app);
-    if let Err(err) = keep_recording(&app, running, Some(reason)).await {
-        eprintln!("could not keep the recording after capture stopped: {err:#}");
+    if let Err(err) = stop(&app, Some(recording_number), Some(reason)).await {
+        log::error!("could not keep the recording after capture stopped: {err:#}");
     }
 }
 
-async fn keep_recording(
+pub(crate) fn stop_before_quit(app: &AppHandle) {
+    let state = app.state::<RecordingState>();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while Instant::now() < deadline {
+        match state.status().phase {
+            Phase::Idle => return,
+            Phase::Starting | Phase::Stopping => thread::sleep(Duration::from_millis(100)),
+            Phase::Recording | Phase::Paused => {
+                if let Err(err) = tauri::async_runtime::block_on(stop(app, None, None)) {
+                    log::error!("could not keep the recording while quitting: {err:#}");
+                }
+            }
+        }
+    }
+    log::error!("quit before the recording finished");
+}
+
+async fn stop(
     app: &AppHandle,
-    running: RunningRecording,
+    recording_number: Option<u64>,
     reason: Option<String>,
 ) -> Result<()> {
+    let running = app
+        .state::<RecordingState>()
+        .take_running(Action::Stop, recording_number)?;
+    announce_status(app);
     let saved = run_blocking(move || running.stop()).await;
     let saved = match reason {
         Some(reason) => saved.context(reason),

@@ -255,7 +255,7 @@ fn icon_data_url(pid: u32) -> Option<String> {
         Some(data.to_vec())
     });
     let png = png.unwrap_or_else(|err| {
-        eprintln!("could not draw the icon of app {pid}: {err:#}");
+        log::warn!("could not draw the icon of app {pid}: {err:#}");
         None
     });
     png.map(|bytes| format!("data:image/png;base64,{}", STANDARD.encode(bytes)))

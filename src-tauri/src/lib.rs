@@ -16,7 +16,7 @@ use geometry::{Frame, Point};
 use picker::{PickerKey, Session};
 use recording::RecordingStatus;
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, EventTarget, Manager};
+use tauri::{AppHandle, Emitter, EventTarget, Manager, RunEvent};
 use tauri_plugin_global_shortcut::{
     Error as ShortcutError, GlobalShortcutExt, Shortcut, ShortcutState,
 };
@@ -94,7 +94,24 @@ fn quit(app: AppHandle) {
 }
 
 pub fn run() -> tauri::Result<()> {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        log::error!("{info}");
+        default_hook(info);
+    }));
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            if let Err(err) = current_recording::commands::show_again(app) {
+                log::error!("could not show the app again: {err:#}");
+            }
+        }))
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Warn)
+                .max_file_size(1_000_000)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(1))
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(recording::RecordingState::default())
@@ -125,7 +142,7 @@ pub fn run() -> tauri::Result<()> {
             if !is_dev_editor
                 && let Err(err) = app.state::<CurrentRecording>().recover(app.handle())
             {
-                eprintln!("could not recover the last recording: {err:#}");
+                log::error!("could not recover the last recording: {err:#}");
             }
             Ok(())
         })
@@ -166,5 +183,11 @@ pub fn run() -> tauri::Result<()> {
             current_recording::commands::show_export_in_finder,
             quit
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())?
+        .run(|app, event| {
+            if let RunEvent::Exit = event {
+                recording::stop_before_quit(app);
+            }
+        });
+    Ok(())
 }

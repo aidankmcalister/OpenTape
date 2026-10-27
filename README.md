@@ -61,7 +61,9 @@ The TypeScript types in `src/lib/bindings.ts` are generated from the Rust types 
 
 ## Where things go
 
-The app doesn't keep recordings. A recording waits in a hidden folder (`~/Library/Application Support/com.aidankmcalister.screen-recorder/recordings/`) only while the preview or editor shows it. Save in the preview, or Export in the editor, puts a file in `~/Downloads` (or the folder chosen in Settings); closing either window deletes the hidden copy, after asking if nothing was saved. If the app crashes, the next launch opens the last recording in the preview so it can still be saved.
+The app doesn't keep recordings. A recording waits in a hidden folder (`~/Library/Application Support/com.aidankmcalister.screen-recorder/recordings/`) only while the preview or editor shows it. Save in the preview, or Export in the editor, puts a file in `~/Downloads` (or the folder chosen in Settings); closing either window deletes the hidden copy, after asking if nothing was saved. If the app crashes, the next launch opens the last recording in the preview so it can still be saved. Quitting while recording (⌘Q, logging out or shutting down) stops the recording the way Stop does, and the next launch opens it the same way.
+
+Warnings, errors and crashes go to a small log, `~/Library/Logs/com.aidankmcalister.screen-recorder/screen-recorder.log`, that stays on your Mac. The app sends nothing anywhere.
 
 ## How it's organized
 

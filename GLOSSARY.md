@@ -21,7 +21,7 @@ The names this project uses for its own things, in code, docs and reviews. Where
 - **Record (a target):** the picker's last step. It closes the overlays and starts recording the target.
 - **Frame:** while an area or a window records, the overlay on that display stays up as the frame. It's click-through, has no controls, and dims everything but what's recorded. Not to be confused with `geometry::Frame` (a rectangle in points, and the generated `Frame` type), a video frame, or the editor's framed recording (`frameLayout`, and appearance sizes measured on a 1920-wide frame).
 - **Recording status** (`RecordingStatus`): the one copy of the recording's state, owned by Rust. It holds the phase, the time recorded and the last error. The record bar shows it and keeps no copy.
-- **Phase:** where the recording is: idle, starting, recording, paused or stopping. `next_phase` in `recording.rs` decides which action is allowed when.
+- **Phase:** where the recording is: idle, starting, recording, paused or stopping. `next_phase` in `recording.rs` decides which action is allowed when. Every way a recording ends (Stop, ScreenCaptureKit stopping by itself, quitting) goes through one `stop` that finishes the file and keeps it.
 - **Pause:** frames captured while paused are left out, so the file plays straight through.
 - **Pause timeline** (`capture/timeline.rs`): a recording's time with its pauses cut out, on the clock ScreenCaptureKit stamps frames with. The bar's timer and the video agree because both use it. Not the editor's timeline.
 - **Restart:** throws away what's been recorded and records the same target again, after a native alert. It pauses while asking, so the alert never ends up in the recording.

@@ -10,6 +10,7 @@ use std::{
         mpsc::{self, Receiver, Sender},
     },
     thread,
+    time::Duration,
 };
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -23,8 +24,9 @@ use self::cursor_log::CursorLogger;
 use self::plan::{CapturePlan, plan_capture};
 use self::timeline::{Timeline, host_time_now};
 use self::writer::{OnStop, Recorder, StopWatcher, create_recorder, finish_writing};
-use crate::util::lock;
+use crate::util::{lock, wait};
 
+const CAPTURE_LIMIT: Duration = Duration::from_secs(10);
 const VIDEO_FILE: &str = "recording.mov";
 pub(crate) const EVENTS_FILE: &str = "events.jsonl";
 pub(crate) const META_FILE: &str = "meta.json";
@@ -44,15 +46,19 @@ impl Audio {
         let is_allowed = match av::CaptureDevice::authorization_status_for_media_type(sound) {
             Ok(av::AuthorizationStatus::Authorized) => true,
             Ok(av::AuthorizationStatus::NotDetermined) => matches!(
-                pollster::block_on(av::CaptureDevice::request_access_for_media_type(sound)),
-                Ok(true)
+                wait(
+                    "asking for the microphone",
+                    Duration::from_secs(60),
+                    av::CaptureDevice::request_access_for_media_type(sound)
+                ),
+                Ok(Ok(true))
             ),
             _ => false,
         };
         if is_allowed {
             return self;
         }
-        eprintln!("microphone access is off, so this recording has no microphone");
+        log::warn!("microphone access is off, so this recording has no microphone");
         Self {
             microphone_id: None,
             ..self
@@ -206,7 +212,7 @@ impl ActiveCapture {
                 .map_err(|err| anyhow!("could not add microphone output: {err:?}"))?;
         }
         let cursor = CursorLogger::start(&folder.join(EVENTS_FILE))?;
-        pollster::block_on(stream.start())
+        wait("starting the capture", CAPTURE_LIMIT, stream.start())?
             .map_err(|err| anyhow!("could not start capture: {err:?}"))?;
         *lock(&timeline) = Timeline::new(host_time_now());
         Ok(Self {
@@ -223,8 +229,9 @@ impl ActiveCapture {
 
     fn finish(mut self) -> Result<SavedRecording> {
         let video_end = lock(&self.timeline).video_end(host_time_now());
-        if let Err(err) = pollster::block_on(self.stream.stop()) {
-            eprintln!("capture had already stopped, keeping what it recorded: {err:?}");
+        let stopped = wait("stopping the capture", CAPTURE_LIMIT, self.stream.stop());
+        if let Err(err) = stopped.and_then(|it| it.map_err(|err| anyhow!("{err:?}"))) {
+            log::warn!("could not stop the capture, keeping what it recorded: {err:#}");
         }
         self.queue.sync(|| {});
         let cursor = self.cursor.stop();

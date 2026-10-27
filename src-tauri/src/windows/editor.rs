@@ -16,7 +16,7 @@ pub(crate) fn setup(app: &AppHandle) {
             let app = app.clone();
             tauri::async_runtime::spawn_blocking(move || {
                 if let Err(err) = app.state::<CurrentRecording>().close(&app) {
-                    eprintln!("{err:#}");
+                    log::error!("{err:#}");
                 }
             });
         }

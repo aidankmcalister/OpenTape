@@ -31,13 +31,22 @@ impl Shell for AppHandle {
         }
         let _ = PageEvent::CurrentRecording(None).send_to(self, label(from));
         let _ = PageEvent::CurrentRecording(recording.cloned()).send_to(self, label(to));
-        match to {
-            Window::Bar => bar::WINDOW.show(self),
-            Window::Preview => preview::WINDOW.show(self),
-            Window::Editor => editor::show(self)?,
-        }
-        Ok(())
+        show(self, to)
     }
+}
+
+pub(crate) fn show_again(app: &AppHandle) -> Result<()> {
+    let shown = app.state::<CurrentRecording>().shown();
+    show(app, shown.map_or(Window::Bar, |(window, _)| window))
+}
+
+fn show(app: &AppHandle, window: Window) -> Result<()> {
+    match window {
+        Window::Bar => bar::WINDOW.show(app),
+        Window::Preview => preview::WINDOW.show(app),
+        Window::Editor => editor::show(app)?,
+    }
+    Ok(())
 }
 
 fn label(window: Window) -> &'static str {

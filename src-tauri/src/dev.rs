@@ -16,7 +16,7 @@ pub(crate) fn open_editor_if_asked(app: &AppHandle) -> bool {
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         if let Err(err) = open_editor(&app, &choice) {
-            eprintln!("could not open the editor on {choice:?}: {err:#}");
+            log::error!("could not open the editor on {choice:?}: {err:#}");
         }
     });
     true

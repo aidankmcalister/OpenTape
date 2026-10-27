@@ -1,12 +1,16 @@
 use std::{
+    pin::pin,
     sync::{
-        Mutex, MutexGuard, PoisonError,
+        Arc, Mutex, MutexGuard, PoisonError,
         atomic::{AtomicU64, Ordering},
     },
-    thread,
-    time::Duration,
+    task::{self, Poll, Wake, Waker},
+    thread::{self, Thread},
+    time::{Duration, Instant},
 };
 
+use anyhow::ensure;
+use objc2::MainThreadMarker;
 use serde::{Serialize, Serializer};
 
 pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -17,6 +21,41 @@ pub(crate) async fn run_blocking<T: Send + 'static>(
     job: impl FnOnce() -> anyhow::Result<T> + Send + 'static,
 ) -> anyhow::Result<T> {
     tauri::async_runtime::spawn_blocking(job).await?
+}
+
+pub(crate) fn wait<T>(
+    what: &str,
+    limit: Duration,
+    job: impl Future<Output = T>,
+) -> anyhow::Result<T> {
+    ensure!(
+        MainThreadMarker::new().is_none(),
+        "{what} can't wait on the main thread"
+    );
+    let waker = Waker::from(Arc::new(Unpark(thread::current())));
+    let mut context = task::Context::from_waker(&waker);
+    let mut job = pin!(job);
+    let deadline = Instant::now() + limit;
+    loop {
+        if let Poll::Ready(value) = job.as_mut().poll(&mut context) {
+            return Ok(value);
+        }
+        let left = deadline.saturating_duration_since(Instant::now());
+        ensure!(
+            !left.is_zero(),
+            "{what} took longer than {} seconds",
+            limit.as_secs_f64()
+        );
+        thread::park_timeout(left);
+    }
+}
+
+struct Unpark(Thread);
+
+impl Wake for Unpark {
+    fn wake(self: Arc<Self>) {
+        self.0.unpark();
+    }
 }
 
 pub(crate) type CmdResult<T = ()> = Result<T, CommandError>;
@@ -92,6 +131,32 @@ mod tests {
             Ok(())
         }
         assert_eq!(json(not_recording().unwrap_err()), r#""not recording""#);
+    }
+
+    #[test]
+    fn wait_should_give_the_answer_or_say_what_took_too_long() {
+        let limit = Duration::from_millis(50);
+        assert_eq!(
+            wait("a ready job", limit, std::future::ready(7)).unwrap(),
+            7
+        );
+        let late = tauri::async_runtime::spawn_blocking(|| {
+            thread::sleep(Duration::from_millis(20));
+            8
+        });
+        assert_eq!(
+            wait("a late job", Duration::from_secs(5), late)
+                .unwrap()
+                .unwrap(),
+            8
+        );
+        let started = Instant::now();
+        let stuck = wait("starting the capture", limit, std::future::pending::<()>());
+        assert!(started.elapsed() >= limit);
+        assert_eq!(
+            stuck.unwrap_err().to_string(),
+            "starting the capture took longer than 0.05 seconds"
+        );
     }
 
     const FAST: Duration = Duration::from_millis(1);

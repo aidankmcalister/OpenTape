@@ -30,8 +30,8 @@ export function useAppSettings() {
       if (folder) change({ saveFolder: folder });
     },
     version,
-    openNotices: () => invoke("open_notices").catch(console.error),
-    openRepo: () => invoke("open_repo").catch(console.error),
+    openNotices: () => void invoke("open_notices").catch(console.error),
+    openRepo: () => void invoke("open_repo").catch(console.error),
     exportSettings: readExport(settings?.export),
     newProject: settings && {
       ...NEW_PROJECT,

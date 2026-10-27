@@ -126,9 +126,9 @@ export function useCaptureOptions() {
     camera: devices.cameras.find(({ id }) => id === options.cameraId) ?? null,
     microphone,
     systemAudio,
-    chooseCamera: (anchor: HTMLElement) => chooseDevice(anchor, "cameras"),
+    chooseCamera: (anchor: HTMLElement) => void chooseDevice(anchor, "cameras"),
     chooseMicrophone: (anchor: HTMLElement) =>
-      chooseDevice(anchor, "microphones"),
+      void chooseDevice(anchor, "microphones"),
     toggleSystemAudio: () =>
       setOptions((current) => ({
         ...current,
@@ -149,7 +149,7 @@ export function useElapsedMs({ status, receivedAt }: Timer): number {
 }
 
 function quit() {
-  return invoke("quit").catch(console.error);
+  void invoke("quit").catch(console.error);
 }
 
 async function popupBelow(

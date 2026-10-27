@@ -54,7 +54,7 @@ pub(crate) fn with_ns_window(
             return;
         };
         if let Err(err) = catch(|| change(ns_window)) {
-            eprintln!("could not change the {} window: {err:#}", target.label());
+            log::warn!("could not change the {} window: {err:#}", target.label());
         }
     })
 }
@@ -63,7 +63,7 @@ pub(crate) fn float_panel(ns_window: &NSWindow, level: NSWindowLevel) {
     let panel_class: &AnyClass = FloatingPanel::class();
     let object: &AnyObject = ns_window.as_ref();
     if panel_class.instance_size() > object.class().instance_size() {
-        eprintln!("the window can't become a panel, so it won't show over full-screen apps");
+        log::warn!("the window can't become a panel, so it won't show over full-screen apps");
     } else {
         let window: *const AnyObject = object;
         unsafe { ffi::object_setClass(window.cast_mut(), panel_class) };
@@ -129,14 +129,14 @@ pub(crate) async fn ask_in_background(app: &AppHandle, alert: Alert) -> Result<C
 
 pub(crate) fn ask(app: &AppHandle, alert: Alert) -> Choice {
     if MainThreadMarker::new().is_some() {
-        eprintln!("an alert was asked on the main thread, so it was canceled");
+        log::warn!("an alert was asked on the main thread, so it was canceled");
         return Choice::Cancel;
     }
     let activate = run_on_main_thread(app, |main_thread| {
         NSApplication::sharedApplication(main_thread).activate();
     });
     if let Err(err) = activate {
-        eprintln!("could not bring the app forward for an alert: {err:#}");
+        log::warn!("could not bring the app forward for an alert: {err:#}");
     }
     let buttons = match alert.second {
         Some(second) => MessageDialogButtons::YesNoCancelCustom(
