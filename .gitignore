@@ -25,3 +25,8 @@ dist-ssr
 
 /temp
 /spikes
+
+# Local agent and tool folders
+/.agents
+/.claude
+/skills-lock.json

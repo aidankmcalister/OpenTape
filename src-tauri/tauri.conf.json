@@ -56,7 +56,19 @@
       }
     ],
     "security": {
-      "csp": null,
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' asset: http://asset.localhost data:",
+        "media-src": "asset: http://asset.localhost",
+        "font-src": "'self'",
+        "connect-src": "ipc: http://ipc.localhost",
+        "object-src": "'none'",
+        "base-uri": "'none'",
+        "form-action": "'none'",
+        "frame-ancestors": "'none'"
+      },
       "assetProtocol": {
         "enable": true,
         "scope": ["$APPDATA/recordings/**"]
@@ -74,11 +86,14 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "signingIdentity": "screen-recorder dev"
+      "signingIdentity": "screen-recorder dev",
+      "minimumSystemVersion": "15.0",
+      "entitlements": "./Entitlements.plist"
     },
     "copyright": "Copyright © 2026 Aidan McAlister. MIT License.",
     "category": "Video",
     "resources": ["THIRD-PARTY-NOTICES.txt"],
-    "shortDescription": "A small, free, open-source screen recorder for macOS."
+    "shortDescription": "A small, free, open-source screen recorder for macOS.",
+    "longDescription": "Record a display, a window or an area of your Mac with the microphone and system audio. Save the clip as it is, or open it in a simple editor to add zooms, a smoothed cursor, a background and cuts, then export an MP4 or GIF."
   }
 }

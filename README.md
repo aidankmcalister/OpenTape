@@ -16,6 +16,10 @@ A small, free, open-source screen recorder for macOS, for demos, social posts an
 
 Early, unreleased and macOS only. Everything listed above works. Camera recording isn't built yet, and captions, annotations, blur, highlights and title cards are planned.
 
+## Download
+
+There's no signed build to download yet. Until there is, build it from source: install the requirements below, then follow Run it, or run `bun tauri build` for an app in `src-tauri/target/release/bundle/macos/`. That needs the signing certificate described under Run it.
+
 ## Requirements
 
 - macOS 15 or later. The capture code is built against macOS 15 APIs (`macos_15_0` in `src-tauri/Cargo.toml`). It's developed and tested on macOS 26 on Apple silicon.
