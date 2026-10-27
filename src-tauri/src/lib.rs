@@ -159,6 +159,7 @@ pub fn run() -> tauri::Result<()> {
             settings::set_settings,
             settings::choose_save_folder,
             settings::open_notices,
+            settings::open_repo,
             current_recording::commands::save_project,
             current_recording::commands::add_background,
             current_recording::commands::export_recording,

@@ -31,6 +31,7 @@ export function useAppSettings() {
     },
     version,
     openNotices: () => invoke("open_notices").catch(console.error),
+    openRepo: () => invoke("open_repo").catch(console.error),
     exportSettings: readExport(settings?.export),
     newProject: settings && {
       ...NEW_PROJECT,

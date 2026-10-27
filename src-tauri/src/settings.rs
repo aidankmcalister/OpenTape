@@ -122,6 +122,19 @@ pub(crate) async fn open_notices(app: AppHandle) -> CmdResult {
     Ok(())
 }
 
+const REPO_URL: &str = "https://github.com/aidankmcalister/screen-recorder";
+
+#[tauri::command]
+pub(crate) async fn open_repo() -> CmdResult {
+    run_blocking(|| {
+        let status = Command::new("/usr/bin/open").arg(REPO_URL).status()?;
+        ensure!(status.success(), "could not open {REPO_URL}");
+        Ok(())
+    })
+    .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -32,6 +32,7 @@ export default function Sidebar({
   cursor,
   app,
   sound,
+  hasSound,
   panel,
   onPanelChange,
   dialog,
@@ -41,11 +42,13 @@ export default function Sidebar({
   cursor: CursorTrack;
   app: AppSettings;
   sound: SoundTrack[] | null;
+  hasSound: boolean;
   panel: SidebarPanel;
   onPanelChange: (panel: SidebarPanel) => void;
   dialog: EditorDialog | null;
   onDialogChange: (dialog: EditorDialog | null) => void;
 }) {
+  const shown = panel === "sound" && !hasSound ? "background" : panel;
   const dialogProps = (id: EditorDialog) => ({
     open: dialog === id,
     onOpenChange: (open: boolean) => onDialogChange(open ? id : null),
@@ -54,12 +57,20 @@ export default function Sidebar({
     <Island className="flex w-86 shrink-0">
       <nav className="flex w-12 shrink-0 flex-col items-center gap-1 py-3 hairline-r">
         {PANELS.map(({ id, label, Icon }) => (
-          <RailTip key={id} label={label}>
+          <RailTip
+            key={id}
+            label={
+              id === "sound" && !hasSound
+                ? "This recording has no sound"
+                : label
+            }
+          >
             <Button
-              variant={id === panel ? "selected" : "ghost"}
+              variant={id === shown ? "selected" : "ghost"}
               size="icon"
               aria-label={label}
-              aria-pressed={id === panel}
+              aria-pressed={id === shown}
+              disabled={id === "sound" && !hasSound}
               onClick={() => onPanelChange(id)}
             >
               <Icon />
@@ -71,7 +82,12 @@ export default function Sidebar({
           <ShortcutsSheet {...dialogProps("shortcuts")} />
         </RailTip>
         <RailTip label="GitHub">
-          <Button variant="ghost" size="icon" aria-label="GitHub" disabled>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="GitHub"
+            onClick={app.openRepo}
+          >
             <GitHubMark />
           </Button>
         </RailTip>
@@ -84,9 +100,9 @@ export default function Sidebar({
         </RailTip>
       </nav>
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-        {panel === "cursor" ? (
+        {shown === "cursor" ? (
           <CursorPanel edits={edits} track={cursor} />
-        ) : panel === "sound" ? (
+        ) : shown === "sound" ? (
           <SoundPanel edits={edits} tracks={sound} />
         ) : (
           <AppearancePanel edits={edits} />

@@ -20,6 +20,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { Toggle } from "@/components/ui/toggle";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { Playback, useTimeMap } from "@/hooks/editor/usePlayback";
 import type { Edits } from "@/hooks/editor/useProject";
 import { useClockValue } from "@/hooks/useVideoClock";
@@ -32,12 +37,14 @@ export default function Transport({
   playback,
   moves,
   edits,
+  hasSound,
   isAddOpen,
   onAddOpenChange,
 }: {
   playback: Playback;
   moves: ReturnType<typeof useTimeMap>;
   edits: Edits;
+  hasSound: boolean;
   isAddOpen: boolean;
   onAddOpenChange: (isOpen: boolean) => void;
 }) {
@@ -132,14 +139,20 @@ export default function Transport({
         >
           <Repeat />
         </Toggle>
-        <Toggle
-          size="icon"
-          aria-label="Mute"
-          pressed={playback.isMuted}
-          onPressedChange={playback.toggleSound}
-        >
-          {playback.isMuted ? <VolumeX /> : <Volume2 />}
-        </Toggle>
+        <Tooltip disabled={hasSound}>
+          <TooltipTrigger render={<span className="inline-flex" />}>
+            <Toggle
+              size="icon"
+              aria-label="Mute"
+              pressed={playback.isMuted && hasSound}
+              disabled={!hasSound}
+              onPressedChange={playback.toggleSound}
+            >
+              {playback.isMuted ? <VolumeX /> : <Volume2 />}
+            </Toggle>
+          </TooltipTrigger>
+          <TooltipContent>This recording has no sound</TooltipContent>
+        </Tooltip>
         <Separator orientation="vertical" className="mx-2 my-3" />
         <TimeReadout clock={playback.clock} at={edits.time.at} />
       </div>

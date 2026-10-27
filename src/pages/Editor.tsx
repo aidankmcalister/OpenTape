@@ -66,6 +66,7 @@ function Workspace({
   const { ref: trackRef, size: track } = useElementSize<HTMLDivElement>();
   const cursor = useCursor();
   const soundTracks = useSoundTracks();
+  const hasSound = soundTracks === null || soundTracks.length > 0;
   const edits = useProject(
     playback.clock,
     playback.durationMs,
@@ -164,6 +165,7 @@ function Workspace({
           cursor={cursor}
           app={app}
           sound={soundTracks}
+          hasSound={hasSound}
           panel={panel}
           onPanelChange={setPanel}
           dialog={dialog}
@@ -195,6 +197,7 @@ function Workspace({
               playback={playback}
               moves={moves}
               edits={edits}
+              hasSound={hasSound}
               isAddOpen={isAddOpen}
               onAddOpenChange={setIsAddOpen}
             />
