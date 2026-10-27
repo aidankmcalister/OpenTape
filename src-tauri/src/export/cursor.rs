@@ -25,12 +25,14 @@ pub(crate) struct CursorPoint {
 }
 
 #[derive(Debug, Clone, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "bindings.ts")]
 pub(crate) struct ExportCursor {
     pub(super) points: Vec<CursorPoint>,
     pub(super) images: Vec<CursorImage>,
     pub(super) unit: f64,
     pub(super) dot: f64,
+    pub(super) outside_fade: f64,
 }
 
 pub(super) struct Pictures(Vec<Retained<CGImage>>);
@@ -85,14 +87,13 @@ impl ExportCursor {
         height: u32,
         pictures: &Pictures,
     ) -> Result<Option<Retained<CIImage>>> {
-        let Some(point) = self.at(now).filter(|point| point.alpha > 0.0) else {
+        let Some(mut point) = self.at(now) else {
             return Ok(None);
         };
         let tip_x = video.x + point.x * video.width;
         let tip_y = video.y + point.y * video.height;
-        let is_inside = (recording.x..=recording.x + recording.width).contains(&tip_x)
-            && (recording.y..=recording.y + recording.height).contains(&tip_y);
-        if !is_inside {
+        point.alpha *= self.outside_alpha(tip_x, tip_y, recording);
+        if point.alpha <= 0.0 {
             return Ok(None);
         }
         let px = self.unit * video.width * point.scale;
@@ -107,6 +108,18 @@ impl ExportCursor {
             tip_x - hot.x,
             f64::from(height) - tip_y - hot.y,
         )))
+    }
+
+    fn outside_alpha(&self, tip_x: f64, tip_y: f64, recording: &PixelRect) -> f64 {
+        if self.outside_fade <= 0.0 {
+            return 1.0;
+        }
+        let share_x = (tip_x - recording.x) / recording.width;
+        let share_y = (tip_y - recording.y) / recording.height;
+        let outside = [-share_x, share_x - 1.0, -share_y, share_y - 1.0]
+            .into_iter()
+            .fold(0.0, f64::max);
+        (1.0 - outside / self.outside_fade).clamp(0.0, 1.0)
     }
 
     fn picture_image(
@@ -208,6 +221,7 @@ mod tests {
             images: vec![],
             unit: 0.001,
             dot: 0.0,
+            outside_fade: 0.0,
         };
         let middle = cursor.at(1.5).unwrap();
         assert!((middle.x - 0.4).abs() < 1e-9);
@@ -216,5 +230,28 @@ mod tests {
         assert_eq!(cursor.at(1.6).unwrap().image, 2);
         assert_eq!(cursor.at(0.0).unwrap().x, 0.2);
         assert_eq!(cursor.at(3.0).unwrap().x, 0.6);
+    }
+
+    #[test]
+    fn hide_outside_fades_the_cursor_as_its_tip_leaves_the_recording_like_the_stage() {
+        let recording = PixelRect {
+            x: 100.0,
+            y: 50.0,
+            width: 1000.0,
+            height: 500.0,
+        };
+        let mut cursor = ExportCursor {
+            points: vec![],
+            images: vec![],
+            unit: 0.001,
+            dot: 0.0,
+            outside_fade: 0.03,
+        };
+        assert_eq!(cursor.outside_alpha(600.0, 300.0, &recording), 1.0);
+        assert_eq!(cursor.outside_alpha(1100.0, 550.0, &recording), 1.0);
+        assert!((cursor.outside_alpha(1110.0, 300.0, &recording) - 2.0 / 3.0).abs() < 1e-9);
+        assert_eq!(cursor.outside_alpha(600.0, 650.0, &recording), 0.0);
+        cursor.outside_fade = 0.0;
+        assert_eq!(cursor.outside_alpha(600.0, 650.0, &recording), 1.0);
     }
 }

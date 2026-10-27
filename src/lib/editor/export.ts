@@ -103,7 +103,7 @@ export function exportLayout(
     })),
     rings: exportRings(rings, regions, scale),
     cursor: cursor
-      ? exportCursor(cursor, regions, appearance.cursor, durationMs)
+      ? exportCursor(cursor, regions, appearance.cursor, durationMs, clips)
       : null,
     sound: mixVolumes(sound),
   };

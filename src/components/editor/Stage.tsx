@@ -14,6 +14,7 @@ import {
   cursorPath,
   cursorPictures,
   cursorUnit,
+  outsideAlpha,
   plainOr,
   type CursorTrack,
   type RingEvent,
@@ -29,6 +30,7 @@ import {
   regionsAt,
   type Region,
 } from "@/lib/editor/regions";
+import type { Clip } from "@/lib/editor/clips";
 import type { Clock } from "@/lib/time";
 import Island from "./Island";
 import { hueOf, REGION_ICONS } from "./timeline/kinds";
@@ -40,6 +42,7 @@ export default function Stage({
   ratio,
   clock,
   regions,
+  clips,
   rings,
   cursor,
   durationMs,
@@ -51,6 +54,7 @@ export default function Stage({
   ratio: number;
   clock: Clock;
   regions: Region[];
+  clips: Clip[];
   rings: RingEvent[];
   cursor: CursorTrack;
   durationMs: number;
@@ -119,6 +123,7 @@ export default function Stage({
                 track={cursor}
                 settings={appearance.cursor}
                 durationMs={durationMs}
+                clips={clips}
                 video={video}
                 size={recording}
                 zoomAt={zoomAt}
@@ -150,7 +155,6 @@ function ClickRings({
   );
   return shown.flatMap(({ index, progress }) => {
     const ring = rings[index];
-    const line = Math.max(2, ring.size * 0.08) * scale;
     return ringCircles(ring.style, progress, ring.size).map((circle, at) => {
       const side = circle.radius * 2 * scale;
       return (
@@ -166,7 +170,7 @@ function ClickRings({
             background: circle.isFilled ? ring.color : undefined,
             boxShadow: circle.isFilled
               ? undefined
-              : `inset 0 0 0 ${line}px ${ring.color}`,
+              : `inset 0 0 0 ${circle.line * scale}px ${ring.color}`,
           }}
         />
       );
@@ -179,6 +183,7 @@ function Cursor({
   track,
   settings,
   durationMs,
+  clips,
   video,
   size,
   zoomAt,
@@ -187,13 +192,14 @@ function Cursor({
   track: CursorTrack;
   settings: CursorSettings;
   durationMs: number;
+  clips: Clip[];
   video: Rect;
   size: Size;
   zoomAt: ZoomAt;
 }) {
   const spotAt = useMemo(
-    () => cursorPath(track, settings, durationMs),
-    [track, settings, durationMs],
+    () => cursorPath(track, settings, durationMs, clips),
+    [track, settings, durationMs, clips],
   );
   const pictures = useMemo(
     () => cursorPictures(track.images, plainOr(settings).style),
@@ -209,11 +215,15 @@ function Cursor({
       x: zoomed(video.x + spot.x * video.width, center.x, size.width),
       y: zoomed(video.y + spot.y * video.height, center.y, size.height),
     };
-    const isInside =
-      tip.x >= 0 && tip.x <= size.width && tip.y >= 0 && tip.y <= size.height;
-    return isInside ? { spot, tip, scale } : null;
+    const alpha =
+      spot.alpha *
+      outsideAlpha(settings, {
+        x: tip.x / size.width,
+        y: tip.y / size.height,
+      });
+    return alpha > 0 ? { spot: { ...spot, alpha }, tip, scale } : null;
   });
-  if (!seen || seen.spot.alpha === 0) return null;
+  if (!seen) return null;
   const { spot, tip } = seen;
   const px =
     cursorUnit(track, settings) * video.width * spot.scale * seen.scale;

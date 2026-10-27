@@ -144,7 +144,7 @@ export const DEFAULT_CURSOR: CursorSettings = {
   style: "macOS",
   alwaysArrow: false,
   smoothing: 50,
-  hidesWhenStill: true,
+  hidesWhenStill: false,
   hidesOutside: false,
   loops: false,
   stopsBeforeEnd: 0,

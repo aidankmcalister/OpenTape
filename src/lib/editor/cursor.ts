@@ -5,7 +5,7 @@ import type {
   ExportRing,
   RingStyle,
 } from "@/lib/bindings";
-import { clamp } from "@/lib/geometry";
+import { clamp, type Point } from "@/lib/geometry";
 import {
   CURSOR_STYLES,
   type CursorPaint,
@@ -23,6 +23,7 @@ import {
   type Setting,
   type Span,
 } from "./regions";
+import { type Clip, keptClips } from "./clips";
 import { FRAME_MS, STEP_MS } from "./timeline";
 import { centeredOn } from "./zoom";
 
@@ -49,7 +50,7 @@ type Event = {
 };
 
 const RING_MS = 500;
-const RING_FRAMES = 30;
+const RING_STEPS = 60;
 
 export type CursorMove = { ms: number; x: number; y: number };
 
@@ -81,7 +82,7 @@ export const NO_CURSOR: CursorTrack = {
 
 const IDLE_MS = 2000;
 const FADE_MS = 300;
-const OUTSIDE_FADE = 0.01;
+const OUTSIDE_FADE = 0.03;
 const LOOP_MS = 1000;
 const STEADY_MS = 120;
 const SHAKE_MS = 150;
@@ -117,7 +118,7 @@ export const CURSOR_SECTIONS: { title: string; settings: Setting[] }[] = [
         kind: "switch",
         key: "alwaysArrow",
         label: "Always use pointer",
-        help: "Don't change the cursor, even over links and text.",
+        help: "Keeps the arrow, even over links and text.",
       },
     ],
   },
@@ -133,14 +134,24 @@ export const CURSOR_SECTIONS: { title: string; settings: Setting[] }[] = [
         step: 5,
         unit: "%",
       },
-      { kind: "switch", key: "hidesWhenStill", label: "Hide when still" },
+      {
+        kind: "switch",
+        key: "hidesWhenStill",
+        label: "Hide when still",
+        help: "Fades the cursor out after 2 seconds without moving.",
+      },
       {
         kind: "switch",
         key: "hidesOutside",
         label: "Hide outside the recording",
-        help: "Hides the cursor while its tip is outside the recorded area, so it never hangs over the background.",
+        help: "Fades the cursor out as its tip leaves the visible recording, so it never hangs over the background.",
       },
-      { kind: "switch", key: "loops", label: "Loop back to the start" },
+      {
+        kind: "switch",
+        key: "loops",
+        label: "Loop back to the start",
+        help: "Glides the cursor back to where the video starts over the last second, so the video loops smoothly.",
+      },
       {
         kind: "slider",
         key: "stopsBeforeEnd",
@@ -149,7 +160,7 @@ export const CURSOR_SECTIONS: { title: string; settings: Setting[] }[] = [
         max: 3,
         step: 0.1,
         unit: "s",
-        help: "Stopping early hides the last move to the Stop button. Looping glides the cursor back to where it started.",
+        help: "Freezes the cursor this long before the end, so the move to the Stop button doesn't show.",
       },
     ],
   },
@@ -208,7 +219,12 @@ export const CURSOR_SECTIONS: { title: string; settings: Setting[] }[] = [
   {
     title: "Advanced",
     settings: [
-      { kind: "switch", key: "removesShakes", label: "Remove shakes" },
+      {
+        kind: "switch",
+        key: "removesShakes",
+        label: "Remove shakes",
+        help: "Drops quick jumps that come straight back, like a bumped mouse.",
+      },
       {
         kind: "slider",
         key: "shakeThreshold",
@@ -217,18 +233,20 @@ export const CURSOR_SECTIONS: { title: string; settings: Setting[] }[] = [
         max: 30,
         step: 1,
         unit: "pt",
+        help: "Only jumps at least this far count as shakes.",
         onlyWith: "removesShakes",
       },
       {
         kind: "switch",
         key: "steadiesChanges",
         label: "Steady quick cursor changes",
+        help: "Skips cursor shapes that only flash by, like a text beam crossed on the way to a button.",
       },
       {
         kind: "switch",
         key: "leadsHovers",
         label: "Keep in sync with hovers",
-        help: "Starts each move a moment early, so the cursor reaches a button before it lights up.",
+        help: "Makes up for the smoothing delay, so the cursor reaches a button as it lights up.",
       },
     ],
   },
@@ -404,6 +422,7 @@ export function plainOr(settings: CursorSettings): CursorSettings {
     alwaysArrow: false,
     smoothing: 0,
     hidesWhenStill: false,
+    hidesOutside: false,
     loops: false,
     stopsBeforeEnd: 0,
     angle: 0,
@@ -434,6 +453,7 @@ export function cursorPath(
   track: CursorTrack,
   chosen: CursorSettings,
   durationMs: number,
+  clips: Clip[] = [],
 ): (ms: number) => CursorSpot | null {
   const settings = plainOr(chosen);
   if (settings.mode === "Hidden" || track.moves.length === 0) return () => null;
@@ -449,7 +469,9 @@ export function cursorPath(
     settings.leadsHovers && settings.smoothing > 0
       ? (damping / stiffness) * 1000
       : 0;
-  const stopMs = durationMs - settings.stopsBeforeEnd * 1000;
+  const kept = keptClips(clips, durationMs);
+  const [startMs, endMs] = [kept[0].startMs, kept[kept.length - 1].endMs];
+  const stopMs = endMs - settings.stopsBeforeEnd * 1000;
   const targetAt = (ms: number) =>
     positionAt(moves, Math.min(ms + leadMs, stopMs));
   const steps: Omit<CursorSpot, "alpha" | "scale" | "kind">[] = [];
@@ -477,25 +499,26 @@ export function cursorPath(
       index > 0 &&
       (move.x !== moves[index - 1].x || move.y !== moves[index - 1].y),
   );
-  return (ms) => {
+  const stepAt = (ms: number) => {
     const index = clamp(ms / STEP_MS, 0, steps.length - 1);
     const [from, to] = [steps[Math.floor(index)], steps[Math.ceil(index)]];
     const share = index - Math.floor(index);
+    const mix = (key: "x" | "y" | "angle") =>
+      from[key] + (to[key] - from[key]) * share;
+    return { x: mix("x"), y: mix("y"), angle: mix("angle") };
+  };
+  const start = stepAt(startMs);
+  return (ms) => {
+    const now = stepAt(ms);
     const back = settings.loops
-      ? smoothstep(clamp((ms - durationMs + LOOP_MS) / LOOP_MS, 0, 1))
+      ? smoothstep(clamp((ms - endMs + LOOP_MS) / LOOP_MS, 0, 1))
       : 0;
-    const mix = (key: "x" | "y" | "angle") => {
-      const at = from[key] + (to[key] - from[key]) * share;
-      return at + (steps[0][key] - at) * back;
-    };
+    const mix = (key: "x" | "y" | "angle") =>
+      now[key] + (start[key] - now[key]) * back;
     const lastMovedMs = movedAt[firstAfter(movedAt, ms) - 1]?.ms ?? 0;
-    const [x, y] = [mix("x"), mix("y")];
-    const outside = Math.max(0, -x, x - 1, -y, y - 1);
-    const alpha =
-      (settings.hidesWhenStill
-        ? clamp(1 - (ms - lastMovedMs - IDLE_MS) / FADE_MS, 0, 1)
-        : 1) *
-      (settings.hidesOutside ? clamp(1 - outside / OUTSIDE_FADE, 0, 1) : 1);
+    const alpha = settings.hidesWhenStill
+      ? clamp(1 - (ms - lastMovedMs - IDLE_MS) / FADE_MS, 0, 1)
+      : 1;
     const kind = settings.alwaysArrow
       ? "arrow"
       : (kinds[firstAfter(kinds, ms) - 1]?.kind ?? "arrow");
@@ -503,8 +526,8 @@ export function cursorPath(
       ? 1 - PRESS_DIP * pressAt(track.presses, ms)
       : 1;
     return {
-      x,
-      y,
+      x: mix("x"),
+      y: mix("y"),
       angle: mix("angle"),
       alpha,
       scale,
@@ -513,22 +536,32 @@ export function cursorPath(
   };
 }
 
+export function outsideAlpha(settings: CursorSettings, tip: Point): number {
+  if (!plainOr(settings).hidesOutside) return 1;
+  const outside = Math.max(0, -tip.x, tip.x - 1, -tip.y, tip.y - 1);
+  return clamp(1 - outside / OUTSIDE_FADE, 0, 1);
+}
+
 function withoutShakes(
   { moves, pointShare, aspect }: CursorTrack,
   threshold: number,
 ) {
   const points = (a: CursorMove, b: CursorMove) =>
     Math.hypot(a.x - b.x, (a.y - b.y) * aspect) / pointShare;
-  return moves.filter((move, index) => {
-    const [before, after] = [moves[index - 1], moves[index + 1]];
-    if (!before || !after) return true;
-    const isSpike =
-      points(move, before) > threshold &&
-      points(move, after) > threshold &&
-      points(before, after) < threshold / 2 &&
-      after.ms - before.ms < SHAKE_MS;
-    return !isSpike;
-  });
+  const kept = moves.slice(0, 1);
+  for (let index = 1; index < moves.length; index++) {
+    const anchor = kept[kept.length - 1];
+    const isSoon = (at: number) =>
+      at < moves.length && moves[at].ms - moves[index].ms < SHAKE_MS;
+    let back = index;
+    while (isSoon(back) && points(moves[back], anchor) >= threshold / 2) back++;
+    const strays = moves
+      .slice(index, back)
+      .some((move) => points(move, anchor) > threshold);
+    if (strays && isSoon(back)) index = back - 1;
+    else kept.push(moves[index]);
+  }
+  return kept;
 }
 
 function steadied(kinds: CursorTrack["kinds"]) {
@@ -581,9 +614,11 @@ export function exportCursor(
   regions: Region[],
   settings: CursorSettings,
   durationMs: number,
+  clips: Clip[] = [],
 ): ExportCursor | null {
-  const spotAt = cursorPath(track, settings, durationMs);
+  const spotAt = cursorPath(track, settings, durationMs, clips);
   if (!spotAt(0) || track.images.length === 0) return null;
+  const { style, hidesOutside } = plainOr(settings);
   const imageOf = (kind: string) =>
     Math.max(
       0,
@@ -608,7 +643,8 @@ export function exportCursor(
     ),
     images: track.images,
     unit: cursorUnit(track, settings),
-    dot: plainOr(settings).style === "Dot" ? DOT_POINTS : 0,
+    dot: style === "Dot" ? DOT_POINTS : 0,
+    outsideFade: hidesOutside ? OUTSIDE_FADE : 0,
   };
 }
 
@@ -802,9 +838,9 @@ export function ringsAt(rings: RingEvent[], regions: Region[], ms: number) {
   const now = outputAt(regions, ms);
   return rings.flatMap((ring, index) => {
     const playedMs = now - outputAt(regions, ring.ms);
-    const frame = Math.floor((playedMs / RING_MS) * RING_FRAMES);
-    return frame >= 0 && frame < RING_FRAMES
-      ? [{ index, progress: frame / RING_FRAMES }]
+    const step = Math.floor((playedMs / RING_MS) * RING_STEPS);
+    return step >= 0 && step < RING_STEPS
+      ? [{ index, progress: step / RING_STEPS }]
       : [];
   });
 }
@@ -814,6 +850,7 @@ export function ringCircles(style: RingStyle, progress: number, size: number) {
     radius: (size / 2) * (0.4 + 0.6 * at),
     alpha: 1 - at,
     isFilled: false,
+    line: size * 0.08,
   });
   if (style === "pulse") {
     return [
@@ -821,6 +858,7 @@ export function ringCircles(style: RingStyle, progress: number, size: number) {
         radius: (size / 2) * (0.3 + 0.7 * progress),
         alpha: 0.5 * (1 - progress),
         isFilled: true,
+        line: 0,
       },
     ];
   }

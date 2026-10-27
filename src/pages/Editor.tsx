@@ -179,6 +179,7 @@ function Workspace({
             ratio={playback.ratio}
             clock={playback.clock}
             regions={soloed}
+            clips={clips}
             rings={rings}
             cursor={cursor}
             durationMs={playback.durationMs}

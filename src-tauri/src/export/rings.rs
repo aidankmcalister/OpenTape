@@ -43,6 +43,7 @@ pub(super) struct Circle {
     pub(super) radius: f64,
     pub(super) alpha: f64,
     pub(super) is_filled: bool,
+    pub(super) line: f64,
 }
 
 pub(super) fn circles(style: RingStyle, progress: f64, size: f64) -> Vec<Circle> {
@@ -50,6 +51,7 @@ pub(super) fn circles(style: RingStyle, progress: f64, size: f64) -> Vec<Circle>
         radius: size / 2.0 * (0.4 + 0.6 * at),
         alpha: 1.0 - at,
         is_filled: false,
+        line: size * 0.08,
     };
     match style {
         RingStyle::Ring => vec![ring(progress)],
@@ -57,6 +59,7 @@ pub(super) fn circles(style: RingStyle, progress: f64, size: f64) -> Vec<Circle>
             radius: size / 2.0 * (0.3 + 0.7 * progress),
             alpha: 0.5 * (1.0 - progress),
             is_filled: true,
+            line: 0.0,
         }],
         RingStyle::Ripple => [progress, progress - 0.3]
             .into_iter()
@@ -71,6 +74,10 @@ impl ExportRing {
         (0.0..RING_SECONDS).contains(&(now - self.t))
     }
 
+    fn step(&self, now: f64) -> u32 {
+        ((now - self.t) / RING_SECONDS * RING_STEPS).floor() as u32
+    }
+
     pub(super) fn image(
         &self,
         now: f64,
@@ -81,7 +88,7 @@ impl ExportRing {
     ) -> Result<Retained<CIImage>> {
         let size = (self.size * zoom_scale).round();
         let center = (size + 8.0).ceil() / 2.0;
-        let step = ((now - self.t) / RING_SECONDS * RING_STEPS).round() as u32;
+        let step = self.step(now);
         let key = (self.style, self.color.clone(), size as u64, step);
         let mut pictures = pictures
             .lock()
@@ -110,18 +117,19 @@ impl ExportRing {
         let [red, green, blue] = rgb(&self.color)?;
         let (_, context) = canvas(side as usize, side as usize)?;
         let context = Some(&*context);
-        CGContext::set_line_width(context, (size * 0.08).max(2.0));
         for circle in circles(self.style, progress, size) {
             let color = CGColor::new_srgb(red, green, blue, circle.alpha);
+            let radius = circle.radius - circle.line / 2.0;
             let rect = CGRect::new(
-                CGPoint::new(center - circle.radius, center - circle.radius),
-                CGSize::new(circle.radius * 2.0, circle.radius * 2.0),
+                CGPoint::new(center - radius, center - radius),
+                CGSize::new(radius * 2.0, radius * 2.0),
             );
             if circle.is_filled {
                 CGContext::set_fill_color_with_color(context, Some(&color));
                 CGContext::fill_ellipse_in_rect(context, rect);
             } else {
                 CGContext::set_stroke_color_with_color(context, Some(&color));
+                CGContext::set_line_width(context, circle.line);
                 CGContext::stroke_ellipse_in_rect(context, rect);
             }
         }
@@ -141,9 +149,12 @@ mod tests {
             [Circle {
                 radius: 20.0,
                 alpha: 1.0,
-                is_filled: false
+                is_filled: false,
+                line: 8.0
             }]
         );
+        assert_eq!(circles(RingStyle::Ring, 1.0, 16.0)[0].line, 1.28);
+        assert_eq!(circles(RingStyle::Pulse, 0.0, 100.0)[0].line, 0.0);
         assert_eq!(circles(RingStyle::Ring, 1.0, 100.0)[0].radius, 50.0);
         assert_eq!(circles(RingStyle::Ripple, 0.2, 100.0).len(), 1);
         assert_eq!(circles(RingStyle::Ripple, 0.5, 100.0).len(), 2);
@@ -164,6 +175,23 @@ mod tests {
         assert!(ring.is_showing(2.0));
         assert!(ring.is_showing(2.49));
         assert!(!ring.is_showing(2.5));
+    }
+
+    #[test]
+    fn a_ring_steps_sixty_times_in_its_half_second_like_the_stage() {
+        let ring = ExportRing {
+            t: 1.0,
+            x: 0.5,
+            y: 0.5,
+            color: "#ffffff".into(),
+            size: 48.0,
+            style: RingStyle::Ring,
+        };
+        assert_eq!(ring.step(1.0), 0);
+        assert_eq!(ring.step(1.25), 30);
+        assert_eq!(ring.step(1.258), 30);
+        assert_eq!(ring.step(1.259), 31);
+        assert_eq!(ring.step(1.499), 59);
     }
 
     #[test]

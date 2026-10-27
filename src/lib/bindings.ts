@@ -18,7 +18,7 @@ export type DisplayInfo = { id: number, name: string, frame: Frame, size: Captur
 
 export type ExportBorder = { width: number, color: string, opacity: number, };
 
-export type ExportCursor = { points: Array<CursorPoint>, images: Array<CursorImage>, unit: number, dot: number, };
+export type ExportCursor = { points: Array<CursorPoint>, images: Array<CursorImage>, unit: number, dot: number, outsideFade: number, };
 
 export type ExportCut = { start: number, end: number, };
 
