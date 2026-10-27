@@ -1,5 +1,6 @@
-import { type Point, type Size, clamp, fitInside } from "@/lib/geometry";
+import { type Point, type Size, fitInside } from "@/lib/geometry";
 import type { ExportGradient, ExportStop } from "@/lib/bindings";
+import type { Setting } from "./regions";
 
 export type Fill = {
   kind: "gradient" | "color" | "image";
@@ -16,11 +17,11 @@ export const FRAME_SIZES = {
   "4:5": 4 / 5,
 };
 
-export type FrameSize = keyof typeof FRAME_SIZES;
+type FrameSize = keyof typeof FRAME_SIZES;
 
-export const FRAME_FITS = ["Letterbox", "Fill"];
+export const FRAME_FITS = ["Letterbox", "Fill"] as const;
 
-export type FrameFit = "Letterbox" | "Fill";
+type FrameFit = (typeof FRAME_FITS)[number];
 
 export type Appearance = {
   size: FrameSize;
@@ -64,14 +65,9 @@ export type CursorSettings = {
   leadsHovers: boolean;
 };
 
-export type Amount = {
+type Amount = {
   [K in keyof Appearance]: Appearance[K] extends number ? K : never;
 }[keyof Appearance];
-
-const OLD_BORDER_COLORS: Record<string, string> = {
-  light: "#ffffff",
-  dark: "#000000",
-};
 
 export const GRADIENTS: [string, string, string][] = [
   ["#ffb074", "#e8680a", "#8a2e0a"],
@@ -100,19 +96,20 @@ export const PRESET_NAMES: Record<"gradient" | "color", string[]> = {
   color: ["Orange", "Teal", "Blue", "Gray", "Green", "Red", "Stone", "Black"],
 };
 
-export const AMOUNTS: Record<
-  Amount,
-  { label: string; max: number; unit: "px" | "%" }
-> = {
-  padding: { label: "Padding", max: 160, unit: "px" },
-  radius: { label: "Rounded corners", max: 40, unit: "px" },
-  inset: { label: "Inset", max: 40, unit: "px" },
-  shadowOpacity: { label: "Opacity", max: 100, unit: "%" },
-  shadowBlur: { label: "Blur", max: 100, unit: "px" },
-  shadowOffsetY: { label: "Offset Y", max: 64, unit: "px" },
-  borderWidth: { label: "Width", max: 8, unit: "px" },
-  borderOpacity: { label: "Opacity", max: 100, unit: "%" },
-};
+export const AMOUNTS = Object.fromEntries(
+  Object.entries({
+    padding: { label: "Padding", max: 160, unit: "px" },
+    radius: { label: "Rounded corners", max: 40, unit: "px" },
+    inset: { label: "Inset", max: 40, unit: "px" },
+    shadowOpacity: { label: "Opacity", max: 100, unit: "%" },
+    shadowBlur: { label: "Blur", max: 100, unit: "px" },
+    shadowOffsetY: { label: "Offset Y", max: 64, unit: "px" },
+    borderWidth: { label: "Width", max: 8, unit: "px" },
+    borderOpacity: { label: "Opacity", max: 100, unit: "%" },
+  } satisfies Record<Amount, { label: string; max: number; unit: string }>).map(
+    ([key, range]) => [key, { kind: "slider", key, min: 0, step: 1, ...range }],
+  ),
+) as Record<Amount, Setting>;
 
 export type CursorPaint = {
   fill: string;
@@ -171,7 +168,7 @@ export const DEFAULT_APPEARANCE: Appearance = {
   fill: {
     kind: "gradient",
     preset: 0,
-    custom: presetGradient("gradient", 0),
+    custom: presetGradient(0),
     image: null,
   },
   padding: 64,
@@ -186,37 +183,22 @@ export const DEFAULT_APPEARANCE: Appearance = {
   cursor: DEFAULT_CURSOR,
 };
 
-function readCursorSettings(saved?: Partial<CursorSettings>): CursorSettings {
-  const cursor = { ...DEFAULT_CURSOR, ...saved };
-  return cursor.style in CURSOR_STYLES
-    ? cursor
-    : { ...cursor, style: DEFAULT_CURSOR.style };
-}
-
 export function readAppearance(saved: Partial<Appearance> = {}): Appearance {
-  const known = Object.fromEntries(
-    Object.entries(saved).filter(([key]) => key in DEFAULT_APPEARANCE),
-  );
-  const appearance = {
+  return {
     ...DEFAULT_APPEARANCE,
-    ...known,
+    ...saved,
     fill: { ...DEFAULT_APPEARANCE.fill, ...saved.fill },
-    cursor: readCursorSettings(saved.cursor),
+    cursor: { ...DEFAULT_CURSOR, ...saved.cursor },
   };
-  const borderColor = appearance.borderColor.startsWith("#")
-    ? appearance.borderColor
-    : (OLD_BORDER_COLORS[appearance.borderColor] ??
-      DEFAULT_APPEARANCE.borderColor);
-  const size = appearance.size in FRAME_SIZES ? appearance.size : "Auto";
-  return { ...appearance, borderColor, size };
 }
 
-export function fillGradient(fill: Fill): ExportGradient {
-  if (fill.preset !== "custom") return presetGradient(fill.kind, fill.preset);
-  if (fill.kind !== "color") return fill.custom;
-  const { color } = fill.custom.stops[0];
+export function fillGradient({ kind, preset, custom }: Fill): ExportGradient {
+  if (kind !== "color")
+    return preset === "custom" ? custom : presetGradient(preset);
+  const isCustom = preset === "custom";
+  const color = isCustom ? custom.stops[0].color : COLORS[preset];
   return {
-    angle: fill.custom.angle,
+    angle: isCustom ? custom.angle : 135,
     stops: [
       { color, at: 0 },
       { color, at: 1 },
@@ -224,17 +206,7 @@ export function fillGradient(fill: Fill): ExportGradient {
   };
 }
 
-function presetGradient(kind: Fill["kind"], preset: number): ExportGradient {
-  if (kind === "color") {
-    const color = COLORS[preset];
-    return {
-      angle: 135,
-      stops: [
-        { color, at: 0 },
-        { color, at: 1 },
-      ],
-    };
-  }
+function presetGradient(preset: number): ExportGradient {
   const [from, middle, to] = GRADIENTS[preset];
   const stops = [
     { color: from, at: 0 },
@@ -272,10 +244,6 @@ export function changeStop(
     i === index ? { ...stop, ...change } : stop,
   );
   return { ...gradient, stops };
-}
-
-export function clampAmount(amount: Amount, value: number): number {
-  return Math.round(clamp(value, 0, AMOUNTS[amount].max));
 }
 
 export function frameShape(appearance: Appearance, ratio: number): number {

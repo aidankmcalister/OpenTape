@@ -1,10 +1,20 @@
 # screen-recorder
 
-A small, free, open-source screen recorder for macOS, in the spirit of Screen Studio. You record a display, a window or an area from a floating bar, then save the clip or polish it in an editor.
+A small, free, open-source screen recorder for macOS, for demos, social posts and code videos. You record a display, a window or an area from a floating bar, then save the clip or polish it in an editor.
+
+## What it does
+
+- Record a display, a window or an area from a floating bar at the bottom of the screen, with the microphone and system audio. Pause and restart as you go.
+- Preview the clip when you stop, then save it as an `.mp4`, copy it, or open it in the editor.
+- Get suggested zooms where you clicked or typed, and speed-ups where you typed. Suggested zooms follow the cursor, and every suggestion is a block on the timeline you can keep, change or remove.
+- Draw a smoothed cursor from the recorded cursor path. It tilts as it moves, comes in several styles or as the real macOS pointer, and can show click rings.
+- Frame the recording on a gradient, color or picture background, with padding, rounded corners, shadow and border, at Auto, 16:9, 9:16, 1:1 or 4:5. A wide recording can fill a tall frame and keep the action in view.
+- Cut and trim the recording, add zoom and speed blocks, set the microphone and system audio volume, undo and redo, and find any action with ⌘K.
+- Export to MP4 or GIF at 720p, 1080p or 4K, 30 or 60 fps, to a file or the clipboard.
 
 ## Status
 
-Early and macOS only. Recording, pause, restart, the recording preview and Save work. The editor is being rebuilt from scratch, so it's empty for now and can't export yet. Recordings can include the microphone and system audio; there's no camera recording yet.
+Early, unreleased and macOS only. Everything listed above works. Camera recording isn't built yet, and captions, annotations, blur, highlights and title cards are planned.
 
 ## Requirements
 
@@ -22,6 +32,8 @@ bun tauri dev
 ```
 
 The app opens to the record bar at the bottom of your screen. There's no main window.
+
+To work on the editor without recording first, run `bun run dev:editor`. It opens `~/Downloads/Screen Recorder test clip/recording.mov`, with the `events.jsonl` and `meta.json` beside it if they're there. `EDIT_VIDEO=latest bun run dev:editor` opens the newest video in Downloads instead, and `EDIT_VIDEO=/path/to/video.mp4 bun run dev:editor` opens any video.
 
 To test anything involving permissions, build a debug app instead with `bun tauri build --debug`. It's signed with a local certificate named `screen-recorder dev` (`bundle.macOS.signingIdentity` in `src-tauri/tauri.conf.json`), so macOS keeps your permission between rebuilds. Make a self-signed code-signing certificate with that name in Keychain Access, or change the field.
 
@@ -45,7 +57,7 @@ The TypeScript types in `src/lib/bindings.ts` are generated from the Rust types 
 
 ## Where things go
 
-Nothing is kept. A recording waits in a hidden folder (`~/Library/Application Support/com.aidankmcalister.screen-recorder/recordings/`) only while the preview or editor shows it. Save in the preview, or Export in the editor, puts a file in `~/Downloads` (or the folder chosen in Settings); closing either window deletes the hidden copy, after asking if nothing was saved. If the app crashes, the next launch opens the last recording in the preview so it can still be saved.
+The app doesn't keep recordings. A recording waits in a hidden folder (`~/Library/Application Support/com.aidankmcalister.screen-recorder/recordings/`) only while the preview or editor shows it. Save in the preview, or Export in the editor, puts a file in `~/Downloads` (or the folder chosen in Settings); closing either window deletes the hidden copy, after asking if nothing was saved. If the app crashes, the next launch opens the last recording in the preview so it can still be saved.
 
 ## How it's organized
 
@@ -59,27 +71,29 @@ src/                     the frontend (React, TypeScript, Tailwind)
   hooks/                 state: shared hooks at the top (Tauri events, pointer hover, morph, video clock)
     bar/ picker/ …       hooks that belong to one window
   lib/                   logic: shared at the top (geometry, time) and bindings.ts, generated from Rust
-    bar/ picker/ …       logic that belongs to one window, with its tests; editor/ splits the editor by concept: appearance, regions, zoom, export, project
+    bar/ picker/ …       logic that belongs to one window, with its tests; editor/ splits the editor by concept: appearance, cursor, clips, regions, zoom, sound, export, project
 
 src-tauri/src/           the Rust side
   lib.rs                 entry point: state, window setup, page events, system-wide keys, the command list
   recording.rs           the recording status, start, pause, restart, stop
   current_recording.rs   the recording you just made: save, copy, edit, close, and which window shows
   capture/               ScreenCaptureKit capture to a crash-safe .mov, the pause timeline, the cursor log
+  export/                the editor's export: framing, zoom, cursor, click rings, sound mix, and typing spots
   picker/                the picker session, its sources and the overlay windows
   windows/               the record bar, preview and editor windows; floating.rs shows, hides and places them
   macos/                 AppKit wrappers: main thread, panels, alerts, and the glass
   geometry.rs            points and rectangles, top-left and bottom-left
+  settings.rs            app settings (settings.json)
   util.rs                small shared helpers and the error type commands return
 ```
 
-The folder says what kind of file it is, and the split matters:
+The folder says what kind of file it is:
 
 - `lib/` is plain logic and the typed wrappers for Rust commands (`name.ts`). No React.
 - `hooks/` holds React state and actions, built on the logic (`useName.ts`).
 - `components/` and `pages/` are looks only (`Name.tsx`). A component calls a hook and decides how things look.
 
-So a redesign touches `pages/` and `components/` and nothing else.
+A redesign only touches `pages/` and `components/`.
 
 The top of `components/`, `hooks/` and `lib/` is shared by every window. A subfolder (`bar`, `picker`, `preview`, `editor`) belongs to one window. A piece gets its own file when it's reused or will grow; otherwise it stays private in its parent's file. Import with `@/…` between folders and `./…` inside one.
 
@@ -93,6 +107,6 @@ Bug reports and small fixes are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) cove
 
 ## License
 
-[MIT](LICENSE). The bundled fonts, Inter and IBM Plex Mono, are under the SIL Open Font License 1.1.
+[MIT](LICENSE). The bundled fonts, Space Grotesk and IBM Plex Mono, are under the SIL Open Font License 1.1.
 
 Recording and editing are free and open source, and will stay that way. Some optional extras may cost money one day, such as pro export formats or extra effect packs. Nothing that's free would move behind a paywall.

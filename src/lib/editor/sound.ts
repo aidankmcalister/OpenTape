@@ -14,7 +14,7 @@ export const SOUND_SETTINGS = {
     kind: "switch",
     key: "isMuted",
     label: "Mute",
-    help: "Plays and exports with no sound. The speaker under the stage only quiets playback here.",
+    help: "Plays and exports with no sound. The speaker under the stage only mutes playback.",
   },
   microphone: {
     kind: "slider",

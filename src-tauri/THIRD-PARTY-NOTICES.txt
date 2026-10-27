@@ -1,6 +1,6 @@
 Third-party notices for screen-recorder
 
-screen-recorder is MIT licensed (see LICENSE). It includes the open-source software below, whose licenses require these notices to ship with it. Each license text appears once, with the packages that use it. The bundled fonts, Inter and IBM Plex Mono, are under the SIL Open Font License in the npm section.
+screen-recorder is MIT licensed (see LICENSE). It includes the open-source software below, whose licenses require these notices to ship with it. Each license text appears once, with the packages that use it. The bundled fonts, Space Grotesk and IBM Plex Mono, are under the SIL Open Font License in the npm section.
 
 ================================================================================
 npm packages
@@ -138,9 +138,9 @@ SOFTWARE.
 
 --------------------------------------------------------------------------------
 OFL-1.1
-Used by: @fontsource-variable/inter 5.3.0
+Used by: @fontsource-variable/space-grotesk 5.3.0
 
-Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter) Inter-Italic[opsz,wght].ttf: Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)
+Copyright 2020 The Space Grotesk Project Authors (https://github.com/floriankarsten/space-grotesk)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
@@ -3376,7 +3376,7 @@ SOFTWARE.
 
 --------------------------------------------------------------------------------
 MIT
-Used by: block2 0.6.2, brotli-decompressor 6.0.1, chrono 0.4.45, cidre 0.29.0, cidre-macros 0.12.0, dispatch2 0.3.1, dpi 0.1.2, objc2 0.6.5, objc2-app-kit 0.3.2, objc2-av-foundation 0.3.2, objc2-core-foundation 0.3.2, objc2-core-graphics 0.3.2, objc2-core-image 0.3.2, objc2-core-media 0.3.2, objc2-core-video 0.3.2, objc2-encode 4.1.0, objc2-exception-helper 0.1.1, objc2-foundation 0.3.2, objc2-image-io 0.3.2, objc2-quartz-core 0.3.2, objc2-web-kit 0.3.2, tauri-plugin-dialog 2.8.3, tauri-plugin-fs 2.7.1, tauri-plugin-global-shortcut 2.4.1, ts-rs 12.0.1, ts-rs-macros 12.0.1
+Used by: block2 0.6.2, brotli-decompressor 6.0.1, chrono 0.4.45, cidre 0.29.0, cidre-macros 0.12.0, dispatch2 0.3.1, dpi 0.1.2, objc2 0.6.5, objc2-app-kit 0.3.2, objc2-av-foundation 0.3.2, objc2-avf-audio 0.3.2, objc2-core-audio-types 0.3.2, objc2-core-foundation 0.3.2, objc2-core-graphics 0.3.2, objc2-core-image 0.3.2, objc2-core-media 0.3.2, objc2-core-video 0.3.2, objc2-encode 4.1.0, objc2-exception-helper 0.1.1, objc2-foundation 0.3.2, objc2-image-io 0.3.2, objc2-quartz-core 0.3.2, objc2-web-kit 0.3.2, tauri-plugin-dialog 2.8.3, tauri-plugin-fs 2.7.1, tauri-plugin-global-shortcut 2.4.1, ts-rs 12.0.1, ts-rs-macros 12.0.1
 
 MIT License
 

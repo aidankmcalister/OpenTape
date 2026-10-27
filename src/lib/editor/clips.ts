@@ -4,9 +4,7 @@ import {
   covers,
   gapsBetween,
   MIN_REGION_MS,
-  outputAt,
   type Region,
-  sourceAt,
   type Span,
   stretched,
 } from "./regions";
@@ -122,8 +120,6 @@ export function timeMap(clips: Clip[], regions: Region[], durationMs: number) {
     at,
     source,
     shown,
-    output: (sourceMs: number) => outputAt(regions, sourceMs),
-    recording: (outputMs: number) => sourceAt(regions, outputMs),
     speedAt: (sourceMs: number) => amountAt(regions, "speed", sourceMs),
     playOn(sourceMs: number, isLooping: boolean) {
       const cut = cutSpans(clips, durationMs).find((span) =>

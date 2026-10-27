@@ -5,7 +5,6 @@ import {
   cursorUnit,
   plainOr,
   exportCursor,
-  exportRings,
   readCursor,
   ringCircles,
   ringEvents,
@@ -73,27 +72,6 @@ test("a ring grows and fades, and a ripple sends a second one after it", () => {
   ]);
   expect(ringCircles("ripple", 0.2, 100)).toHaveLength(1);
   expect(ringCircles("ripple", 0.5, 100)).toHaveLength(2);
-});
-
-test("exportRings moves rings into output time and scales their size", () => {
-  const speed: Region = {
-    id: 1,
-    kind: "speed",
-    startMs: 0,
-    endMs: 2000,
-    amount: 2,
-  };
-  const ring = {
-    ms: 3000,
-    x: 0.5,
-    y: 0.5,
-    color: "#ffffff",
-    size: 40,
-    style: "ring" as const,
-  };
-  expect(exportRings([ring], [speed], 2)).toEqual([
-    { t: 2, x: 0.5, y: 0.5, color: "#ffffff", size: 80, style: "ring" },
-  ]);
 });
 
 const TRACK = readCursor(

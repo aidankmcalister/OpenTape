@@ -6,7 +6,6 @@ import { type Edits, useVisibleBox } from "@/hooks/editor/useProject";
 import {
   CURSOR_STYLES,
   type CursorMode,
-  type CursorSettings,
   type CursorStyle,
   DEFAULT_CURSOR,
 } from "@/lib/editor/appearance";
@@ -30,14 +29,9 @@ export default function CursorPanel({
 }) {
   const [isAdvancedOpen, setAdvancedOpen] = useState(false);
   const { cursor } = edits.project.appearance;
-  const change = (key: string, value: SettingValue, isPreview = false) =>
+  const change = (key: string, value: SettingValue, isPreview?: boolean) =>
     edits.setAppearance({ cursor: { ...cursor, [key]: value } }, isPreview);
-  const edit = {
-    value: (key: string) => cursor[key as keyof CursorSettings],
-    set: (key: string, value: SettingValue) => change(key, value),
-    preview: (key: string, value: SettingValue) => change(key, value, true),
-    commit: edits.commit,
-  };
+  const control = { values: cursor, onChange: change, onCommit: edits.commit };
   const isStyled = cursor.mode === "Styled";
   return (
     <>
@@ -52,7 +46,7 @@ export default function CursorPanel({
             key: "mode",
             options: Object.keys(CURSOR_MODES) as CursorMode[],
           }}
-          edit={edit}
+          {...control}
         />
         <p className="text-label leading-4 text-muted-foreground">
           {CURSOR_MODES[cursor.mode]}
@@ -71,7 +65,9 @@ export default function CursorPanel({
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    aria-label={isOpen ? "Fold advanced" : "Open advanced"}
+                    aria-label={
+                      isOpen ? "Collapse advanced" : "Expand advanced"
+                    }
                     aria-expanded={isOpen}
                     onClick={() => setAdvancedOpen(!isOpen)}
                   >
@@ -89,7 +85,11 @@ export default function CursorPanel({
               ) : null}
               {isOpen
                 ? settings.map((setting, index) => (
-                    <SettingControl key={index} setting={setting} edit={edit} />
+                    <SettingControl
+                      key={index}
+                      setting={setting}
+                      {...control}
+                    />
                   ))
                 : null}
             </Section>

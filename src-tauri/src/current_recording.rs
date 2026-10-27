@@ -220,17 +220,11 @@ impl CurrentRecording {
         Ok(folder_name(&copy))
     }
 
-    fn save(&self) -> Result<PathBuf> {
-        if let Some(saved_to) = self.saved_to() {
-            return Ok(saved_to);
+    fn save(&self, to_clipboard: bool) -> Result<PathBuf> {
+        match self.saved_to().filter(|_| !to_clipboard) {
+            Some(saved_to) => Ok(saved_to),
+            None => self.output(to_clipboard, "mp4", export::to_mp4),
         }
-        let (video, export_name) = self.video()?;
-        let output = free_path(&self.output_folder(), &export_name, "mp4", Path::exists);
-        export::to_mp4(&video, &output)?;
-        if let Some(kept) = lock(&self.kept).as_mut() {
-            kept.saved_to = Some(output.clone());
-        }
-        Ok(output)
     }
 
     fn export(
@@ -239,26 +233,30 @@ impl CurrentRecording {
         options: &ExportOptions,
         progress: impl Fn(f32),
     ) -> Result<PathBuf> {
+        self.output(
+            options.to_clipboard,
+            options.extension(),
+            |video, output| export::export(video, output, layout, options, progress),
+        )
+    }
+
+    fn output(
+        &self,
+        to_clipboard: bool,
+        extension: &str,
+        write: impl FnOnce(&Path, &Path) -> Result<()>,
+    ) -> Result<PathBuf> {
         let (video, export_name) = self.video()?;
-        let extension = options.extension();
-        let output = if options.to_clipboard {
+        let output = if to_clipboard {
             std::fs::create_dir_all(&self.folders.copies)?;
             self.folders.copies.join(file_name(&export_name, extension))
         } else {
             free_path(&self.output_folder(), &export_name, extension, Path::exists)
         };
-        export::export(&video, &output, layout, options, progress)?;
-        if let Some(kept) = lock(&self.kept).as_mut().filter(|_| !options.to_clipboard) {
+        write(&video, &output)?;
+        if let Some(kept) = lock(&self.kept).as_mut().filter(|_| !to_clipboard) {
             kept.saved_to = Some(output.clone());
         }
-        Ok(output)
-    }
-
-    fn export_copy(&self) -> Result<PathBuf> {
-        let (video, export_name) = self.video()?;
-        std::fs::create_dir_all(&self.folders.copies)?;
-        let output = self.folders.copies.join(file_name(&export_name, "mp4"));
-        export::to_mp4(&video, &output)?;
         Ok(output)
     }
 
@@ -276,7 +274,7 @@ impl CurrentRecording {
                 Choice::Cancel => return Ok(()),
                 Choice::First if is_editor => return shell.export_and_close(),
                 Choice::First => {
-                    self.save()?;
+                    self.save(false)?;
                 }
                 Choice::Second => {}
             }
@@ -293,14 +291,14 @@ impl CurrentRecording {
 
 const PREVIEW_ALERT: Alert = Alert {
     title: "Save this recording before closing?",
-    message: "Recordings aren't kept anywhere else. Saving puts an .mp4 in your save folder.",
+    message: "The recording isn't kept anywhere else. Saving puts an .mp4 in your save folder.",
     first: "Save and close",
     second: Some("Discard"),
 };
 
 const EDITOR_ALERT: Alert = Alert {
     title: "Export this recording before closing?",
-    message: "Recordings aren't kept anywhere else, so closing without exporting loses it and your edits.",
+    message: "The recording isn't kept anywhere else. Closing without exporting deletes it and your edits.",
     first: "Export and close",
     second: Some("Discard"),
 };

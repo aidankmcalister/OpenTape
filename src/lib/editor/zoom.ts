@@ -1,7 +1,7 @@
 import { type Point, clamp } from "@/lib/geometry";
 import { EASE } from "@/lib/time";
 import type { ExportZoom } from "@/lib/bindings";
-import { FRAME_MS } from "./timeline";
+import { FRAME_MS, STEP_MS } from "./timeline";
 import {
   type CursorMove,
   type CursorTrack,
@@ -12,14 +12,13 @@ import {
 import {
   outputAt,
   type Region,
-  resolveOverlaps,
+  sameKind,
   settingValue,
   sourceAt,
 } from "./regions";
 
 const ZOOM_MS = 600;
 const PAN_MS = 750;
-const STEP_MS = 1000 / 120;
 const STILL_SHARE = 0.015;
 const STILL_MS = 300;
 const TYPING_HOLD_MS = 1500;
@@ -46,7 +45,7 @@ export function zoomPath(
   durationMs = 0,
 ) {
   const floor = Math.max(crop.x, crop.y);
-  const zooms = resolveOverlaps(regions, "zoom").map((zoom) => ({
+  const zooms = sameKind(regions, "zoom").map((zoom) => ({
     amount: zoom.amount,
     startMs: outputAt(regions, zoom.startMs),
     endMs: outputAt(regions, zoom.endMs),
@@ -82,7 +81,7 @@ export function zoomPath(
     const now = () => {
       const relative = scaleAt(outputMs);
       const own = shown ? shown.centerAt(outputMs) : MIDDLE;
-      if (!baseAt) return { scale: relative, target, center: own };
+      if (!baseAt) return { scale: relative, center: own };
       const scale = relative * floor;
       const share = shown
         ? clamp((relative - 1) / (shown.amount - 1 || 1), 0, 1)
@@ -95,7 +94,6 @@ export function zoomPath(
       };
       return {
         scale,
-        target: target * floor,
         center: { x: framed("x"), y: framed("y") },
       };
     };
@@ -243,7 +241,7 @@ function grouped(
   return fits ? { min, max } : { min: cursor, max: cursor };
 }
 
-function centeredOn(spot: Point, amount: number, crop: Point): Point {
+export function centeredOn(spot: Point, amount: number, crop = WHOLE) {
   const size = 1 / amount;
   const share = (key: "x" | "y") => {
     const edge = edgeOf(crop[key], amount);

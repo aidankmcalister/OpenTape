@@ -1,11 +1,10 @@
 # Contributing
 
-Thanks for wanting to help. The project is early, so the most useful things right now are bug reports with clear steps, and small fixes.
+Thanks for wanting to help. The project is early, so bug reports with clear steps and small fixes help most right now.
 
 ## Talk first
 
-- **Bugs:** open an issue with the bug template.
-- **Ideas and bigger changes:** open an issue before writing code, so we can agree on the shape first. A pull request that lands without a discussion might not fit the plan.
+For a bug, open an issue with the bug template. For an idea or a bigger change, open an issue before writing code so we can agree on the approach. A pull request that arrives without a discussion might not fit the plan.
 
 ## Set up
 
@@ -15,16 +14,16 @@ Follow [Requirements](README.md#requirements) and [Run it](README.md#run-it) in 
 bun run check
 ```
 
-It must pass. It runs the type checks, linting, formatting and every test in TypeScript and Rust.
+It must pass. It runs the type checks, linting, formatting and every TypeScript and Rust test.
 
 ## How the code is laid out
 
 [README.md](README.md#how-its-organized) has the tree, and [GLOSSARY.md](GLOSSARY.md) names things. Use those names in code, issues and pull requests. A few rules keep the code easy to change:
 
-- **Logic, state and looks live in separate files:** `name.ts` is plain logic, `useName.ts` holds React state, and `Name.tsx` decides how it looks. Components never call Rust directly.
-- **Colors and sizes come only from the design tokens** in `src/index.css`. ESLint rejects raw colors and pixel font sizes in class names.
-- **Rust stays small.** It does what only the OS can: capture, windows and files. Logic that doesn't need the OS goes in TypeScript.
-- **Shared types are generated.** After changing a Rust type the frontend uses, run `bun run bindings` and commit `src/lib/bindings.ts`.
+- Logic, state and looks live in separate files: `name.ts` is plain logic, `useName.ts` holds React state, and `Name.tsx` decides how it looks. Components never call Rust directly.
+- Colors and sizes come only from the design tokens in `src/index.css`. ESLint rejects raw colors and pixel font sizes in class names.
+- Rust stays small and handles only what needs the OS: capture, windows and files. Everything else goes in TypeScript.
+- Shared types are generated. After changing a Rust type the frontend uses, run `bun run bindings` and commit `src/lib/bindings.ts`.
 
 ## Pull requests
 

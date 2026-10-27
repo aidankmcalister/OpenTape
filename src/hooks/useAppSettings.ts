@@ -30,6 +30,7 @@ export function useAppSettings() {
       if (folder) change({ saveFolder: folder });
     },
     version,
+    openNotices: () => invoke("open_notices").catch(console.error),
     exportSettings: readExport(settings?.export),
     newProject: settings && {
       ...NEW_PROJECT,

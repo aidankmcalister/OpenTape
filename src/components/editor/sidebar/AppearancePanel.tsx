@@ -1,10 +1,8 @@
-import { Blend, Image, Palette } from "lucide-react";
-import { Slider } from "@/components/ui/slider";
+import { Blend, Image, Palette, Wallpaper } from "lucide-react";
 import { Tabs, TabsIconTrigger, TabsList } from "@/components/ui/tabs";
 import type { Edits } from "@/hooks/editor/useProject";
 import {
   AMOUNTS,
-  clampAmount,
   COLORS,
   DEFAULT_APPEARANCE,
   fillCss,
@@ -12,13 +10,11 @@ import {
   FRAME_SIZES,
   GRADIENTS,
   PRESET_NAMES,
-  type Amount,
-  type Appearance,
   type Fill,
 } from "@/lib/editor/appearance";
 import type { SettingValue } from "@/lib/editor/regions";
 import { ColorSwatches } from "../ColorPicker";
-import { Dim, PanelHeader, Section, ValueInput } from "../Panel";
+import { Dim, PanelHeader, Section } from "../Panel";
 import SettingControl from "../timeline/SettingControl";
 import FillPicker, { ImageDrop } from "./FillPicker";
 
@@ -39,12 +35,11 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
   const isColor = appearance.fill.kind === "color";
   const presets = isColor ? COLORS : GRADIENTS;
   const changeFill = (fill: Fill) => edits.setAppearance({ fill });
-  const framing = {
-    value: (key: string) => appearance[key as "size" | "fit"],
-    set: (key: string, value: SettingValue) =>
-      edits.setAppearance({ [key]: value } as Partial<Appearance>),
-    preview: () => {},
-    commit: edits.commit,
+  const control = {
+    values: appearance,
+    onChange: (key: string, value: SettingValue, isPreview?: boolean) =>
+      edits.setAppearance({ [key]: value }, isPreview),
+    onCommit: edits.commit,
   };
   return (
     <>
@@ -57,22 +52,6 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
           })
         }
       />
-      <Section title="Size">
-        <SettingControl
-          setting={{
-            kind: "choice",
-            key: "size",
-            options: Object.keys(FRAME_SIZES),
-          }}
-          edit={framing}
-        />
-        {appearance.size !== "Auto" ? (
-          <SettingControl
-            setting={{ kind: "choice", key: "fit", options: FRAME_FITS }}
-            edit={framing}
-          />
-        ) : null}
-      </Section>
       <Section title="Fill">
         <Tabs
           value={appearance.fill.kind}
@@ -89,6 +68,12 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
                 label={label}
               />
             ))}
+            <TabsIconTrigger
+              value="wallpaper"
+              icon={<Wallpaper />}
+              label="Wallpapers"
+              disabled
+            />
           </TabsList>
         </Tabs>
         {appearance.fill.kind === "image" ? (
@@ -110,23 +95,39 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
           />
         )}
       </Section>
+      <Section title="Size">
+        <SettingControl
+          setting={{
+            kind: "choice",
+            key: "size",
+            options: Object.keys(FRAME_SIZES),
+          }}
+          {...control}
+        />
+        {appearance.size !== "Auto" ? (
+          <SettingControl
+            setting={{ kind: "choice", key: "fit", options: FRAME_FITS }}
+            {...control}
+          />
+        ) : null}
+      </Section>
       <Section title="Frame">
-        <ValueField amount="padding" edits={edits} />
-        <ValueField amount="radius" edits={edits} />
-        <ValueField amount="inset" edits={edits} />
+        <SettingControl setting={AMOUNTS.padding} {...control} />
+        <SettingControl setting={AMOUNTS.radius} {...control} />
+        <SettingControl setting={AMOUNTS.inset} {...control} />
       </Section>
       <Section title="Shadow">
-        <ValueField amount="shadowOpacity" edits={edits} />
+        <SettingControl setting={AMOUNTS.shadowOpacity} {...control} />
         <Dim
           when={appearance.shadowOpacity === 0}
           className="flex flex-col gap-2"
         >
-          <ValueField amount="shadowBlur" edits={edits} />
-          <ValueField amount="shadowOffsetY" edits={edits} />
+          <SettingControl setting={AMOUNTS.shadowBlur} {...control} />
+          <SettingControl setting={AMOUNTS.shadowOffsetY} {...control} />
         </Dim>
       </Section>
       <Section title="Border">
-        <ValueField amount="borderWidth" edits={edits} />
+        <SettingControl setting={AMOUNTS.borderWidth} {...control} />
         {appearance.borderWidth > 0 ? (
           <>
             <ColorSwatches
@@ -138,35 +139,10 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
               }
               onCommit={edits.commit}
             />
-            <ValueField amount="borderOpacity" edits={edits} />
+            <SettingControl setting={AMOUNTS.borderOpacity} {...control} />
           </>
         ) : null}
       </Section>
     </>
-  );
-}
-
-function ValueField({ amount, edits }: { amount: Amount; edits: Edits }) {
-  const { label, max, unit } = AMOUNTS[amount];
-  const value = edits.project.appearance[amount];
-  return (
-    <Slider
-      max={max}
-      value={[value]}
-      onValueChange={(next) =>
-        edits.setAppearance({ [amount]: Number(next) }, true)
-      }
-      onValueCommitted={edits.commit}
-    >
-      <span>{label}</span>
-      <ValueInput
-        label={label}
-        value={value}
-        unit={unit}
-        onChange={(next) =>
-          edits.setAppearance({ [amount]: clampAmount(amount, next) })
-        }
-      />
-    </Slider>
   );
 }

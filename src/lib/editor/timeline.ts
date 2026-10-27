@@ -13,6 +13,7 @@ export function msAtX(x: number, width: number, durationMs: number): number {
 }
 
 export const FRAME_MS = 1000 / 60;
+export const STEP_MS = 1000 / 120;
 
 export function frameStep(
   ms: number,

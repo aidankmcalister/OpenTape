@@ -63,10 +63,10 @@ export default function Timeline({
   return (
     <div
       className={cn(
-        "relative isolate flex pr-2 pb-2 transition-[height] duration-160 ease-out motion-reduce:transition-none",
+        "relative isolate flex pt-2 pr-2 pb-2 transition-[height] duration-160 ease-out motion-reduce:transition-none",
         isReflowing && "reflow",
       )}
-      style={{ height: TRACKS_TOP_PX + heightPx + TRACK_INSET_PX }}
+      style={{ height: TRACKS_TOP_PX + heightPx + 2 * TRACK_INSET_PX }}
     >
       <div className="relative shrink-0" style={{ width: GUTTER_PX }}>
         <div className="absolute inset-x-0 top-8 flex h-9 items-center gap-2 px-3 text-label font-medium text-muted-foreground">

@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { Toggle } from "@/components/ui/toggle";
-import type { Playback } from "@/hooks/editor/usePlayback";
+import type { Playback, useTimeMap } from "@/hooks/editor/usePlayback";
 import type { Edits } from "@/hooks/editor/useProject";
 import { useClockValue } from "@/hooks/useVideoClock";
 import { formatTime, type Clock } from "@/lib/time";
@@ -30,11 +30,13 @@ const SPEEDS = [0.5, 1, 1.5, 2];
 
 export default function Transport({
   playback,
+  moves,
   edits,
   isAddOpen,
   onAddOpenChange,
 }: {
   playback: Playback;
+  moves: ReturnType<typeof useTimeMap>;
   edits: Edits;
   isAddOpen: boolean;
   onAddOpenChange: (isOpen: boolean) => void;
@@ -70,7 +72,7 @@ export default function Transport({
           variant="ghost"
           size="icon"
           aria-label="Back to the start"
-          onClick={() => playback.toStart(edits.time)}
+          onClick={moves.toStart}
         >
           <SkipBack />
         </Button>
@@ -78,7 +80,7 @@ export default function Transport({
           variant="ghost"
           size="icon"
           aria-label={playback.isPlaying ? "Pause" : "Play"}
-          onClick={() => playback.togglePlay(edits.time)}
+          onClick={moves.togglePlay}
         >
           {playback.isPlaying ? <Pause /> : <Play />}
         </Button>
@@ -86,7 +88,7 @@ export default function Transport({
           variant="ghost"
           size="icon"
           aria-label="Skip to the end"
-          onClick={() => playback.toEnd(edits.time)}
+          onClick={moves.toEnd}
         >
           <SkipForward />
         </Button>

@@ -7,13 +7,14 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  initialOf,
   type Region,
   type Setting,
   type SettingValue,
 } from "@/lib/editor/regions";
 import { MARK_COLORS, type MarkColor } from "@/lib/editor/appearance";
 import { focusBox, focusBoxStyle, focusCenter } from "@/lib/editor/zoom";
-import { clamp } from "@/lib/geometry";
+import { clamp, type Point } from "@/lib/geometry";
 import { ColorSwatches } from "../ColorPicker";
 import { NumberField, ValueInput, SwitchField } from "../Panel";
 
@@ -23,52 +24,63 @@ const MARK_OPTIONS = (Object.keys(MARK_COLORS) as MarkColor[]).map((mark) => ({
   label: mark,
 }));
 
-type Edit = {
-  value: (key: string) => SettingValue;
-  set: (key: string, value: SettingValue) => void;
-  preview: (key: string, value: SettingValue) => void;
-  commit: () => void;
-  region?: Region;
-  change?: (change: Partial<Region>) => void;
-};
-
 export default function SettingControl({
   setting,
-  edit,
+  values,
+  onChange,
+  onCommit,
+  region,
+  crop,
+  onCenter,
 }: {
   setting: Setting;
-  edit: Edit;
+  values: Record<string, unknown>;
+  onChange: (key: string, value: SettingValue, isPreview?: boolean) => void;
+  onCommit: () => void;
+  region?: Region;
+  crop?: Point;
+  onCenter?: (center: Point) => void;
 }) {
-  const { region, set, value } = edit;
+  const value = (("key" in setting ? values[setting.key] : null) ??
+    initialOf(setting)) as SettingValue;
   switch (setting.kind) {
     case "slider": {
       const { key, label, min, max, step, unit, help, onlyWith } = setting;
-      if (onlyWith && !value(onlyWith)) return null;
+      if (onlyWith && !values[onlyWith]) return null;
       return (
         <Slider
           min={min}
           max={max}
           step={step}
-          value={[Number(value(key))]}
-          onValueChange={(next) => edit.preview(key, Number(next))}
-          onValueCommitted={edit.commit}
+          value={[Number(value)]}
+          onValueChange={(next) => onChange(key, Number(next), true)}
+          onValueCommitted={onCommit}
         >
           <Help text={help}>{label}</Help>
           <ValueInput
             label={label}
-            value={Number(value(key))}
+            value={Number(value)}
             unit={unit}
-            onChange={(next) => set(key, clamp(next, min, max))}
+            onChange={(next) =>
+              onChange(
+                key,
+                clamp(
+                  Number.isInteger(step) ? Math.round(next) : next,
+                  min,
+                  max,
+                ),
+              )
+            }
           />
         </Slider>
       );
     }
     case "choice":
       return (
-        <Row label={setting.label}>
+        <LabeledRow label={setting.label}>
           <Tabs
-            value={String(value(setting.key))}
-            onValueChange={(next: string) => set(setting.key, next)}
+            value={String(value)}
+            onValueChange={(next: string) => onChange(setting.key, next)}
           >
             <TabsList className="w-full">
               {setting.options.map((option) => (
@@ -84,31 +96,31 @@ export default function SettingControl({
               ))}
             </TabsList>
           </Tabs>
-        </Row>
+        </LabeledRow>
       );
     case "color":
       return (
-        <Row label={setting.label}>
+        <LabeledRow label={setting.label}>
           <ColorSwatches
             options={MARK_OPTIONS}
-            value={String(value(setting.key))}
-            onChange={(color) => set(setting.key, color)}
-            onPreview={(color) => edit.preview(setting.key, color)}
-            onCommit={edit.commit}
+            value={String(value)}
+            onChange={(color) => onChange(setting.key, color)}
+            onPreview={(color) => onChange(setting.key, color, true)}
+            onCommit={onCommit}
           />
-        </Row>
+        </LabeledRow>
       );
     case "switch":
       return (
         <SwitchField
           label={<Help text={setting.help}>{setting.label}</Help>}
-          checked={Boolean(value(setting.key))}
-          onChange={(checked) => set(setting.key, checked)}
+          checked={Boolean(value)}
+          onChange={(checked) => onChange(setting.key, checked)}
         />
       );
     case "focus":
-      return region && edit.change ? (
-        <Focus region={region} change={edit.change} />
+      return region && onCenter ? (
+        <Focus region={region} crop={crop} onCenter={onCenter} />
       ) : null;
     case "hint":
       return (
@@ -121,7 +133,7 @@ export default function SettingControl({
   }
 }
 
-function Help({ text, children }: { text?: string; children: string }) {
+export function Help({ text, children }: { text?: string; children: string }) {
   if (!text) return <span>{children}</span>;
   return (
     <Tooltip>
@@ -137,7 +149,13 @@ function Help({ text, children }: { text?: string; children: string }) {
   );
 }
 
-function Row({ label, children }: { label?: string; children: ReactNode }) {
+function LabeledRow({
+  label,
+  children,
+}: {
+  label?: string;
+  children: ReactNode;
+}) {
   if (!label) return children;
   return (
     <div className="flex items-center">
@@ -151,13 +169,15 @@ function Row({ label, children }: { label?: string; children: ReactNode }) {
 
 function Focus({
   region,
-  change,
+  crop,
+  onCenter,
 }: {
   region: Region;
-  change: (change: Partial<Region>) => void;
+  crop?: Point;
+  onCenter: (center: Point) => void;
 }) {
   const center = focusCenter(region);
-  const box = focusBox(region);
+  const box = focusBox(region, crop);
   const axes = ["x", "y"] as const;
   return (
     <div className="flex gap-2">
@@ -166,7 +186,7 @@ function Focus({
         <div className="absolute inset-x-0 top-1/2 h-px bg-hairline" />
         <div
           className="absolute border border-dashed border-highlight/60"
-          style={focusBoxStyle(region)}
+          style={focusBoxStyle(region, crop)}
         />
         <div
           className="absolute size-2 -translate-1/2 rounded-full bg-highlight"
@@ -184,9 +204,7 @@ function Focus({
             value={Math.round(center[axis] * 100)}
             unit="%"
             onChange={(percent) =>
-              change({
-                center: { ...center, [axis]: clamp(percent / 100, 0, 1) },
-              })
+              onCenter({ ...center, [axis]: clamp(percent / 100, 0, 1) })
             }
           />
         ))}

@@ -5,7 +5,7 @@ import {
 } from "./appearance";
 import { type Clip, fitToClips } from "./clips";
 import { type CursorTrack, withSuggestions } from "./cursor";
-import { type Region, REGIONS } from "./regions";
+import type { Region } from "./regions";
 import { DEFAULT_SOUND, type SoundSettings } from "./sound";
 
 export type Project = {
@@ -24,18 +24,12 @@ export const NEW_PROJECT: Project = {
   suggestionsMade: false,
 };
 
-export const PROJECT_VERSION = 1;
-
-export function projectJson(project: Project): string {
-  return JSON.stringify({ version: PROJECT_VERSION, ...project });
-}
-
 export function readProject(json: string | null, fresh = NEW_PROJECT): Project {
   if (json === null) return fresh;
   const saved: Partial<Project> = JSON.parse(json);
   return {
     appearance: readAppearance(saved.appearance),
-    regions: (saved.regions ?? []).filter(({ kind }) => kind in REGIONS),
+    regions: saved.regions ?? [],
     clips: saved.clips ?? [],
     sound: { ...DEFAULT_SOUND, ...saved.sound },
     suggestionsMade: saved.suggestionsMade ?? false,
@@ -69,24 +63,15 @@ export function editClips(
   return { ...project, clips, regions: fitToClips(project.regions, clips) };
 }
 
-export function changeAppearance(
+export function changeProject<Part extends "appearance" | "sound">(
   project: Project,
-  change: Partial<Appearance>,
+  part: Part,
+  change: Partial<Project[Part]>,
 ): Project {
-  const appearance = { ...project.appearance, ...change };
-  return JSON.stringify(appearance) === JSON.stringify(project.appearance)
+  const next = { ...project[part], ...change };
+  return JSON.stringify(next) === JSON.stringify(project[part])
     ? project
-    : { ...project, appearance };
-}
-
-export function changeSound(
-  project: Project,
-  change: Partial<SoundSettings>,
-): Project {
-  const sound = { ...project.sound, ...change };
-  return JSON.stringify(sound) === JSON.stringify(project.sound)
-    ? project
-    : { ...project, sound };
+    : { ...project, [part]: next };
 }
 
 type History<T> = { past: T[]; present: T; future: T[] };

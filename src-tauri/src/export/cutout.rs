@@ -5,7 +5,7 @@ use super::{ExportGradient, ExportLayout, PixelRect, file_url};
 use anyhow::{Context, Result};
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
-use objc2_core_foundation::{CFRetained, CGPoint, CGRect, CGSize};
+use objc2_core_foundation::{CFRetained, CGAffineTransform, CGPoint, CGRect, CGSize};
 use objc2_core_graphics::{
     CGBitmapContextCreate, CGBitmapContextCreateImage, CGBlendMode, CGColor, CGColorSpace,
     CGContext, CGGradient, CGGradientDrawingOptions, CGImage, CGImageAlphaInfo, CGPath,
@@ -81,8 +81,13 @@ pub(super) fn cutout(layout: &ExportLayout, picture: Option<&Path>) -> Result<Re
         CGContext::stroke_path(context);
     }
 
-    let image = CGBitmapContextCreateImage(context).context("could not finish the appearance")?;
+    let image = CGBitmapContextCreateImage(context).context("could not draw the background")?;
     Ok(unsafe { CIImage::imageWithCGImage(&image) })
+}
+
+pub(super) fn moved(image: &CIImage, tx: f64, ty: f64) -> Retained<CIImage> {
+    let (a, b, c, d) = (1.0, 0.0, 0.0, 1.0);
+    unsafe { image.imageByApplyingTransform(CGAffineTransform { a, b, c, d, tx, ty }) }
 }
 
 fn background_picture(path: &Path) -> Result<Retained<CGImage>> {

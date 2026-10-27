@@ -79,7 +79,7 @@ function section(title: string, notices: Notice[]) {
 const notices = [
   "Third-party notices for screen-recorder",
   "",
-  "screen-recorder is MIT licensed (see LICENSE). It includes the open-source software below, whose licenses require these notices to ship with it. Each license text appears once, with the packages that use it. The bundled fonts, Inter and IBM Plex Mono, are under the SIL Open Font License in the npm section.",
+  "screen-recorder is MIT licensed (see LICENSE). It includes the open-source software below, whose licenses require these notices to ship with it. Each license text appears once, with the packages that use it. The bundled fonts, Space Grotesk and IBM Plex Mono, are under the SIL Open Font License in the npm section.",
   "",
   section("npm packages", await npmNotices()),
   section("Rust crates", await crateNotices()),

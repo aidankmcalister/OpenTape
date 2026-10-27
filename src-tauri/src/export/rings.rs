@@ -3,14 +3,14 @@ use std::sync::Mutex;
 
 use anyhow::{Context, Result, anyhow};
 use objc2::rc::Retained;
-use objc2_core_foundation::{CGAffineTransform, CGPoint, CGRect, CGSize};
+use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use objc2_core_graphics::{CGBitmapContextCreateImage, CGColor, CGContext};
 use objc2_core_image::CIImage;
 use serde::Deserialize;
 use ts_rs::TS;
 
 use super::PixelRect;
-use super::cutout::{canvas, rgb};
+use super::cutout::{canvas, moved, rgb};
 
 const RING_SECONDS: f64 = 0.5;
 const RING_STEPS: f64 = 60.0;
@@ -97,15 +97,11 @@ impl ExportRing {
                 picture
             }
         };
-        let move_to = CGAffineTransform {
-            a: 1.0,
-            b: 0.0,
-            c: 0.0,
-            d: 1.0,
-            tx: video.x + self.x * video.width - center,
-            ty: f64::from(height) - (video.y + self.y * video.height) - center,
-        };
-        Ok(unsafe { picture.imageByApplyingTransform(move_to) })
+        Ok(moved(
+            &picture,
+            video.x + self.x * video.width - center,
+            f64::from(height) - (video.y + self.y * video.height) - center,
+        ))
     }
 
     fn picture(&self, size: f64, progress: f64) -> Result<Retained<CIImage>> {

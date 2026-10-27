@@ -2,14 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { DEFAULT_APPEARANCE, frameLayout } from "./appearance";
 import { outputAt, type Region, sourceAt } from "./regions";
 import {
-  changeAppearance,
-  changeSound,
+  changeProject,
   editClips,
   editRegions,
   historyOf,
   NEW_PROJECT,
-  projectJson,
-  PROJECT_VERSION,
   readProject,
   record,
   redo,
@@ -19,38 +16,26 @@ import { DEFAULT_SOUND } from "./sound";
 import { zoomPath, zoomTrack } from "./zoom";
 
 describe("project", () => {
-  test("changeAppearance and editRegions keep the same project when nothing changes", () => {
-    expect(changeAppearance(NEW_PROJECT, { padding: 64 })).toBe(NEW_PROJECT);
+  test("changeProject and editRegions keep the same project when nothing changes", () => {
+    expect(changeProject(NEW_PROJECT, "appearance", { padding: 64 })).toBe(
+      NEW_PROJECT,
+    );
     expect(
-      changeAppearance(NEW_PROJECT, { padding: 80 }).appearance.padding,
+      changeProject(NEW_PROJECT, "appearance", { padding: 80 }).appearance
+        .padding,
     ).toBe(80);
     expect(editRegions(NEW_PROJECT, (regions) => regions)).toBe(NEW_PROJECT);
   });
 
-  test("a saved project reads back the same, with its version", () => {
-    const project = changeAppearance(NEW_PROJECT, { padding: 80 });
-    expect(readProject(projectJson(project))).toEqual(project);
-    expect(JSON.parse(projectJson(project)).version).toBe(PROJECT_VERSION);
+  test("a saved project reads back the same", () => {
+    const project = changeProject(NEW_PROJECT, "appearance", { padding: 80 });
+    expect(readProject(JSON.stringify(project))).toEqual(project);
   });
 
   test("no file starts a new project, and an older file fills what it lacks", () => {
     expect(readProject(null)).toBe(NEW_PROJECT);
-    const fresh = changeAppearance(NEW_PROJECT, { padding: 20 });
+    const fresh = changeProject(NEW_PROJECT, "appearance", { padding: 20 });
     expect(readProject(null, fresh)).toBe(fresh);
-    const light = readProject(
-      JSON.stringify({ appearance: { borderColor: "light" } }),
-    );
-    expect(light.appearance.borderColor).toBe("#ffffff");
-    const none = readProject(
-      JSON.stringify({ appearance: { borderColor: "none" } }),
-    );
-    expect(none.appearance.borderColor).toBe(DEFAULT_APPEARANCE.borderColor);
-    const removedType = readProject(
-      JSON.stringify({
-        regions: [{ id: 1, kind: "audio", startMs: 0, endMs: 1000, amount: 0 }],
-      }),
-    );
-    expect(removedType.regions).toEqual([]);
     const older = readProject(JSON.stringify({ appearance: { padding: 12 } }));
     expect(older).toEqual({
       appearance: { ...DEFAULT_APPEARANCE, padding: 12 },
@@ -63,9 +48,11 @@ describe("project", () => {
     expect(quiet.sound).toEqual({ ...DEFAULT_SOUND, microphone: 40 });
   });
 
-  test("changeSound keeps the same project when nothing changes, so undo skips it", () => {
-    expect(changeSound(NEW_PROJECT, { microphone: 100 })).toBe(NEW_PROJECT);
-    const muted = changeSound(NEW_PROJECT, { isMuted: true });
+  test("changeProject keeps the sound the same project when nothing changes, so undo skips it", () => {
+    expect(changeProject(NEW_PROJECT, "sound", { microphone: 100 })).toBe(
+      NEW_PROJECT,
+    );
+    const muted = changeProject(NEW_PROJECT, "sound", { isMuted: true });
     expect(muted.sound).toEqual({ ...DEFAULT_SOUND, isMuted: true });
     expect(undo(record(historyOf(NEW_PROJECT), muted)).present).toBe(
       NEW_PROJECT,
@@ -115,7 +102,6 @@ describe("the frame at a moment", () => {
     expect(zoomAt(zoom, 3000)).toBeCloseTo(1.5, 5);
     expect(zoomAt(zoom, 3300)).toBeLessThan(1.1);
     expect(zoomAt(zoom, 3600)).toBe(1);
-    expect(at(zoom, 1001).zoom.target).toBe(1.5);
   });
 
   test("a short zoom eases back out from wherever it got to", () => {

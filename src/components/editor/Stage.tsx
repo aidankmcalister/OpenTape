@@ -21,12 +21,12 @@ import {
   ringsAt,
 } from "@/lib/editor/cursor";
 import { focusAt, focusBox, focusBoxStyle, zoomPath } from "@/lib/editor/zoom";
-import { type Point, rectStyle } from "@/lib/geometry";
+import { type Point, type Rect, rectStyle, type Size } from "@/lib/geometry";
 import {
   blockValue,
   outputAt,
   REGIONS,
-  winnersAt,
+  regionsAt,
   type Region,
 } from "@/lib/editor/regions";
 import type { Clock } from "@/lib/time";
@@ -142,7 +142,7 @@ function ClickRings({
   clock: Clock;
   rings: RingEvent[];
   regions: Region[];
-  video: { x: number; y: number; width: number; height: number };
+  video: Rect;
   scale: number;
 }) {
   const shown = useClockValue(clock, (seconds) =>
@@ -187,8 +187,8 @@ function Cursor({
   track: CursorTrack;
   settings: CursorSettings;
   durationMs: number;
-  video: { x: number; y: number; width: number; height: number };
-  size: { width: number; height: number };
+  video: Rect;
+  size: Size;
   zoomAt: ZoomAt;
 }) {
   const spotAt = useMemo(
@@ -254,12 +254,12 @@ function Cursor({
 }
 
 function InEffect({ clock, regions }: { clock: Clock; regions: Region[] }) {
-  const winners = useClockValue(clock, (seconds) =>
-    winnersAt(regions, seconds * 1000),
+  const shown = useClockValue(clock, (seconds) =>
+    regionsAt(regions, seconds * 1000),
   );
   return (
     <div className="pointer-events-none absolute top-3 right-3 flex flex-col items-end gap-1">
-      {winners.map((region) => {
+      {shown.map((region) => {
         const Icon = REGION_ICONS[region.kind];
         return (
           <span

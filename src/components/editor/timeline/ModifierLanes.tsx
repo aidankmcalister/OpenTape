@@ -16,11 +16,10 @@ import {
   KINDS,
   blockValue,
   covers,
-  coveredStretches,
   REGIONS,
   SUGGESTIONS,
   touchingSides,
-  winnerAt,
+  regionAt,
   type Region,
   type RegionDrag,
   type RegionKind,
@@ -79,8 +78,8 @@ function LaneGutter({
   const { label } = REGIONS[kind];
   const Icon = isCollapsed ? ChevronRight : REGION_ICONS[kind];
   const valueAtPlayhead = useClockValue(clock, (seconds) => {
-    const winner = winnerAt(regions, kind, seconds * 1000);
-    return winner ? blockValue(winner) : "";
+    const region = regionAt(regions, kind, seconds * 1000);
+    return region ? blockValue(region) : "";
   });
   const count = regions.filter((region) => region.kind === kind).length;
   return (
@@ -180,9 +179,6 @@ export function LaneTracks({
     [...edits.selectedIds]
       .reverse()
       .find((id) => regions.some(({ id: at }) => at === id)) ?? order[0]?.id;
-  const open = (id: number) => {
-    edits.openEditor(id);
-  };
   const focusBlock = (id: number) => {
     edits.select([id]);
     document.querySelector<HTMLElement>(`[data-region-id="${id}"]`)?.focus();
@@ -203,7 +199,7 @@ export function LaneTracks({
     } else if (event.key === "Enter" || event.key.toLowerCase() === "e") {
       event.preventDefault();
       event.stopPropagation();
-      open(region.id);
+      edits.openEditor(region.id);
     }
   }
 
@@ -231,14 +227,16 @@ export function LaneTracks({
             touches={touchingSides(regions, region)}
             isDimmed={solo !== null && solo !== region.kind}
             stretchEdge={
-              drag.stretch?.track === "region" && drag.stretch.id === region.id
+              drag.stretch?.track === "region" &&
+              drag.stretch.id === region.id &&
+              drag.stretch.edge !== "move"
                 ? drag.stretch.edge
                 : null
             }
             clock={clock}
             at={time.at}
             drag={drag.region}
-            onOpen={() => open(region.id)}
+            onOpen={() => edits.openEditor(region.id)}
             onSettle={(isKept) => edits.settle(region.id, isKept)}
             onKeyDown={(event) => onBlockKey(event, region)}
           />
@@ -301,7 +299,7 @@ function Block({
   isFocusStop: boolean;
   touches: { start: boolean; end: boolean };
   isDimmed: boolean;
-  stretchEdge: RegionDrag | null;
+  stretchEdge: "start" | "end" | null;
   clock: Clock;
   at: (sourceMs: number) => number;
   drag: TimelineDrag["region"];
@@ -427,24 +425,14 @@ function Block({
       )}
       style={{ ...place, top: lane.top + 4, height: 24 }}
     >
-      {coveredStretches(regions, region).map(({ startMs, endMs }) => (
-        <span
-          key={startMs}
-          className="pointer-events-none absolute inset-y-0 covered-stripes"
-          style={{
-            left: `${((startMs - region.startMs) / lengthMs) * 100}%`,
-            width: `${((endMs - startMs) / lengthMs) * 100}%`,
-          }}
-        />
-      ))}
-      <Icon className="relative size-4 shrink-0" />
+      <Icon className="size-4 shrink-0" />
       {content === "full" ? (
-        <span className="relative min-w-0 truncate">{label}</span>
+        <span className="min-w-0 truncate">{label}</span>
       ) : null}
       {content === "icon" ? null : (
         <span
           className={cn(
-            "relative min-w-0 truncate font-mono font-medium",
+            "min-w-0 truncate font-mono font-medium",
             content === "full" && "ml-auto",
           )}
         >

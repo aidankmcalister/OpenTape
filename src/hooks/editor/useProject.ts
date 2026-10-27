@@ -46,13 +46,11 @@ import {
 } from "@/lib/editor/clips";
 import { MIN_BLOCK_PX } from "@/lib/editor/timeline";
 import {
-  changeAppearance,
-  changeSound,
+  changeProject,
   editClips,
   editRegions,
   historyOf,
   NEW_PROJECT,
-  projectJson,
   type Project,
   readProject,
   record,
@@ -177,9 +175,12 @@ export function useProject(
         isPreview,
       ),
     setAppearance: (change: Partial<Appearance>, isPreview = false) =>
-      apply((project) => changeAppearance(project, change), isPreview),
+      apply(
+        (project) => changeProject(project, "appearance", change),
+        isPreview,
+      ),
     setSound: (change: Partial<SoundSettings>, isPreview = false) =>
-      apply((project) => changeSound(project, change), isPreview),
+      apply((project) => changeProject(project, "sound", change), isPreview),
     setRegion: (
       id: number,
       change: Parameters<typeof changeRegion>[2],
@@ -238,7 +239,7 @@ export function useSavedProject(edits: Edits, fresh: Project | null) {
     setIsLoaded(true);
     edits.load(readProject(saved, fresh));
   }
-  const json = isLoaded ? projectJson(edits.saved) : null;
+  const json = isLoaded ? JSON.stringify(edits.saved) : null;
   useEffect(() => {
     if (json === null) return;
     saving.current = saving.current

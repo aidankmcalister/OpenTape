@@ -23,7 +23,8 @@ import {
   type Setting,
   type Span,
 } from "./regions";
-import { FRAME_MS } from "./timeline";
+import { FRAME_MS, STEP_MS } from "./timeline";
+import { centeredOn } from "./zoom";
 
 export type CursorClick = {
   ms: number;
@@ -78,7 +79,6 @@ export const NO_CURSOR: CursorTrack = {
   images: [],
 };
 
-const STEP_MS = 1000 / 120;
 const IDLE_MS = 2000;
 const FADE_MS = 300;
 const OUTSIDE_FADE = 0.01;
@@ -201,7 +201,7 @@ export const CURSOR_SECTIONS: { title: string; settings: Setting[] }[] = [
         kind: "switch",
         key: "presses",
         label: "Press on click",
-        help: "Click ring blocks on the timeline take over where they are.",
+        help: "Shrinks the cursor a little while the left button is held.",
       },
     ],
   },
@@ -228,7 +228,7 @@ export const CURSOR_SECTIONS: { title: string; settings: Setting[] }[] = [
         kind: "switch",
         key: "leadsHovers",
         label: "Keep in sync with hovers",
-        help: "Keeping in sync starts each move a moment early, so the cursor reaches a button before it lights up.",
+        help: "Starts each move a moment early, so the cursor reaches a button before it lights up.",
       },
     ],
   },
@@ -334,7 +334,7 @@ const SHAPES: Partial<Record<CursorStyle, Record<string, Shape>>> = {
 };
 const SHAPE_SCALE = 1.25;
 const SHAPE_PAD = 4;
-const SHAPE_RASTER = 8;
+export const SHAPE_RASTER = 8;
 
 type CursorPicture = Omit<CursorImage, "png"> & { src: string };
 
@@ -482,7 +482,7 @@ export function cursorPath(
     const [from, to] = [steps[Math.floor(index)], steps[Math.ceil(index)]];
     const share = index - Math.floor(index);
     const back = settings.loops
-      ? ease(clamp((ms - durationMs + LOOP_MS) / LOOP_MS, 0, 1))
+      ? smoothstep(clamp((ms - durationMs + LOOP_MS) / LOOP_MS, 0, 1))
       : 0;
     const mix = (key: "x" | "y" | "angle") => {
       const at = from[key] + (to[key] - from[key]) * share;
@@ -550,7 +550,7 @@ function pressAt(presses: CursorTrack["presses"], ms: number): number {
   }, 0);
 }
 
-function ease(share: number) {
+function smoothstep(share: number) {
   return share * share * (3 - 2 * share);
 }
 
@@ -741,8 +741,6 @@ export function suggestedZooms(
     } else groups.push({ endMs: moment.endMs, moments: [moment] });
   }
   const { amount } = REGIONS.zoom;
-  const size = 1 / amount;
-  const aim = (share: number) => clamp((share - size / 2) / (1 - size), 0, 1);
   const added: Region[] = [];
   for (const {
     endMs: lastMs,
@@ -754,11 +752,11 @@ export function suggestedZooms(
       endMs: Math.min(durationMs, lastMs + ZOOM_HOLD_MS),
     };
     if (!isFree(regions, "zoom", span)) continue;
-    const center = { x: aim(first.x), y: aim(first.y) };
+    const center = centeredOn(first, amount);
     const path: NonNullable<Region["path"]> = [];
     for (const { startMs: ms, x, y } of rest) {
       const from = path[path.length - 1] ?? center;
-      const to = { x: aim(x), y: aim(y) };
+      const to = centeredOn({ x, y }, amount);
       if (
         Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y)) <
         MIN_PAN_SHARE

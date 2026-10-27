@@ -14,7 +14,7 @@ import {
   exportRings,
   type RingEvent,
 } from "./cursor";
-import { outputAt, type Region, resolveOverlaps } from "./regions";
+import { outputAt, type Region, sameKind } from "./regions";
 import { DEFAULT_SOUND, mixVolumes, type SoundSettings } from "./sound";
 import { FRAME_MS } from "./timeline";
 import { zoomTrack } from "./zoom";
@@ -92,13 +92,11 @@ export function exportLayout(
       appearance.fill.kind === "image" ? appearance.fill.image : null,
     zoom: zoomTrack(regions, durationMs, cursor, crop),
     zoomRate: 1000 / FRAME_MS,
-    speed: resolveOverlaps(regions, "speed").map(
-      ({ startMs, endMs, amount }) => ({
-        start: startMs / 1000,
-        end: endMs / 1000,
-        amount,
-      }),
-    ),
+    speed: sameKind(regions, "speed").map(({ startMs, endMs, amount }) => ({
+      start: startMs / 1000,
+      end: endMs / 1000,
+      amount,
+    })),
     cuts: cutSpans(clips, durationMs).map(({ startMs, endMs }) => ({
       start: outputAt(regions, startMs) / 1000,
       end: outputAt(regions, endMs) / 1000,
@@ -113,7 +111,7 @@ export function exportLayout(
 
 export const RESOLUTIONS = { "720p": 720, "1080p": 1080, "4K": 2160 };
 
-export type Resolution = keyof typeof RESOLUTIONS;
+type Resolution = keyof typeof RESOLUTIONS;
 
 export const QUALITIES = {
   best: {

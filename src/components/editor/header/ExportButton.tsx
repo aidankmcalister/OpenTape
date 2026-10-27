@@ -7,6 +7,11 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { Exporting } from "@/hooks/editor/useExport";
 import {
   QUALITIES,
@@ -17,6 +22,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { MorphPill, PillMessage } from "@/components/Pill";
+import { Row } from "../Panel";
 
 export default function ExportButton({ exporting }: { exporting: Exporting }) {
   const { state, start: onExport, showInFinder: onShowInFinder } = exporting;
@@ -121,22 +127,26 @@ export function ExportChoices({
   settings,
   change,
   size,
+  inRows,
 }: {
   settings: Settings;
   change: (part: Partial<Settings>) => void;
   size?: ReactNode;
+  inRows?: boolean;
 }) {
   return (
     <>
-      <div className="grid grid-cols-2 gap-3">
+      <div className={inRows ? "contents" : "grid grid-cols-2 gap-3"}>
         <Choice<Settings["format"]>
           label="Format"
+          inRows={inRows}
           value={settings.format}
           options={{ mp4: "MP4", gif: "GIF" }}
           onChange={(format) => change({ format })}
         />
         <Choice<"30" | "60">
           label="Frame rate"
+          inRows={inRows}
           value={`${settings.frameRate}`}
           options={{ 30: "30", 60: "60" }}
           onChange={(rate) => change({ frameRate: rate === "30" ? 30 : 60 })}
@@ -144,6 +154,7 @@ export function ExportChoices({
       </div>
       <Choice<Settings["resolution"]>
         label="Resolution"
+        inRows={inRows}
         value={settings.resolution}
         options={{ "720p": "720p", "1080p": "1080p", "4K": "4K" }}
         onChange={(resolution) => change({ resolution })}
@@ -151,14 +162,20 @@ export function ExportChoices({
       />
       <Choice<Settings["quality"]>
         label="Quality"
+        inRows={inRows}
         value={settings.quality}
         options={{ best: "Best", balanced: "Balanced", small: "Small" }}
         onChange={(quality) => change({ quality })}
-        note={QUALITIES[settings.quality].hint}
+        hints={{
+          best: QUALITIES.best.hint,
+          balanced: QUALITIES.balanced.hint,
+          small: QUALITIES.small.hint,
+        }}
         disabled={settings.format === "gif"}
       />
       <Choice<Settings["to"]>
         label="Export to"
+        inRows={inRows}
         value={settings.to}
         options={{
           file: (
@@ -186,17 +203,42 @@ function Choice<Value extends string>({
   options,
   onChange,
   aside,
-  note,
+  hints,
   disabled,
+  inRows,
 }: {
   label: string;
   value: Value;
   options: Record<Value, ReactNode>;
   onChange: (value: Value) => void;
   aside?: ReactNode;
-  note?: ReactNode;
+  hints?: Record<Value, string>;
   disabled?: boolean;
+  inRows?: boolean;
 }) {
+  const tabs = (
+    <Tabs value={value} onValueChange={(next: Value) => onChange(next)}>
+      <TabsList className={inRows ? "w-60" : "w-full"}>
+        {(Object.keys(options) as Value[]).map((option) =>
+          hints ? (
+            <Tooltip key={option}>
+              <TooltipTrigger
+                render={<TabsTrigger value={option} disabled={disabled} />}
+              >
+                {options[option]}
+              </TooltipTrigger>
+              <TooltipContent>{hints[option]}</TooltipContent>
+            </Tooltip>
+          ) : (
+            <TabsTrigger key={option} value={option} disabled={disabled}>
+              {options[option]}
+            </TabsTrigger>
+          ),
+        )}
+      </TabsList>
+    </Tabs>
+  );
+  if (inRows) return <Row label={label}>{tabs}</Row>;
   return (
     <div className="flex flex-col gap-2">
       <div className="flex h-6 items-center justify-between">
@@ -205,18 +247,7 @@ function Choice<Value extends string>({
           {aside}
         </span>
       </div>
-      <Tabs value={value} onValueChange={(next: Value) => onChange(next)}>
-        <TabsList className="w-full">
-          {(Object.keys(options) as Value[]).map((option) => (
-            <TabsTrigger key={option} value={option} disabled={disabled}>
-              {options[option]}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-      {note ? (
-        <span className="text-caption text-muted-foreground">{note}</span>
-      ) : null}
+      {tabs}
     </div>
   );
 }

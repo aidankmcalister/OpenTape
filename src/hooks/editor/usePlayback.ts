@@ -11,7 +11,6 @@ export function usePlayback(src: string) {
   const [isLooping, setIsLooping] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [durationMs, setDurationMs] = useState(0);
-  const [ratio, setRatio] = useState(16 / 9);
   const [videoSize, setVideoSize] = useState<Size | null>(null);
   const [heldMs, setHeldMs] = useState<number | null>(null);
   const [speed, setSpeed] = useState(1);
@@ -42,25 +41,13 @@ export function usePlayback(src: string) {
     isLooping,
     isMuted,
     durationMs,
-    ratio,
+    ratio: videoSize?.height ? videoSize.width / videoSize.height : 16 / 9,
     videoSize,
     clock,
-    togglePlay: (time: TimeMap) => {
-      skim(null);
-      const isAtEnd = time.at(clock.seconds() * 1000) >= time.lengthMs;
-      if (video.current?.paused && isAtEnd) seek(time.source(0));
-      togglePlay(video.current);
-    },
     pause: () => video.current?.pause(),
     seek,
     skim,
     heldMs,
-    toStart: (time: TimeMap) => seek(time.source(0)),
-    toEnd: (time: TimeMap) => seek(time.source(time.lengthMs)),
-    step: (frames: number, time: TimeMap) => {
-      video.current?.pause();
-      seek(time.step(clock.seconds() * 1000, frames));
-    },
     toggleLoop: () => setIsLooping((isOn) => !isOn),
     toggleSound: () => setIsMuted((isOn) => !isOn),
     setRate: (rate: number) => {
@@ -70,8 +57,6 @@ export function usePlayback(src: string) {
     },
     speed,
     setSpeed,
-    leap: (ms: number, time: TimeMap) =>
-      seek(time.leap(clock.seconds() * 1000, ms)),
     videoProps: {
       ref: video,
       preload: "auto",
@@ -82,7 +67,6 @@ export function usePlayback(src: string) {
       onEnded: () => setIsPlaying(false),
       onLoadedMetadata: (event: SyntheticEvent<HTMLVideoElement>) => {
         setDurationMs(lengthMs(event.currentTarget));
-        setRatio(ratioOf(event.currentTarget));
         setVideoSize(sizeOf(event.currentTarget));
         showFirstFrame(event);
       },
@@ -93,11 +77,10 @@ export function usePlayback(src: string) {
 export type Playback = ReturnType<typeof usePlayback>;
 
 export function useTimeMap(playback: Playback, time: TimeMap) {
-  const { isPlaying, isLooping } = playback;
-  const rate = useClockValue(playback.clock, (seconds) =>
-    time.speedAt(seconds * 1000),
-  );
-  const playOn = useClockValue(playback.clock, (seconds) =>
+  const { isPlaying, isLooping, clock, seek, pause } = playback;
+  const video = playback.videoProps.ref;
+  const rate = useClockValue(clock, (seconds) => time.speedAt(seconds * 1000));
+  const playOn = useClockValue(clock, (seconds) =>
     time.playOn(seconds * 1000, isLooping && isPlaying),
   );
   useEffect(() => playback.setRate(rate), [playback, rate]);
@@ -106,6 +89,23 @@ export function useTimeMap(playback: Playback, time: TimeMap) {
     if (playOn.isEnd) playback.pause();
     playback.seek(playOn.ms);
   }, [playback, playOn]);
+  return {
+    togglePlay: () => {
+      playback.skim(null);
+      const current = video.current;
+      if (!current?.paused) return current?.pause();
+      if (time.at(clock.seconds() * 1000) >= time.lengthMs)
+        seek(time.source(0));
+      void current.play();
+    },
+    toStart: () => seek(time.source(0)),
+    toEnd: () => seek(time.source(time.lengthMs)),
+    step: (frames: number) => {
+      pause();
+      seek(time.step(clock.seconds() * 1000, frames));
+    },
+    leap: (ms: number) => seek(time.leap(clock.seconds() * 1000, ms)),
+  };
 }
 
 export function useStageSound(
@@ -128,18 +128,8 @@ export function useStageSound(
   }, [ref, sound, tracks, playback.durationMs]);
 }
 
-function togglePlay(video: HTMLVideoElement | null) {
-  if (!video) return;
-  if (video.paused) void video.play();
-  else video.pause();
-}
-
 function lengthMs(video: HTMLVideoElement): number {
   return Number.isFinite(video.duration) ? video.duration * 1000 : 0;
-}
-
-function ratioOf(video: HTMLVideoElement): number {
-  return video.videoHeight ? video.videoWidth / video.videoHeight : 16 / 9;
 }
 
 function sizeOf(video: HTMLVideoElement): Size {

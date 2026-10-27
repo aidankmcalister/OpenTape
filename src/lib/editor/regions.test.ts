@@ -6,21 +6,18 @@ import {
   blockValue,
   changeRegion,
   changeSetting,
-  coveredStretches,
   dragRegions,
   nextId,
   touchingSides,
-  winnersAt,
+  regionsAt,
   laneKinds,
-  outputAt,
   type Region,
   type RegionDrag,
   regionKindForKey,
   removeRegions,
   removeRegionAt,
   REGIONS,
-  resolveOverlaps,
-  winnerAt,
+  regionAt,
   settleSuggestion,
 } from "./regions";
 
@@ -129,36 +126,13 @@ describe("regions", () => {
     },
   );
 
-  test("where two of a kind overlap, the later start wins", () => {
-    const long = { ...ZOOM_1_TO_3, endMs: 6000 };
-    const short = { ...ZOOM_5_TO_6, startMs: 2000, endMs: 3000, amount: 2 };
-    expect(
-      resolveOverlaps([long, short], "zoom").map(
-        ({ id, startMs, endMs }) => `${id}:${startMs}-${endMs}`,
-      ),
-    ).toEqual(["1:1000-2000", "2:2000-3000", "1:3000-6000"]);
-    expect(amountAt([long, short], "zoom", 2500)).toBe(2);
-  });
-
-  test("overlapping speeds play the later one where they overlap", () => {
-    const regions: Region[] = [
-      { id: 1, kind: "speed", startMs: 0, endMs: 4000, amount: 2 },
-      { id: 2, kind: "speed", startMs: 1000, endMs: 2000, amount: 4 },
-    ];
-    expect(outputAt(regions, 4000)).toBe(500 + 250 + 1000);
-  });
-
-  test("lanes follow the registry order, and the later start wins a lane", () => {
+  test("lanes follow the registry order, and each finds the block at a moment", () => {
     const speed: Region = { ...ZOOM_1_TO_3, id: 3, kind: "speed" };
-    const late = { ...ZOOM_5_TO_6, startMs: 2000, endMs: 4000 };
+    const late = { ...ZOOM_5_TO_6, startMs: 3000, endMs: 4000 };
     expect(laneKinds([speed, ZOOM_1_TO_3])).toEqual(["zoom", "speed"]);
-    expect(winnerAt([ZOOM_1_TO_3, late], "zoom", 2500)?.id).toBe(2);
-    expect(winnerAt([ZOOM_1_TO_3, late], "zoom", 1500)?.id).toBe(1);
-    expect(winnerAt([ZOOM_1_TO_3, late], "speed", 1500)).toBeUndefined();
-    expect(coveredStretches([ZOOM_1_TO_3, late], ZOOM_1_TO_3)).toEqual([
-      { startMs: 2000, endMs: 3000 },
-    ]);
-    expect(coveredStretches([ZOOM_1_TO_3, late], late)).toEqual([]);
+    expect(regionAt([ZOOM_1_TO_3, late], "zoom", 3500)?.id).toBe(2);
+    expect(regionAt([ZOOM_1_TO_3, late], "zoom", 1500)?.id).toBe(1);
+    expect(regionAt([ZOOM_1_TO_3, late], "speed", 1500)).toBeUndefined();
   });
 
   test.each([
@@ -229,11 +203,6 @@ test("a zoom isn't added when its lane has no room", () => {
     amount: 1.5,
   };
   expect(addRegion([full], "zoom", 5000, 10_000)).toEqual([full]);
-});
-
-test("contrastRatio runs from 1:1 to 21:1", () => {
-  expect(contrastRatio([0, 0, 0], [255, 255, 255])).toBeCloseTo(21);
-  expect(contrastRatio([90, 90, 90], [90, 90, 90])).toBe(1);
 });
 
 type Rgb = [number, number, number];
@@ -319,9 +288,9 @@ describe("who wins and who touches", () => {
     { ...zoom(3, 500, 1500), kind: "speed" } satisfies Region,
   ];
 
-  test("winnersAt gives one modifier per type at a moment", () => {
-    expect(winnersAt(regions, 1200).map(({ id }) => id)).toEqual([2, 3]);
-    expect(winnersAt(regions, 2500)).toEqual([]);
+  test("regionsAt gives one modifier per type at a moment", () => {
+    expect(regionsAt(regions, 1200).map(({ id }) => id)).toEqual([2, 3]);
+    expect(regionsAt(regions, 2500)).toEqual([]);
   });
 
   test("touchingSides finds same-type neighbors that share an edge", () => {

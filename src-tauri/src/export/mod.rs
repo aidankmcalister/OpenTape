@@ -193,25 +193,14 @@ pub(crate) fn export(
     let cutout = cutout(layout, background.as_deref())?;
     let recording_asset = unsafe { AVURLAsset::URLAssetWithURL_options(&file_url(video), None) };
     let asset = retimed(&recording_asset, &layout.speed, &layout.cuts)?;
-    let video_type = unsafe { AVMediaTypeVideo }.context("AVFoundation has no video type")?;
-    #[allow(deprecated)]
-    let track = unsafe { asset.tracksWithMediaType(video_type) }
-        .firstObject()
-        .context("the recording has no video")?;
+    let (track, reader) = open(&asset)?;
     let natural = unsafe { track.naturalSize() };
-    let (recording, video_rect, height, zoom, zoom_rate, rings, cursor) = (
-        layout.recording.clone(),
-        layout.video.clone(),
-        layout.height,
-        layout.zoom.clone(),
-        layout.zoom_rate,
-        layout.rings.clone(),
-        layout.cursor.clone(),
-    );
-    let pictures = cursor.as_ref().map(ExportCursor::pictures).transpose()?;
+    let pictures = (layout.cursor.as_ref())
+        .map(ExportCursor::pictures)
+        .transpose()?;
     let ring_pictures = RingPictures::default();
-    let mut cuts = layout.cuts.clone();
-    cuts.sort_by(|a, b| a.start.total_cmp(&b.start));
+    let mut scene = layout.clone();
+    scene.cuts.sort_by(|a, b| a.start.total_cmp(&b.start));
     let picture = CGRect::new(
         CGPoint::new(0.0, 0.0),
         CGSize::new(layout.width.into(), layout.height.into()),
@@ -221,23 +210,26 @@ pub(crate) fn export(
         move |request: NonNull<AVAsynchronousCIImageFilteringRequest>| {
             let request = unsafe { request.as_ref() };
             unsafe {
-                let now = uncut(&cuts, request.compositionTime().seconds());
-                let zoom = zoom_at(&zoom, zoom_rate, now);
-                let video = zoomed(&video_rect, &recording, zoom);
-                let place = placement(&video, height, natural);
+                let now = uncut(&scene.cuts, request.compositionTime().seconds());
+                let zoom = zoom_at(&scene.zoom, scene.zoom_rate, now);
+                let video = zoomed(&scene.video, &scene.recording, zoom);
+                let place = placement(&video, scene.height, natural);
                 let mut frame = request.sourceImage().imageByApplyingTransform(place);
-                for ring in rings.iter().filter(|ring| ring.is_showing(now)) {
-                    if let Ok(image) = ring.image(now, &video, zoom.scale, height, &ring_pictures) {
+                for ring in scene.rings.iter().filter(|ring| ring.is_showing(now)) {
+                    if let Ok(image) =
+                        ring.image(now, &video, zoom.scale, scene.height, &ring_pictures)
+                    {
                         frame = image.imageByCompositingOverImage(&frame);
                     }
                 }
                 let mut image = cutout.imageByCompositingOverImage(&frame);
                 if let Some(Ok(Some(drawn))) =
-                    cursor
+                    scene
+                        .cursor
                         .as_ref()
                         .zip(pictures.as_ref())
                         .map(|(cursor, pictures)| {
-                            cursor.image(now, &video, &recording, height, pictures)
+                            cursor.image(now, &video, &scene.recording, scene.height, pictures)
                         })
                 {
                     image = drawn.imageByCompositingOverImage(&image);
@@ -260,9 +252,6 @@ pub(crate) fn export(
         composition.setFrameDuration(CMTime::new(1, options.frame_rate as i32));
     }
 
-    let reader = unsafe { AVAssetReader::assetReaderWithAsset_error(&asset) }.map_err(|error| {
-        anyhow::anyhow!("could not read the recording: {}", reason(Some(error)))
-    })?;
     let tracks = NSArray::from_retained_slice(&[track]);
     let frames = unsafe {
         AVAssetReaderVideoCompositionOutput::assetReaderVideoCompositionOutputWithVideoTracks_videoSettings(&tracks, None)
@@ -275,12 +264,6 @@ pub(crate) fn export(
         ExportFormat::Mp4 => mixed_sound(&asset, &reader, &layout.sound)?,
         ExportFormat::Gif => None,
     };
-
-    ensure!(
-        unsafe { reader.startReading() },
-        "could not read the recording: {}",
-        reason(unsafe { reader.error() })
-    );
     let duration = unsafe { asset.duration().seconds() };
     let reported = std::cell::Cell::new(0.0);
     let progress_at = |time: CMTime| {
@@ -290,7 +273,7 @@ pub(crate) fn export(
             progress(done as f32);
         }
     };
-    match options.format {
+    read_all(&reader, || match options.format {
         ExportFormat::Mp4 => {
             let settings = h264(layout.width, layout.height, options.bits_per_pixel)?;
             write_mp4(
@@ -300,42 +283,47 @@ pub(crate) fn export(
                 Some(&settings),
                 None,
                 progress_at,
-            )?
+            )
         }
-        ExportFormat::Gif => write_gif(&frames, output, options.frame_rate, duration, progress_at)?,
-    }
-    ensure!(
-        unsafe { reader.status() } == AVAssetReaderStatus::Completed,
-        "could not read the recording to the end: {}",
-        reason(unsafe { reader.error() })
-    );
-    Ok(())
+        ExportFormat::Gif => write_gif(&frames, output, options.frame_rate, duration, progress_at),
+    })
 }
 
 pub(crate) fn to_mp4(video: &Path, output: &Path) -> Result<()> {
     let asset = unsafe { AVURLAsset::URLAssetWithURL_options(&file_url(video), None) };
-    let video_type = unsafe { AVMediaTypeVideo }.context("AVFoundation has no video type")?;
-    #[allow(deprecated)]
-    let track = unsafe { asset.tracksWithMediaType(video_type) }
-        .firstObject()
-        .context("the recording has no video")?;
-    let reader = unsafe { AVAssetReader::assetReaderWithAsset_error(&asset) }.map_err(|error| {
-        anyhow::anyhow!("could not read the recording: {}", reason(Some(error)))
-    })?;
+    let (track, reader) = open(&asset)?;
     let frames = unsafe {
         AVAssetReaderTrackOutput::assetReaderTrackOutputWithTrack_outputSettings(&track, None)
     };
     unsafe { reader.addOutput(&frames) };
     let sound = mixed_sound(&asset, &reader, &FULL_SOUND)?;
+    let format = unsafe { track.formatDescriptions() }.firstObject();
+    let hint =
+        format.map(|format| unsafe { &*Retained::as_ptr(&format).cast::<CMFormatDescription>() });
+    read_all(&reader, || {
+        write_mp4(&frames, sound.as_deref(), output, None, hint, |_| {})
+    })
+}
+
+fn open(asset: &AVAsset) -> Result<(Retained<AVAssetTrack>, Retained<AVAssetReader>)> {
+    let video_type = unsafe { AVMediaTypeVideo }.context("AVFoundation has no video type")?;
+    #[allow(deprecated)]
+    let track = unsafe { asset.tracksWithMediaType(video_type) }
+        .firstObject()
+        .context("the recording has no video")?;
+    let reader = unsafe { AVAssetReader::assetReaderWithAsset_error(asset) }.map_err(|error| {
+        anyhow::anyhow!("could not read the recording: {}", reason(Some(error)))
+    })?;
+    Ok((track, reader))
+}
+
+fn read_all(reader: &AVAssetReader, write: impl FnOnce() -> Result<()>) -> Result<()> {
     ensure!(
         unsafe { reader.startReading() },
         "could not read the recording: {}",
         reason(unsafe { reader.error() })
     );
-    let format = unsafe { track.formatDescriptions() }.firstObject();
-    let hint =
-        format.map(|format| unsafe { &*Retained::as_ptr(&format).cast::<CMFormatDescription>() });
-    write_mp4(&frames, sound.as_deref(), output, None, hint, |_| {})?;
+    write()?;
     ensure!(
         unsafe { reader.status() } == AVAssetReaderStatus::Completed,
         "could not read the recording to the end: {}",

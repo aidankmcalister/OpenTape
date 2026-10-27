@@ -248,13 +248,28 @@ export function DialogSection({
   return (
     <section
       className={cn(
-        "flex flex-col px-4 py-3 text-ui not-first-of-type:border-t not-first-of-type:border-hairline",
+        "flex flex-col gap-2 p-4 text-ui not-first-of-type:border-t not-first-of-type:border-hairline",
         className,
       )}
     >
-      <h3 className="flex h-8 items-center font-semibold">{title}</h3>
+      <h3 className="flex h-6 items-center font-semibold">{title}</h3>
       {children}
     </section>
+  );
+}
+
+export function Row({
+  label,
+  children,
+}: {
+  label: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex h-8 items-center justify-between gap-3">
+      {label}
+      <div className="flex min-w-0 items-center gap-3">{children}</div>
+    </div>
   );
 }
 

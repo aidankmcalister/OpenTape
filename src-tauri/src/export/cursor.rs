@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use base64::Engine;
 use objc2::rc::Retained;
-use objc2_core_foundation::{CGAffineTransform, CGPoint, CGRect, CGSize};
+use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use objc2_core_graphics::{CGBitmapContextCreateImage, CGColor, CGContext, CGImage};
 use objc2_core_image::{CIContext, CIImage};
 use objc2_foundation::NSData;
@@ -9,7 +9,7 @@ use serde::Deserialize;
 use ts_rs::TS;
 
 use super::PixelRect;
-use super::cutout::canvas;
+use super::cutout::{canvas, moved};
 use crate::macos::cursor::CursorImage;
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, TS)]
@@ -101,17 +101,12 @@ impl ExportCursor {
         } else {
             self.picture_image(&point, px, pictures)?
         };
-        let move_to = CGAffineTransform {
-            a: 1.0,
-            b: 0.0,
-            c: 0.0,
-            d: 1.0,
-            tx: tip_x - hot.x,
-            ty: f64::from(height) - tip_y - hot.y,
-        };
-        Ok(Some(unsafe {
-            CIImage::imageWithCGImage(&image).imageByApplyingTransform(move_to)
-        }))
+        let image = unsafe { CIImage::imageWithCGImage(&image) };
+        Ok(Some(moved(
+            &image,
+            tip_x - hot.x,
+            f64::from(height) - tip_y - hot.y,
+        )))
     }
 
     fn picture_image(

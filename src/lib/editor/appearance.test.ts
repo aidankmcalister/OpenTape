@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
   changeStop,
-  clampAmount,
   DEFAULT_APPEARANCE,
   fillCss,
   fillGradient,
@@ -23,17 +22,6 @@ describe("appearance", () => {
     );
     expect(fillCss(fill({ kind: "color", preset: 2 }))).toBe("#3b82f6");
   });
-
-  test.each([
-    ["padding", 200, 160],
-    ["radius", -3, 0],
-    ["shadowBlur", 47.6, 48],
-  ] as const)(
-    "clampAmount(%p, %p) keeps it in range, in whole steps",
-    (amount, value, clamped) => {
-      expect(clampAmount(amount, value)).toBe(clamped);
-    },
-  );
 
   test("frameLayout fits the frame inside the margin and scales the padding", () => {
     const { frame, recording, scale } = frameLayout(
@@ -122,17 +110,8 @@ test("gradientCss sorts its stops and rounds them to whole percents", () => {
   ).toBe("linear-gradient(90deg, #000000 33%, #ffffff 100%)");
 });
 
-test("readAppearance fills in defaults and turns old border color names into hex", () => {
+test("readAppearance fills in defaults", () => {
   expect(readAppearance()).toEqual(DEFAULT_APPEARANCE);
-  expect(readAppearance({ borderColor: "#123456" }).borderColor).toBe(
-    "#123456",
-  );
-  expect(readAppearance({ borderColor: "light" }).borderColor).toBe("#ffffff");
-  expect(readAppearance({ borderColor: "no-such-name" }).borderColor).toBe(
-    DEFAULT_APPEARANCE.borderColor,
-  );
-  expect(readAppearance({ size: "4:5" }).size).toBe("4:5");
-  expect(readAppearance({ size: "3:2" as "4:5" }).size).toBe("Auto");
   expect(readAppearance({ size: "9:16" }).fit).toBe("Letterbox");
 });
 

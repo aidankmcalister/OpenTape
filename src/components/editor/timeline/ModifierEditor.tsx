@@ -5,18 +5,23 @@ import { Popover, PopoverContent, PopoverTitle } from "@/components/ui/popover";
 import type { Edits } from "@/hooks/editor/useProject";
 import {
   changeSetting,
-  settingValue,
   REGIONS,
   type Region,
   type RegionKind,
-  type SettingValue,
 } from "@/lib/editor/regions";
 import { parseTimeLabel, timeLabel } from "@/lib/editor/timeline";
+import type { Point } from "@/lib/geometry";
 import { NumberField } from "../Panel";
 import { KindTile } from "./kinds";
 import SettingControl from "./SettingControl";
 
-export default function ModifierEditor({ edits }: { edits: Edits }) {
+export default function ModifierEditor({
+  edits,
+  crop,
+}: {
+  edits: Edits;
+  crop: Point;
+}) {
   const [shownId, setShownId] = useState(edits.editingId);
   if (edits.editingId !== null && edits.editingId !== shownId)
     setShownId(edits.editingId);
@@ -49,25 +54,23 @@ export default function ModifierEditor({ edits }: { edits: Edits }) {
           />
         ) : null}
         {modifier && count <= 1 ? (
-          <Settings modifier={modifier} edits={edits} />
+          <Settings modifier={modifier} edits={edits} crop={crop} />
         ) : null}
       </PopoverContent>
     </Popover>
   );
 }
 
-function Settings({ modifier, edits }: { modifier: Region; edits: Edits }) {
+function Settings({
+  modifier,
+  edits,
+  crop,
+}: {
+  modifier: Region;
+  edits: Edits;
+  crop: Point;
+}) {
   const { label, settings } = REGIONS[modifier.kind];
-  const edit = {
-    region: modifier,
-    value: (key: string) => settingValue(modifier, key),
-    set: (key: string, value: SettingValue) =>
-      edits.setRegion(modifier.id, changeSetting(modifier, key, value)),
-    preview: (key: string, value: SettingValue) =>
-      edits.setRegion(modifier.id, changeSetting(modifier, key, value), true),
-    change: (change: Partial<Region>) => edits.setRegion(modifier.id, change),
-    commit: edits.commit,
-  };
   const lengthMs = modifier.endMs - modifier.startMs;
   return (
     <>
@@ -79,7 +82,22 @@ function Settings({ modifier, edits }: { modifier: Region; edits: Edits }) {
       />
       <div className="flex flex-col gap-2 p-3">
         {settings.map((setting, index) => (
-          <SettingControl key={index} setting={setting} edit={edit} />
+          <SettingControl
+            key={index}
+            setting={setting}
+            values={{ ...modifier.settings, amount: modifier.amount }}
+            onChange={(key, value, isPreview) =>
+              edits.setRegion(
+                modifier.id,
+                changeSetting(modifier, key, value),
+                isPreview,
+              )
+            }
+            onCommit={edits.commit}
+            region={modifier}
+            crop={crop}
+            onCenter={(center) => edits.setRegion(modifier.id, { center })}
+          />
         ))}
       </div>
       <div className="grid grid-cols-2 gap-2 border-t border-hairline p-3">

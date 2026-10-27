@@ -26,7 +26,7 @@ export type Span = { startMs: number; endMs: number };
 
 export type SettingValue = string | number | boolean;
 
-type TypeStatus = "ready" | "experimental" | "soon";
+type TypeStatus = "ready" | "soon";
 
 export type Setting =
   | {
@@ -45,7 +45,7 @@ export type Setting =
       kind: "choice";
       key: string;
       label?: string;
-      options: string[];
+      options: readonly string[];
       unit?: string;
       disabled?: string[];
       initial?: string;
@@ -179,7 +179,7 @@ function initialValue(kind: RegionKind, key: string): SettingValue {
   return setting ? initialOf(setting) : "";
 }
 
-function initialOf(setting: Setting): SettingValue {
+export function initialOf(setting: Setting): SettingValue {
   switch (setting.kind) {
     case "slider":
       return setting.initial ?? setting.min;
@@ -206,7 +206,6 @@ export const KINDS = ALL_KINDS.filter(
 
 export const STATUSES: { status: TypeStatus; label: string }[] = [
   { status: "ready", label: "Modifiers" },
-  { status: "experimental", label: "Experimental" },
   { status: "soon", label: "Coming soon" },
 ];
 
@@ -341,8 +340,10 @@ export function stretched(
   };
 }
 
-function sameKind(regions: Region[], kind: RegionKind): Region[] {
-  return regions.filter((region) => region.kind === kind);
+export function sameKind(regions: Region[], kind: RegionKind): Region[] {
+  return regions
+    .filter((region) => region.kind === kind)
+    .sort((a, b) => a.startMs - b.startMs);
 }
 
 export function gapsBetween(spans: Span[], fromMs: number, toMs: number) {
@@ -369,21 +370,12 @@ export function laneKinds(regions: Region[]): RegionKind[] {
   return ALL_KINDS.filter((kind) => sameKind(regions, kind).length > 0);
 }
 
-export function winnerAt(
+export function regionAt(
   regions: Region[],
   kind: RegionKind,
   ms: number,
 ): Region | undefined {
-  return sameKind(regions, kind)
-    .filter((region) => covers(region, ms))
-    .sort((a, b) => b.startMs - a.startMs || b.id - a.id)[0];
-}
-
-export function coveredStretches(regions: Region[], region: Region) {
-  const shown = resolveOverlaps(regions, region.kind).filter(
-    ({ id }) => id === region.id,
-  );
-  return gapsBetween(shown, region.startMs, region.endMs);
+  return regions.find((region) => region.kind === kind && covers(region, ms));
 }
 
 export function changeRegion(
@@ -409,7 +401,7 @@ export const SUGGESTIONS: Partial<
   Record<RegionKind, { label: string; question: string }>
 > = {
   zoom: { label: "Auto zoom", question: "Zoom in on these clicks?" },
-  speed: { label: "Typing", question: "We detected typing. Speed it up?" },
+  speed: { label: "Typing", question: "Speed up this typing?" },
 };
 
 export function settleSuggestion(
@@ -432,24 +424,7 @@ export function amountAt(
   kind: RegionKind,
   ms: number,
 ): number {
-  return winnerAt(regions, kind, ms)?.amount ?? 1;
-}
-
-export function resolveOverlaps(regions: Region[], kind: RegionKind): Region[] {
-  const ofKind = sameKind(regions, kind);
-  const edges = [
-    ...new Set(ofKind.flatMap(({ startMs, endMs }) => [startMs, endMs])),
-  ].sort((a, b) => a - b);
-  const pieces: Region[] = [];
-  edges.slice(1).forEach((endMs, index) => {
-    const startMs = edges[index];
-    const latest = winnerAt(ofKind, kind, startMs);
-    if (!latest) return;
-    const last = pieces[pieces.length - 1];
-    if (last?.id === latest.id && last.endMs === startMs) last.endMs = endMs;
-    else pieces.push({ ...latest, startMs, endMs });
-  });
-  return pieces;
+  return regionAt(regions, kind, ms)?.amount ?? 1;
 }
 
 export function regionKindForKey(key: string): RegionKind | undefined {
@@ -459,7 +434,7 @@ export function regionKindForKey(key: string): RegionKind | undefined {
 }
 
 export function outputAt(regions: Region[], sourceMs: number): number {
-  return speedRegions(regions).reduce(
+  return sameKind(regions, "speed").reduce(
     (ms, { startMs, endMs, amount }) =>
       ms - (clamp(sourceMs, startMs, endMs) - startMs) * (1 - 1 / amount),
     sourceMs,
@@ -467,7 +442,7 @@ export function outputAt(regions: Region[], sourceMs: number): number {
 }
 
 export function sourceAt(regions: Region[], outputMs: number): number {
-  return speedRegions(regions).reduce((ms, { startMs, endMs, amount }) => {
+  return sameKind(regions, "speed").reduce((ms, { startMs, endMs, amount }) => {
     const playedMs = outputMs - outputAt(regions, startMs);
     return ms + clamp(playedMs, 0, (endMs - startMs) / amount) * (amount - 1);
   }, outputMs);
@@ -477,13 +452,9 @@ export function covers(span: Span, ms: number): boolean {
   return ms >= span.startMs && ms < span.endMs;
 }
 
-function speedRegions(regions: Region[]): Region[] {
-  return resolveOverlaps(regions, "speed");
-}
-
-export function winnersAt(regions: Region[], ms: number): Region[] {
+export function regionsAt(regions: Region[], ms: number): Region[] {
   return laneKinds(regions).flatMap(
-    (kind) => winnerAt(regions, kind, ms) ?? [],
+    (kind) => regionAt(regions, kind, ms) ?? [],
   );
 }
 

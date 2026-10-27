@@ -28,6 +28,7 @@ import {
   useSavedProject,
   useSoundTracks,
 } from "@/hooks/editor/useProject";
+import { frameCrop } from "@/lib/editor/appearance";
 import { timeMap } from "@/lib/editor/clips";
 import { ringEvents } from "@/lib/editor/cursor";
 import ModifierEditor from "@/components/editor/timeline/ModifierEditor";
@@ -86,7 +87,7 @@ function Workspace({
   const time = lanes.solo
     ? timeMap(clips, soloed, playback.durationMs)
     : edits.time;
-  useTimeMap(playback, time);
+  const moves = useTimeMap(playback, time);
   useStageSound(playback, edits.project.sound, soundTracks);
   const rings = ringEvents(cursor.clicks, appearance.cursor);
   const exporting = useExport(edits.project, playback, rings, cursor, app);
@@ -99,13 +100,13 @@ function Workspace({
         ? edits.retime(edits.selectedIds, drag, deltaMs)
         : step();
   const actions: Record<EditorAction, () => void> = {
-    togglePlay: () => playback.togglePlay(edits.time),
-    stepBack: nudgeOr("move", -100, () => playback.step(-1, edits.time)),
-    stepForward: nudgeOr("move", 100, () => playback.step(1, edits.time)),
-    leapBack: nudgeOr("move", -1000, () => playback.leap(-1000, edits.time)),
-    leapForward: nudgeOr("move", 1000, () => playback.leap(1000, edits.time)),
-    toStart: nudgeOr("end", -100, () => playback.toStart(edits.time)),
-    toEnd: nudgeOr("end", 100, () => playback.toEnd(edits.time)),
+    togglePlay: moves.togglePlay,
+    stepBack: nudgeOr("move", -100, () => moves.step(-1)),
+    stepForward: nudgeOr("move", 100, () => moves.step(1)),
+    leapBack: nudgeOr("move", -1000, () => moves.leap(-1000)),
+    leapForward: nudgeOr("move", 1000, () => moves.leap(1000)),
+    toStart: nudgeOr("end", -100, moves.toStart),
+    toEnd: nudgeOr("end", 100, moves.toEnd),
     toggleLoop: playback.toggleLoop,
     toggleSound: playback.toggleSound,
     export: () => exporting.start?.(),
@@ -192,6 +193,7 @@ function Workspace({
           <Island className="shrink-0">
             <Transport
               playback={playback}
+              moves={moves}
               edits={edits}
               isAddOpen={isAddOpen}
               onAddOpenChange={setIsAddOpen}
@@ -208,7 +210,10 @@ function Workspace({
               trackWidth={track.width}
             />
           </Island>
-          <ModifierEditor edits={edits} />
+          <ModifierEditor
+            edits={edits}
+            crop={frameCrop(appearance, playback.ratio)}
+          />
         </div>
       </main>
       <CommandPalette

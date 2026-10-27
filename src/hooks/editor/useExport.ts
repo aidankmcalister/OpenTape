@@ -17,6 +17,7 @@ import {
   type CursorTrack,
   plainOr,
   type RingEvent,
+  SHAPE_RASTER,
 } from "@/lib/editor/cursor";
 import type { Project } from "@/lib/editor/project";
 import type { Size } from "@/lib/geometry";
@@ -138,8 +139,8 @@ async function pngOf(src: string, width: number, height: number) {
   image.src = src;
   await image.decode();
   const canvas = document.createElement("canvas");
-  canvas.width = Math.ceil(width * 8);
-  canvas.height = Math.ceil(height * 8);
+  canvas.width = Math.ceil(width * SHAPE_RASTER);
+  canvas.height = Math.ceil(height * SHAPE_RASTER);
   canvas.getContext("2d")?.drawImage(image, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL("image/png").slice(prefix.length);
 }

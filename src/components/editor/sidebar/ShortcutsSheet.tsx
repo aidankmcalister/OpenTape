@@ -16,19 +16,23 @@ export default function ShortcutsSheet(
     >
       {SHORTCUTS.map(({ group, rows }) => (
         <DialogSection key={group} title={group}>
-          {rows.map(({ actions, label = ACTION_NAMES[actions![0]], keys }) => (
-            <div
-              key={label}
-              className="flex h-8 items-center justify-between text-ui"
-            >
-              {label}
-              <span className="flex gap-1">
-                {(actions?.map(keyLabel) ?? keys ?? []).map((key) => (
-                  <Kbd key={key}>{key}</Kbd>
-                ))}
-              </span>
-            </div>
-          ))}
+          <div>
+            {rows.map(
+              ({ actions, label = ACTION_NAMES[actions![0]], keys }) => (
+                <div
+                  key={label}
+                  className="flex h-8 items-center justify-between text-ui"
+                >
+                  {label}
+                  <span className="flex gap-1">
+                    {(actions?.map(keyLabel) ?? keys ?? []).map((key) => (
+                      <Kbd key={key}>{key}</Kbd>
+                    ))}
+                  </span>
+                </div>
+              ),
+            )}
+          </div>
         </DialogSection>
       ))}
       <p className="px-4 pb-4 text-ui text-muted-foreground">

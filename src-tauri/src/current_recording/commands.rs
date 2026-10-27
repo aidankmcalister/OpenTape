@@ -50,7 +50,7 @@ fn label(window: Window) -> &'static str {
 
 #[tauri::command]
 pub(crate) async fn save_recording(app: AppHandle) -> CmdResult<String> {
-    let path = run_blocking(move || app.state::<CurrentRecording>().save()).await?;
+    let path = run_blocking(move || app.state::<CurrentRecording>().save(false)).await?;
     Ok(path.display().to_string())
 }
 
@@ -79,7 +79,7 @@ pub(crate) async fn export_recording(
 #[tauri::command]
 pub(crate) async fn copy_recording(app: AppHandle) -> CmdResult {
     let handle = app.clone();
-    let copy = run_blocking(move || handle.state::<CurrentRecording>().export_copy()).await?;
+    let copy = run_blocking(move || handle.state::<CurrentRecording>().save(true)).await?;
     macos::put_file_on_clipboard(&app, copy)?;
     Ok(())
 }
