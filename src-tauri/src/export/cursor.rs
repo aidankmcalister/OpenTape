@@ -137,7 +137,7 @@ impl ExportCursor {
         let pad = 2.0;
         let wide = ((high_x - low_x) * px + 2.0 * pad).ceil();
         let tall = ((high_y - low_y) * px + 2.0 * pad).ceil();
-        let (_, context) = canvas(wide as usize, tall as usize)?;
+        let (_, context) = canvas(wide as usize, tall as usize, None)?;
         let context = Some(&*context);
         let hot = CGPoint::new(pad - low_x * px, tall - pad + low_y * px);
         CGContext::set_alpha(context, point.alpha);
@@ -157,7 +157,7 @@ impl ExportCursor {
         let diameter = self.dot * px;
         let line = diameter * 0.06;
         let side = (diameter + 4.0).ceil();
-        let (_, context) = canvas(side as usize, side as usize)?;
+        let (_, context) = canvas(side as usize, side as usize, None)?;
         let context = Some(&*context);
         let ring = CGRect::new(
             CGPoint::new(

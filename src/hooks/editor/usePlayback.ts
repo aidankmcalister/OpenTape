@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 import { useClockValue, useVideoClock } from "@/hooks/useVideoClock";
-import type { SoundTrack } from "@/lib/bindings";
 import type { TimeMap } from "@/lib/editor/clips";
-import { type SoundSettings, stageSound } from "@/lib/editor/sound";
+import type { SoundSettings } from "@/lib/editor/sound";
 import type { Size } from "@/lib/geometry";
 
 export function usePlayback(src: string) {
@@ -108,24 +107,11 @@ export function useTimeMap(playback: Playback, time: TimeMap) {
   };
 }
 
-export function useStageSound(
-  playback: Playback,
-  sound: SoundSettings,
-  tracks: SoundTrack[] | null,
-) {
+export function useStageSound(playback: Playback, sound: SoundSettings) {
   const { ref } = playback.videoProps;
   useEffect(() => {
-    const video = ref.current;
-    if (!video) return;
-    const { volume, enabled } = stageSound(sound, tracks ?? []);
-    video.volume = volume;
-    const { audioTracks } = video as {
-      audioTracks?: ArrayLike<{ enabled: boolean }>;
-    };
-    Array.from(audioTracks ?? []).forEach((track, index) => {
-      track.enabled = enabled[index] ?? true;
-    });
-  }, [ref, sound, tracks, playback.durationMs]);
+    if (ref.current) ref.current.volume = sound.isMuted ? 0 : 1;
+  }, [ref, sound, playback.durationMs]);
 }
 
 function lengthMs(video: HTMLVideoElement): number {

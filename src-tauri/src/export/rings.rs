@@ -112,7 +112,7 @@ impl ExportRing {
         let side = (size + 8.0).ceil();
         let center = side / 2.0;
         let [red, green, blue] = rgb(&self.color)?;
-        let (_, context) = canvas(side as usize, side as usize)?;
+        let (_, context) = canvas(side as usize, side as usize, None)?;
         let context = Some(&*context);
         for circle in circles(self.style, progress, size) {
             let color = CGColor::new_srgb(red, green, blue, circle.alpha);

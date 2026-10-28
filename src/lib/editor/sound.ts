@@ -1,13 +1,8 @@
-import type { ExportSound, SoundTrack } from "@/lib/bindings";
 import type { Setting } from "./regions";
 
-export type SoundSettings = Record<SoundTrack, number> & { isMuted: boolean };
+export type SoundSettings = { isMuted: boolean };
 
-export const DEFAULT_SOUND: SoundSettings = {
-  isMuted: false,
-  microphone: 100,
-  systemAudio: 100,
-};
+export const DEFAULT_SOUND: SoundSettings = { isMuted: false };
 
 export const SOUND_SETTINGS = {
   isMuted: {
@@ -34,19 +29,4 @@ export const SOUND_SETTINGS = {
     step: 1,
     unit: "%",
   },
-} satisfies Record<keyof SoundSettings, Setting>;
-
-export function mixVolumes(sound: SoundSettings): ExportSound {
-  const gain = (track: SoundTrack) => (sound.isMuted ? 0 : sound[track] / 100);
-  return { microphone: gain("microphone"), systemAudio: gain("systemAudio") };
-}
-
-export function stageSound(sound: SoundSettings, tracks: SoundTrack[]) {
-  const mix = mixVolumes(sound);
-  const volumes = tracks.map((track) => mix[track]);
-  return {
-    enabled: volumes.map((volume) => volume > 0),
-    volume:
-      tracks.length === 0 ? (sound.isMuted ? 0 : 1) : Math.max(...volumes),
-  };
-}
+} satisfies Record<string, Setting>;

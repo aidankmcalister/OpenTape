@@ -44,12 +44,10 @@ describe("project", () => {
       sound: DEFAULT_SOUND,
       suggestionsMade: false,
     });
-    const quiet = readProject(JSON.stringify({ sound: { microphone: 40 } }));
-    expect(quiet.sound).toEqual({ ...DEFAULT_SOUND, microphone: 40 });
   });
 
   test("changeProject keeps the sound the same project when nothing changes, so undo skips it", () => {
-    expect(changeProject(NEW_PROJECT, "sound", { microphone: 100 })).toBe(
+    expect(changeProject(NEW_PROJECT, "sound", { isMuted: false })).toBe(
       NEW_PROJECT,
     );
     const muted = changeProject(NEW_PROJECT, "sound", { isMuted: true });

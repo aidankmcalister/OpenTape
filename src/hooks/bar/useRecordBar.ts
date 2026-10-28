@@ -133,12 +133,13 @@ export function useCaptureOptions() {
     () => localStorage.setItem("capture-options", JSON.stringify(options)),
     [options],
   );
-  const cameraId = import.meta.env.DEV ? options.cameraId : null;
   useEffect(() => {
-    invoke("set_capture_inputs", { cameraId, microphoneId, systemAudio }).catch(
-      console.error,
-    );
-  }, [cameraId, microphoneId, systemAudio]);
+    invoke("set_capture_inputs", {
+      cameraId: null,
+      microphoneId,
+      systemAudio,
+    }).catch(console.error);
+  }, [microphoneId, systemAudio]);
 
   async function chooseDevice(anchor: HTMLElement, kind: keyof Devices) {
     const key = kind === "cameras" ? "cameraId" : "microphoneId";
@@ -161,11 +162,8 @@ export function useCaptureOptions() {
   }
 
   return {
-    camera: devices.cameras.find(({ id }) => id === cameraId) ?? null,
-    canRecordCamera: import.meta.env.DEV,
     microphone,
     systemAudio,
-    chooseCamera: (anchor: HTMLElement) => void chooseDevice(anchor, "cameras"),
     chooseMicrophone: (anchor: HTMLElement) =>
       void chooseDevice(anchor, "microphones"),
     toggleSystemAudio: () =>

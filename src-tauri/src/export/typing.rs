@@ -68,7 +68,7 @@ pub(crate) fn typing_spots(video: &Path, stretches: &[TypingStretch]) -> Result<
 
 fn brightness(image: &CGImage) -> Result<(Vec<u8>, usize)> {
     let (width, height) = (CGImage::width(Some(image)), CGImage::height(Some(image)));
-    let (_, context) = canvas(width, height)?;
+    let (_, context) = canvas(width, height, None)?;
     let whole = CGRect::new(
         CGPoint::new(0.0, 0.0),
         CGSize::new(width as f64, height as f64),
@@ -82,7 +82,7 @@ fn brightness(image: &CGImage) -> Result<(Vec<u8>, usize)> {
         .flat_map(|y| {
             (0..width).map(move |x| {
                 let at = y * row + x * 4;
-                let [r, g, b] = [bytes[at], bytes[at + 1], bytes[at + 2]].map(u32::from);
+                let [b, g, r] = [bytes[at], bytes[at + 1], bytes[at + 2]].map(u32::from);
                 ((3 * r + 6 * g + b) / 10) as u8
             })
         })

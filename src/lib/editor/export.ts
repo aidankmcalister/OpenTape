@@ -15,7 +15,7 @@ import {
   type RingEvent,
 } from "./cursor";
 import { blurOf, outputAt, type Region, sameKind } from "./regions";
-import { DEFAULT_SOUND, mixVolumes, type SoundSettings } from "./sound";
+import { DEFAULT_SOUND, type SoundSettings } from "./sound";
 import { FRAME_MS } from "./timeline";
 import { zoomTrack } from "./zoom";
 
@@ -124,7 +124,7 @@ export function exportLayout(
           { startMs: kept[0].startMs, endMs: kept[kept.length - 1].endMs },
         )
       : null,
-    sound: mixVolumes(sound),
+    muted: sound.isMuted,
   };
 }
 

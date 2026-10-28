@@ -14,7 +14,6 @@ import {
   Settings,
   Square,
   Video,
-  VideoOff,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -145,16 +144,16 @@ function Setup({
         ))}
       </ToggleGroup>
       <PillDivider />
-      <Tooltip open={!options.canRecordCamera && bar.hoveredName === "camera"}>
+      <Tooltip open={bar.hoveredName === "camera"}>
         <TooltipTrigger
           render={<span data-hover="camera" className="inline-flex" />}
         >
           <DeviceButton
-            isOn={options.camera !== null}
-            icon={options.camera ? <Video /> : <VideoOff />}
-            label={options.camera?.name ?? "No camera"}
-            disabled={!options.canRecordCamera}
-            onClick={options.chooseCamera}
+            isOn={false}
+            icon={<Video />}
+            label="Camera"
+            disabled
+            onClick={() => {}}
           />
         </TooltipTrigger>
         <TooltipContent side="right">Coming soon</TooltipContent>

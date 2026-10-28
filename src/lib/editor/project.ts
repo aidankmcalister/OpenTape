@@ -31,7 +31,7 @@ export function readProject(json: string | null, fresh = NEW_PROJECT): Project {
     appearance: readAppearance(saved.appearance),
     regions: saved.regions ?? [],
     clips: saved.clips ?? [],
-    sound: { ...DEFAULT_SOUND, ...saved.sound },
+    sound: { isMuted: saved.sound?.isMuted ?? false },
     suggestionsMade: saved.suggestionsMade ?? false,
   };
 }

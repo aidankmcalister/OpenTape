@@ -172,12 +172,13 @@ fn exports_a_recording_in_the_default_appearance() {
                 radius: 16.0 * scale,
             }]
         }),
-        rings: vec![],
+        rings: std::env::var("EXPORT_TEST_RINGS").map_or(vec![], |path| {
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+        }),
         cursor: std::env::var("EXPORT_TEST_CURSOR")
             .ok()
             .map(|path| serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()),
-        sound: std::env::var("EXPORT_TEST_SOUND")
-            .map_or(FULL_SOUND, |json| serde_json::from_str(&json).unwrap()),
+        muted: std::env::var("EXPORT_TEST_MUTED").is_ok(),
     };
     let var = |name: &str, or: &str| std::env::var(name).unwrap_or(or.into());
     let options = ExportOptions {
@@ -217,17 +218,6 @@ fn finds_the_system_audio_and_microphone_tracks() {
     assert_eq!(
         sound_tracks(Path::new(&video)).unwrap(),
         [SoundTrack::SystemAudio, SoundTrack::Microphone]
-    );
-}
-
-#[test]
-fn each_track_takes_its_own_volume_from_the_page() {
-    let sound: ExportSound = serde_json::from_str(r#"{"microphone":0.5,"systemAudio":0}"#).unwrap();
-    assert_eq!(sound.volume(SoundTrack::Microphone), 0.5);
-    assert_eq!(sound.volume(SoundTrack::SystemAudio), 0.0);
-    assert_eq!(
-        serde_json::to_string(&SoundTrack::SystemAudio).unwrap(),
-        r#""systemAudio""#
     );
 }
 

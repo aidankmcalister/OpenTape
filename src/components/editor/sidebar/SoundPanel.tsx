@@ -5,6 +5,8 @@ import { DEFAULT_SOUND, SOUND_SETTINGS } from "@/lib/editor/sound";
 import { Dim, PanelHeader, Section } from "../Panel";
 import SettingControl from "../timeline/SettingControl";
 
+const FULL_VOLUME = { microphone: 100, systemAudio: 100 };
+
 export default function SoundPanel({
   edits,
   tracks,
@@ -39,17 +41,24 @@ export default function SoundPanel({
           <Section>
             <SettingControl setting={SOUND_SETTINGS.isMuted} {...control} />
           </Section>
-          <Dim when={sound.isMuted}>
+          <Dim when>
             <Section title="Volume">
               {heard.map((track) => (
                 <SettingControl
                   key={track}
                   setting={SOUND_SETTINGS[track]}
-                  {...control}
+                  values={FULL_VOLUME}
+                  onChange={() => {}}
+                  onCommit={() => {}}
                 />
               ))}
             </Section>
           </Dim>
+          <Section>
+            <p className="text-label leading-4 text-muted-foreground">
+              Volume per track is coming soon.
+            </p>
+          </Section>
         </>
       ) : null}
     </>

@@ -88,7 +88,7 @@ function Workspace({
     ? timeMap(clips, soloed, playback.durationMs)
     : edits.time;
   const moves = useTimeMap(playback, time);
-  useStageSound(playback, edits.project.sound, soundTracks);
+  useStageSound(playback, edits.project.sound);
   const rings = ringEvents(cursor.clicks, appearance.cursor);
   const exporting = useExport(edits.project, playback, rings, cursor, app);
   const [isAddOpen, setIsAddOpen] = useState(false);

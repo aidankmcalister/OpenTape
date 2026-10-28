@@ -139,21 +139,11 @@ test("exportLayout sends the zoom track, and each speed region in seconds", () =
   expect(layout.speed).toEqual([{ start: 2, end: 3.5, amount: 2 }]);
 });
 
-test("exportLayout sends each sound track's volume, and none when muted", () => {
+test("exportLayout sends whether the export is muted", () => {
   const video = { width: 1920, height: 1080 };
-  expect(exportLayout(DEFAULT_APPEARANCE, video).sound).toEqual({
-    microphone: 1,
-    systemAudio: 1,
-  });
-  const sound = { isMuted: false, microphone: 40, systemAudio: 75 };
-  expect(exportLayout(DEFAULT_APPEARANCE, video, { sound }).sound).toEqual({
-    microphone: 0.4,
-    systemAudio: 0.75,
-  });
-  const muted = { ...sound, isMuted: true };
-  expect(
-    exportLayout(DEFAULT_APPEARANCE, video, { sound: muted }).sound,
-  ).toEqual({ microphone: 0, systemAudio: 0 });
+  expect(exportLayout(DEFAULT_APPEARANCE, video).muted).toBe(false);
+  const sound = { isMuted: true };
+  expect(exportLayout(DEFAULT_APPEARANCE, video, { sound }).muted).toBe(true);
 });
 
 test("exportLayout sends each cut in seconds of the sped-up video", () => {

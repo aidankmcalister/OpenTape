@@ -3101,6 +3101,7 @@ dependencies = [
  "objc2-core-graphics",
  "objc2-core-image",
  "objc2-core-media",
+ "objc2-core-video",
  "objc2-foundation",
  "objc2-image-io",
  "objc2-quartz-core",

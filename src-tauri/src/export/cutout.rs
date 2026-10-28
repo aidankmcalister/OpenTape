@@ -1,43 +1,70 @@
 use std::path::Path;
-use std::ptr::null_mut;
+use std::ptr::{NonNull, null_mut};
 
 use super::{ExportGradient, ExportLayout, PixelRect, file_url};
 use anyhow::{Context, Result};
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
-use objc2_core_foundation::{CFRetained, CGAffineTransform, CGPoint, CGRect, CGSize};
+use objc2_core_foundation::{
+    CFDictionary, CFRetained, CFString, CGAffineTransform, CGPoint, CGRect, CGSize,
+};
 use objc2_core_graphics::{
-    CGBitmapContextCreate, CGBitmapContextCreateImage, CGBlendMode, CGColor, CGColorSpace,
-    CGContext, CGGradient, CGGradientDrawingOptions, CGImage, CGImageAlphaInfo, CGPath,
+    CGBitmapContextCreate, CGBlendMode, CGColor, CGColorSpace, CGContext, CGGradient,
+    CGGradientDrawingOptions, CGImage, CGImageAlphaInfo, CGImageByteOrderInfo, CGPath,
     kCGColorSpaceSRGB,
 };
 use objc2_core_image::{CIContext, CIImage, kCIImageApplyOrientationProperty};
+use objc2_core_video::{
+    CVPixelBuffer, CVPixelBufferCreate, CVPixelBufferGetBaseAddress, CVPixelBufferGetBytesPerRow,
+    CVPixelBufferLockBaseAddress, CVPixelBufferLockFlags, CVPixelBufferUnlockBaseAddress,
+    kCVPixelBufferIOSurfacePropertiesKey, kCVPixelFormatType_32BGRA,
+};
 use objc2_foundation::{NSDictionary, NSNumber, NSString};
 
 pub(super) fn canvas(
     width: usize,
     height: usize,
+    pixels: Option<&CVPixelBuffer>,
 ) -> Result<(CFRetained<CGColorSpace>, CFRetained<CGContext>)> {
     let srgb = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB }))
         .context("macOS has no sRGB color space")?;
-    let context = unsafe {
-        CGBitmapContextCreate(
-            null_mut(),
-            width,
-            height,
-            8,
-            0,
-            Some(&srgb),
-            CGImageAlphaInfo::PremultipliedLast.0,
+    let (memory, row) = pixels.map_or((null_mut(), 0), |pixels| {
+        (
+            CVPixelBufferGetBaseAddress(pixels),
+            CVPixelBufferGetBytesPerRow(pixels),
         )
-    }
-    .context("could not make a picture to draw in")?;
+    });
+    let bgra = CGImageAlphaInfo::PremultipliedFirst.0 | CGImageByteOrderInfo::Order32Little.0;
+    let context =
+        unsafe { CGBitmapContextCreate(memory, width, height, 8, row, Some(&srgb), bgra) }
+            .context("could not make a picture to draw in")?;
     Ok((srgb, context))
 }
 
 pub(super) fn cutout(layout: &ExportLayout, picture: Option<&Path>) -> Result<Retained<CIImage>> {
     let (width, height) = (layout.width as usize, layout.height as usize);
-    let (srgb, context) = canvas(width, height)?;
+    let mut pixels = null_mut();
+    let surface = CFDictionary::<CFString, CFDictionary>::from_slices(
+        &[unsafe { kCVPixelBufferIOSurfacePropertiesKey }],
+        &[CFDictionary::<CFString, CFString>::from_slices(&[], &[]).as_opaque()],
+    );
+    let made = unsafe {
+        CVPixelBufferCreate(
+            None,
+            width,
+            height,
+            kCVPixelFormatType_32BGRA,
+            Some(surface.as_opaque()),
+            NonNull::from(&mut pixels),
+        )
+    };
+    let pixels = NonNull::new(pixels)
+        .filter(|_| made == 0)
+        .context("could not make the background")?;
+    let pixels = unsafe { CFRetained::from_raw(pixels) };
+    let locked = CVPixelBufferLockFlags(0);
+    unsafe { CVPixelBufferLockBaseAddress(&pixels, locked) };
+    let (srgb, context) = canvas(width, height, Some(&pixels))?;
     let context = Some(&*context);
 
     if let Some(picture) = picture {
@@ -81,8 +108,8 @@ pub(super) fn cutout(layout: &ExportLayout, picture: Option<&Path>) -> Result<Re
         CGContext::stroke_path(context);
     }
 
-    let image = CGBitmapContextCreateImage(context).context("could not draw the background")?;
-    Ok(unsafe { CIImage::imageWithCGImage(&image) })
+    unsafe { CVPixelBufferUnlockBaseAddress(&pixels, locked) };
+    Ok(unsafe { CIImage::imageWithCVPixelBuffer(&pixels) })
 }
 
 pub(super) fn moved(image: &CIImage, tx: f64, ty: f64) -> Retained<CIImage> {

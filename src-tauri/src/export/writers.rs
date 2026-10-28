@@ -11,8 +11,8 @@ use objc2_av_foundation::{
     AVAssetReaderAudioMixOutput, AVAssetReaderOutput, AVAssetReaderVideoCompositionOutput,
     AVAssetWriter, AVAssetWriterInput, AVAssetWriterStatus, AVFileTypeMPEG4, AVMediaTypeAudio,
     AVMediaTypeVideo, AVVideoAverageBitRateKey, AVVideoCodecKey, AVVideoCodecTypeH264,
-    AVVideoCompressionPropertiesKey, AVVideoHeightKey, AVVideoMaxKeyFrameIntervalDurationKey,
-    AVVideoWidthKey,
+    AVVideoCodecTypeHEVC, AVVideoCompressionPropertiesKey, AVVideoHeightKey,
+    AVVideoMaxKeyFrameIntervalDurationKey, AVVideoWidthKey,
 };
 use objc2_avf_audio::{AVFormatIDKey, AVNumberOfChannelsKey, AVSampleRateKey};
 use objc2_core_foundation::{CFDictionary, CFNumber, CFString, CFURL};
@@ -210,7 +210,7 @@ fn hundredths(seconds: f64) -> i32 {
     (seconds * 100.0).round() as i32
 }
 
-pub(super) fn h264(
+pub(super) fn compression(
     width: u32,
     height: u32,
     bits_per_pixel: f64,
@@ -226,7 +226,13 @@ pub(super) fn h264(
         ],
         &[&bitrate, &keyframe_every],
     );
-    let codec = key(unsafe { AVVideoCodecTypeH264 })?;
+    let codec = key(unsafe {
+        if width.max(height) > 4096 {
+            AVVideoCodecTypeHEVC
+        } else {
+            AVVideoCodecTypeH264
+        }
+    })?;
     let (width, height) = (NSNumber::new_u32(width), NSNumber::new_u32(height));
     let values: [&AnyObject; 4] = [
         codec.as_ref(),
