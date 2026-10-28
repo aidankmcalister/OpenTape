@@ -20,21 +20,33 @@ import {
   type RingEvent,
   ringCircles,
   ringsAt,
+  zoomedTip,
 } from "@/lib/editor/cursor";
-import { focusAt, focusBox, focusBoxStyle, zoomPath } from "@/lib/editor/zoom";
-import { type Point, type Rect, rectStyle, type Size } from "@/lib/geometry";
+import { focusAt, focusBox, zoomPath } from "@/lib/editor/zoom";
+import {
+  percentStyle,
+  type Point,
+  type Rect,
+  rectStyle,
+  type Size,
+} from "@/lib/geometry";
 import {
   blockValue,
+  blurOf,
+  type BoxDrag,
+  draggedBox,
   outputAt,
   REGIONS,
+  regionAt,
   regionsAt,
   type Region,
 } from "@/lib/editor/regions";
-import type { Clip } from "@/lib/editor/clips";
+import { type Clip, keptClips } from "@/lib/editor/clips";
 import type { Clock } from "@/lib/time";
 import Island from "./Island";
 import { hueOf, REGION_ICONS } from "./timeline/kinds";
 import { followPointer } from "@/hooks/usePointerHover";
+import { cn } from "@/lib/utils";
 
 export default function Stage({
   fileSrc,
@@ -46,7 +58,7 @@ export default function Stage({
   rings,
   cursor,
   durationMs,
-  focus,
+  editing,
   ...props
 }: ComponentProps<"video"> & {
   fileSrc: (name: string) => string;
@@ -58,13 +70,14 @@ export default function Stage({
   rings: RingEvent[];
   cursor: CursorTrack;
   durationMs: number;
-  focus: Focusing | null;
+  editing: Editing | null;
 }) {
   const { ref, size } = useElementSize<HTMLDivElement>();
   const { frame, recording, picture, radius, shadow, border, video, scale } =
     frameLayout(appearance, size, ratio);
-  const isFocusing = focus !== null;
+  const isFocusing = editing?.region.kind === "zoom";
   const { x: cropX, y: cropY } = frameCrop(appearance, ratio);
+  const kept = keptClips(clips, durationMs);
   const zoomAt = useMemo(() => {
     const shown = isFocusing ? [] : regions;
     const at = isFocusing
@@ -94,6 +107,13 @@ export default function Stage({
                   style={rectStyle(video)}
                   {...props}
                 />
+                <Blurs
+                  clock={clock}
+                  regions={regions}
+                  video={video}
+                  scale={scale}
+                  editing={editing?.region.kind === "blur" ? editing : null}
+                />
                 <ClickRings
                   clock={clock}
                   rings={rings}
@@ -102,9 +122,9 @@ export default function Stage({
                   scale={scale}
                 />
               </Zoom>
-              {focus ? (
+              {editing?.region.kind === "zoom" ? (
                 <div className="absolute" style={rectStyle(picture)}>
-                  <FocusBox {...focus} crop={{ x: cropX, y: cropY }} />
+                  <FocusBox {...editing} crop={{ x: cropX, y: cropY }} />
                 </div>
               ) : null}
               {border.color ? (
@@ -123,7 +143,8 @@ export default function Stage({
                 track={cursor}
                 settings={appearance.cursor}
                 durationMs={durationMs}
-                clips={clips}
+                startMs={kept[0].startMs}
+                endMs={kept[kept.length - 1].endMs}
                 video={video}
                 size={recording}
                 zoomAt={zoomAt}
@@ -134,6 +155,80 @@ export default function Stage({
       </div>
       <InEffect clock={clock} regions={regions} />
     </Island>
+  );
+}
+
+function Blurs({
+  clock,
+  regions,
+  video,
+  scale,
+  editing,
+}: {
+  clock: Clock;
+  regions: Region[];
+  video: Rect;
+  scale: number;
+  editing: Editing | null;
+}) {
+  const playing = useClockValue(clock, (seconds) =>
+    regionAt(regions, "blur", seconds * 1000),
+  );
+  const blurStyle = (region: Region) => {
+    const { box, radius } = blurOf(region);
+    return {
+      ...percentStyle(box),
+      backdropFilter: `blur(${radius * scale}px)`,
+    };
+  };
+  return (
+    <div className="pointer-events-none absolute" style={rectStyle(video)}>
+      {playing && playing.id !== editing?.region.id ? (
+        <div className="absolute" style={blurStyle(playing)} />
+      ) : null}
+      {editing ? (
+        <div
+          data-keeps-editor
+          className="pointer-events-auto absolute cursor-grab rounded-sm border-2 border-highlight active:cursor-grabbing"
+          style={blurStyle(editing.region)}
+          onPointerDown={(event) => {
+            const target = event.target as HTMLElement;
+            const drag = (target.dataset.corner ?? "move") as BoxDrag;
+            const { width, height } =
+              event.currentTarget.parentElement!.getBoundingClientRect();
+            const { clientX: x, clientY: y } = event;
+            const { box } = blurOf(editing.region);
+            followPointer(
+              (moved) =>
+                editing.onChange({
+                  box: draggedBox(box, drag, {
+                    x: (moved.clientX - x) / width,
+                    y: (moved.clientY - y) / height,
+                  }),
+                }),
+              editing.onDone,
+            );
+          }}
+        >
+          {(["nw", "ne", "sw", "se"] as const).map((corner) => (
+            <div
+              key={corner}
+              data-corner={corner}
+              className={cn(
+                "absolute size-3 -translate-1/2 rounded-full bg-highlight",
+                corner === "nw" || corner === "se"
+                  ? "cursor-nwse-resize"
+                  : "cursor-nesw-resize",
+              )}
+              style={{
+                left: corner.endsWith("w") ? 0 : "100%",
+                top: corner.startsWith("n") ? 0 : "100%",
+              }}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -167,10 +262,11 @@ function ClickRings({
             width: side,
             height: side,
             opacity: circle.alpha,
-            background: circle.isFilled ? ring.color : undefined,
-            boxShadow: circle.isFilled
-              ? undefined
-              : `inset 0 0 0 ${circle.line * scale}px ${ring.color}`,
+            background: circle.line > 0 ? undefined : ring.color,
+            boxShadow:
+              circle.line > 0
+                ? `inset 0 0 0 ${circle.line * scale}px ${ring.color}`
+                : undefined,
           }}
         />
       );
@@ -183,7 +279,8 @@ function Cursor({
   track,
   settings,
   durationMs,
-  clips,
+  startMs,
+  endMs,
   video,
   size,
   zoomAt,
@@ -192,32 +289,29 @@ function Cursor({
   track: CursorTrack;
   settings: CursorSettings;
   durationMs: number;
-  clips: Clip[];
+  startMs: number;
+  endMs: number;
   video: Rect;
   size: Size;
   zoomAt: ZoomAt;
 }) {
   const spotAt = useMemo(
-    () => cursorPath(track, settings, durationMs, clips),
-    [track, settings, durationMs, clips],
+    () => cursorPath(track, settings, durationMs, { startMs, endMs }),
+    [track, settings, durationMs, startMs, endMs],
   );
+  const { style, hidesOutside } = plainOr(settings);
   const pictures = useMemo(
-    () => cursorPictures(track.images, plainOr(settings).style),
-    [track.images, settings],
+    () => cursorPictures(track.images, style),
+    [track.images, style],
   );
   const seen = useClockValue(clock, (seconds) => {
     const spot = spotAt(seconds * 1000);
     if (!spot) return null;
     const { scale, center } = zoomAt(seconds);
-    const zoomed = (at: number, share: number, length: number) =>
-      share * length + (at - share * length) * scale;
-    const tip = {
-      x: zoomed(video.x + spot.x * video.width, center.x, size.width),
-      y: zoomed(video.y + spot.y * video.height, center.y, size.height),
-    };
+    const tip = zoomedTip(spot, video, size, { scale, ...center });
     const alpha =
       spot.alpha *
-      outsideAlpha(settings, {
+      outsideAlpha(hidesOutside, {
         x: tip.x / size.width,
         y: tip.y / size.height,
       });
@@ -227,7 +321,7 @@ function Cursor({
   const { spot, tip } = seen;
   const px =
     cursorUnit(track, settings) * video.width * spot.scale * seen.scale;
-  if (plainOr(settings).style === "Dot") {
+  if (style === "Dot") {
     const side = DOT_POINTS * px;
     return (
       <div
@@ -313,27 +407,32 @@ function Zoom({
   );
 }
 
-type Focusing = {
-  zoom: Region;
-  onMove: (center: Point) => void;
+type Editing = {
+  region: Region;
+  onChange: (change: Partial<Pick<Region, "center" | "box">>) => void;
   onDone: () => void;
 };
 
-function FocusBox({ zoom, onMove, onDone, crop }: Focusing & { crop: Point }) {
+function FocusBox({
+  region: zoom,
+  onChange,
+  onDone,
+  crop,
+}: Editing & { crop: Point }) {
   const box = focusBox(zoom, crop);
   return (
     <div data-keeps-editor className="absolute inset-0">
       <div
         className="absolute grid cursor-grab place-items-center rounded-sm border-2 border-highlight bg-highlight/16 active:cursor-grabbing"
-        style={focusBoxStyle(zoom, crop)}
+        style={percentStyle(box)}
         onPointerDown={(event) => {
           const { width, height } =
             event.currentTarget.parentElement!.getBoundingClientRect();
           const { clientX: x, clientY: y } = event;
           followPointer(
             (moved) =>
-              onMove(
-                focusAt(
+              onChange({
+                center: focusAt(
                   {
                     x: box.x + (moved.clientX - x) / width,
                     y: box.y + (moved.clientY - y) / height,
@@ -341,7 +440,7 @@ function FocusBox({ zoom, onMove, onDone, crop }: Focusing & { crop: Point }) {
                   zoom.amount,
                   crop,
                 ),
-              ),
+              }),
             onDone,
           );
         }}

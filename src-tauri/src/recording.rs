@@ -192,7 +192,7 @@ pub(crate) async fn restart_recording(
     announce_status(&app);
     let alert = Alert {
         title: "Restart recording?",
-        message: "What you've recorded so far will be deleted.",
+        message: "Restarting deletes what you've recorded so far.",
         first: "Restart",
         second: None,
     };
@@ -216,8 +216,7 @@ pub(crate) async fn restart_recording(
 
 #[tauri::command]
 pub(crate) async fn stop_recording(app: AppHandle) -> CmdResult {
-    stop(&app, None, None).await?;
-    Ok(())
+    Ok(stop(&app, None, None).await?)
 }
 
 async fn capture_stopped(app: AppHandle, recording_number: u64, reason: String) {

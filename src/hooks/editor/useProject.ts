@@ -349,12 +349,16 @@ export function useVisibleBox(src: string) {
   return box;
 }
 
-export function useLanes() {
+export function useLanes(kinds: RegionKind[]) {
   const [solo, setSolo] = useState<RegionKind | null>(null);
   const [collapsed, setCollapsed] = useState<RegionKind[]>([]);
+  const isAllCollapsed = kinds.every((kind) => collapsed.includes(kind));
   return {
     solo,
     collapsed,
+    hasLanes: kinds.length > 0,
+    isAllCollapsed,
+    toggleAll: () => setCollapsed(isAllCollapsed ? [] : kinds),
     toggleSolo: (kind: RegionKind) =>
       setSolo((current) => (current === kind ? null : kind)),
     toggleCollapsed: (kind: RegionKind) =>

@@ -16,9 +16,11 @@ export type Devices = { cameras: Array<Device>, microphones: Array<Device>, };
 
 export type DisplayInfo = { id: number, name: string, frame: Frame, size: CaptureSize, scale: number, safeTop: number, };
 
+export type ExportBlur = { start: number, end: number, x: number, y: number, width: number, height: number, radius: number, };
+
 export type ExportBorder = { width: number, color: string, opacity: number, };
 
-export type ExportCursor = { points: Array<CursorPoint>, images: Array<CursorImage>, unit: number, dot: number, outsideFade: number, };
+export type ExportCursor = { points: Array<CursorPoint>, images: Array<CursorImage>, unit: number, dot: number, };
 
 export type ExportCut = { start: number, end: number, };
 
@@ -26,7 +28,7 @@ export type ExportFormat = "mp4" | "gif";
 
 export type ExportGradient = { angle: number, stops: Array<ExportStop>, };
 
-export type ExportLayout = { width: number, height: number, recording: PixelRect, video: PixelRect, radius: number, shadow: ExportShadow, border: ExportBorder | null, background: ExportGradient, backgroundImage: string | null, zoom: Array<ExportZoom>, zoomRate: number, speed: Array<ExportSpeed>, cuts: Array<ExportCut>, rings: Array<ExportRing>, cursor: ExportCursor | null, sound: ExportSound, };
+export type ExportLayout = { width: number, height: number, recording: PixelRect, video: PixelRect, radius: number, shadow: ExportShadow, border: ExportBorder | null, background: ExportGradient, backgroundImage: string | null, zoom: Array<ExportZoom>, zoomRate: number, speed: Array<ExportSpeed>, cuts: Array<ExportCut>, blurs: Array<ExportBlur>, rings: Array<ExportRing>, cursor: ExportCursor | null, sound: ExportSound, };
 
 export type ExportOptions = { format: ExportFormat, frameRate: number, bitsPerPixel: number, toClipboard: boolean, };
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Region } from "./regions";
+import { addRegion, type Region } from "./regions";
 import { DEFAULT_APPEARANCE, frameLayout } from "./appearance";
 import {
   aboutMegabytes,
@@ -294,4 +294,60 @@ test("a 9:16 Fill export of a wide recording fills the frame and zooms past the 
   );
   expect(letterbox.recording.height).toBeCloseTo(567, 0);
   expect(letterbox.zoom[0].scale).toBe(1);
+});
+
+test("exportLayout sends each blur's rectangle at its output time", () => {
+  const regions: Region[] = [
+    { id: 1, kind: "speed", startMs: 0, endMs: 2000, amount: 2 },
+    {
+      id: 2,
+      kind: "blur",
+      startMs: 3000,
+      endMs: 4000,
+      amount: 0,
+      box: { x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
+    },
+  ];
+  const layout = exportLayout(
+    DEFAULT_APPEARANCE,
+    { width: 1920, height: 1080 },
+    { regions, durationMs: 5000 },
+  );
+  expect(layout.blurs).toEqual([
+    expect.objectContaining({
+      start: 2,
+      end: 3,
+      x: 0.1,
+      y: 0.2,
+      width: 0.3,
+      height: 0.4,
+    }),
+  ]);
+});
+
+test("a new blur is a centered box whose strength sets a radius sized for the export", () => {
+  const [blur] = addRegion([], "blur", 0, 5000);
+  const hard = { ...blur, settings: { strength: "Hard" } };
+  const video = { width: 3840, height: 2160 };
+  const full = exportLayout(DEFAULT_APPEARANCE, video, {
+    regions: [blur],
+    durationMs: 5000,
+  });
+  const scale = full.width / 1920;
+  expect(full.blurs[0]).toEqual({
+    start: 0,
+    end: 2,
+    x: 0.35,
+    y: 0.4,
+    width: 0.3,
+    height: 0.2,
+    radius: 16 * scale,
+  });
+  const half = exportLayout(
+    DEFAULT_APPEARANCE,
+    video,
+    { regions: [hard], durationMs: 5000 },
+    full.height / 2,
+  );
+  expect(half.blurs[0].radius).toBeCloseTo(16 * scale, 0);
 });

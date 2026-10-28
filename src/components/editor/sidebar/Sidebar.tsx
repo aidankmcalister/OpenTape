@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Image, MousePointer2, Volume2 } from "lucide-react";
+import { Image, MousePointer2, Video, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -77,6 +77,11 @@ export default function Sidebar({
             </Button>
           </RailTip>
         ))}
+        <RailTip label="Coming soon">
+          <Button variant="ghost" size="icon" aria-label="Camera" disabled>
+            <Video />
+          </Button>
+        </RailTip>
         <Separator className="mt-auto mb-1 w-6" />
         <RailTip label="Keyboard shortcuts">
           <ShortcutsSheet {...dialogProps("shortcuts")} />

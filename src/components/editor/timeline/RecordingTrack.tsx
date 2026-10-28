@@ -43,9 +43,13 @@ export default function RecordingTrack({
           drag={drag}
         />
       ))}
-      {clips.slice(1).map(({ startMs: ms }) => (
-        <Seam key={ms} ms={ms} timelineMs={timelineMs} />
-      ))}
+      {edits.isCutting
+        ? clips
+            .slice(1)
+            .map(({ startMs: ms }) => (
+              <Seam key={ms} ms={ms} timelineMs={timelineMs} />
+            ))
+        : null}
     </div>
   );
 }

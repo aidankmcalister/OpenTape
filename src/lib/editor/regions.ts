@@ -1,4 +1,4 @@
-import { type Point, clamp } from "@/lib/geometry";
+import { type Point, type Rect, clamp } from "@/lib/geometry";
 import type { MarkColor } from "./appearance";
 
 export type RegionKind =
@@ -17,6 +17,7 @@ export type Region = {
   endMs: number;
   amount: number;
   center?: Point;
+  box?: Rect;
   settings?: Record<string, SettingValue>;
   isSuggested?: boolean;
   path?: (Point & { afterMs: number })[];
@@ -62,6 +63,8 @@ export type Setting =
   | { kind: "hint"; text: string | ((region: Region) => string) };
 
 type Value = (key: string) => SettingValue;
+
+const BLUR_RADII = { Soft: 8, Medium: 16, Hard: 32 };
 
 export const REGIONS: Record<
   RegionKind,
@@ -133,12 +136,57 @@ export const REGIONS: Record<
     ],
     shows: (value) => `${value("amount")}×`,
   },
-  captions: comingSoon("Captions", "C", "167 139 250"),
+  captions: comingSoon("Captions", "X", "167 139 250"),
   annotation: comingSoon("Annotation", "N", "244 114 182"),
-  blur: comingSoon("Blur", "B", "34 211 238"),
+  blur: {
+    status: "ready",
+    label: "Blur",
+    key: "B",
+    hue: "34 211 238",
+    amount: 0,
+    lengthMs: 2000,
+    settings: [
+      {
+        kind: "choice",
+        key: "strength",
+        label: "Strength",
+        options: Object.keys(BLUR_RADII),
+        initial: "Medium",
+      },
+    ],
+    shows: (value) => String(value("strength")),
+  },
   highlight: comingSoon("Highlight", "H", "250 204 21"),
   titleCard: comingSoon("Title card", "T", "251 113 133"),
 };
+
+export function blurOf(region: Region) {
+  const strength = settingValue(region, "strength") as keyof typeof BLUR_RADII;
+  return {
+    box: region.box ?? { x: 0.35, y: 0.4, width: 0.3, height: 0.2 },
+    radius: BLUR_RADII[strength],
+  };
+}
+
+export type BoxDrag = "move" | "nw" | "ne" | "sw" | "se";
+
+export function draggedBox(box: Rect, drag: BoxDrag, by: Point): Rect {
+  if (drag === "move")
+    return {
+      ...box,
+      x: clamp(box.x + by.x, 0, 1 - box.width),
+      y: clamp(box.y + by.y, 0, 1 - box.height),
+    };
+  const side = (at: number, size: number, delta: number, isStart: boolean) => {
+    const end = at + size;
+    if (!isStart) return [at, clamp(end + delta, at + 0.05, 1) - at];
+    const start = clamp(at + delta, 0, end - 0.05);
+    return [start, end - start];
+  };
+  const [x, width] = side(box.x, box.width, by.x, drag.includes("w"));
+  const [y, height] = side(box.y, box.height, by.y, drag.includes("n"));
+  return { x, y, width, height };
+}
 
 function comingSoon(label: string, key: string, hue: string) {
   return {
@@ -203,11 +251,6 @@ export const ALL_KINDS = Object.keys(REGIONS) as RegionKind[];
 export const KINDS = ALL_KINDS.filter(
   (kind) => REGIONS[kind].status !== "soon",
 );
-
-export const STATUSES: { status: TypeStatus; label: string }[] = [
-  { status: "ready", label: "Modifiers" },
-  { status: "soon", label: "Coming soon" },
-];
 
 export const MIN_REGION_MS = 200;
 
@@ -381,7 +424,7 @@ export function regionAt(
 export function changeRegion(
   regions: Region[],
   id: number,
-  change: Partial<Pick<Region, "amount" | "center" | "settings">>,
+  change: Partial<Pick<Region, "amount" | "center" | "box" | "settings">>,
 ): Region[] {
   const region = regions.find((region) => region.id === id);
   if (!region) return regions;
@@ -428,7 +471,7 @@ export function amountAt(
 }
 
 export function regionKindForKey(key: string): RegionKind | undefined {
-  return ALL_KINDS.find(
+  return KINDS.find(
     (kind) => REGIONS[kind].key.toLowerCase() === key.toLowerCase(),
   );
 }

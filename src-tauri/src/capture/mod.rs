@@ -229,9 +229,12 @@ impl ActiveCapture {
 
     fn finish(mut self) -> Result<SavedRecording> {
         let video_end = lock(&self.timeline).video_end(host_time_now());
-        let stopped = wait("stopping the capture", CAPTURE_LIMIT, self.stream.stop());
-        if let Err(err) = stopped.and_then(|it| it.map_err(|err| anyhow!("{err:?}"))) {
-            log::warn!("could not stop the capture, keeping what it recorded: {err:#}");
+        match wait("stopping the capture", CAPTURE_LIMIT, self.stream.stop()) {
+            Ok(Ok(())) => {}
+            Ok(Err(err)) => {
+                log::warn!("could not stop the capture, keeping what it recorded: {err:?}")
+            }
+            Err(err) => log::warn!("could not stop the capture, keeping what it recorded: {err:#}"),
         }
         self.queue.sync(|| {});
         let cursor = self.cursor.stop();

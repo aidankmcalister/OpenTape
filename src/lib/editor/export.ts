@@ -7,14 +7,14 @@ import {
   fillGradient,
   recordingIn,
 } from "./appearance";
-import { type Clip, cutSpans } from "./clips";
+import { type Clip, cutSpans, keptClips } from "./clips";
 import {
   type CursorTrack,
   exportCursor,
   exportRings,
   type RingEvent,
 } from "./cursor";
-import { outputAt, type Region, sameKind } from "./regions";
+import { blurOf, outputAt, type Region, sameKind } from "./regions";
 import { DEFAULT_SOUND, mixVolumes, type SoundSettings } from "./sound";
 import { FRAME_MS } from "./timeline";
 import { zoomTrack } from "./zoom";
@@ -63,16 +63,19 @@ export function exportLayout(
     height: shown.height * crop.y,
   };
   const inset = appearance.inset * scale;
+  const placed = {
+    x: recording.x + (recording.width - shown.width) / 2 - inset,
+    y: recording.y + (recording.height - shown.height) / 2 - inset,
+    width: shown.width + inset * 2,
+    height: shown.height + inset * 2,
+  };
+  const zoom = zoomTrack(regions, durationMs, cursor, crop);
+  const kept = keptClips(clips, durationMs);
   return {
     width,
     height,
     recording,
-    video: {
-      x: recording.x + (recording.width - shown.width) / 2 - inset,
-      y: recording.y + (recording.height - shown.height) / 2 - inset,
-      width: shown.width + inset * 2,
-      height: shown.height + inset * 2,
-    },
+    video: placed,
     border:
       appearance.borderWidth > 0
         ? {
@@ -90,7 +93,7 @@ export function exportLayout(
     background: fillGradient(appearance.fill),
     backgroundImage:
       appearance.fill.kind === "image" ? appearance.fill.image : null,
-    zoom: zoomTrack(regions, durationMs, cursor, crop),
+    zoom,
     zoomRate: 1000 / FRAME_MS,
     speed: sameKind(regions, "speed").map(({ startMs, endMs, amount }) => ({
       start: startMs / 1000,
@@ -101,9 +104,25 @@ export function exportLayout(
       start: outputAt(regions, startMs) / 1000,
       end: outputAt(regions, endMs) / 1000,
     })),
+    blurs: sameKind(regions, "blur").map((blur) => {
+      const { box, radius } = blurOf(blur);
+      return {
+        start: outputAt(regions, blur.startMs) / 1000,
+        end: outputAt(regions, blur.endMs) / 1000,
+        ...box,
+        radius: radius * scale,
+      };
+    }),
     rings: exportRings(rings, regions, scale),
     cursor: cursor
-      ? exportCursor(cursor, regions, appearance.cursor, durationMs, clips)
+      ? exportCursor(
+          cursor,
+          regions,
+          appearance.cursor,
+          durationMs,
+          { zoom, recording, video: placed },
+          { startMs: kept[0].startMs, endMs: kept[kept.length - 1].endMs },
+        )
       : null,
     sound: mixVolumes(sound),
   };

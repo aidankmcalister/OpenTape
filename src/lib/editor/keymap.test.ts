@@ -8,7 +8,7 @@ import {
   SHORTCUTS,
   type Binding,
 } from "./keymap";
-import { KINDS, REGIONS } from "./regions";
+import { ALL_KINDS, KINDS, REGIONS } from "./regions";
 
 const PRESS = {
   key: "",
@@ -52,9 +52,11 @@ describe("keymap", () => {
     expect(actionFor({ ...PRESS, key: " ", ctrlKey: true })).toBeNull();
   });
 
-  test("a ready modifier's key isn't taken by a binding", () => {
-    for (const kind of KINDS)
+  test("no modifier type's key is taken by a binding or another type", () => {
+    for (const kind of ALL_KINDS)
       expect(actionFor({ ...PRESS, key: REGIONS[kind].key })).toBeNull();
+    const keys = ALL_KINDS.map((kind) => REGIONS[kind].key.toLowerCase());
+    expect(new Set(keys).size).toBe(keys.length);
   });
 
   test("a key that isn't in the keymap does nothing", () => {

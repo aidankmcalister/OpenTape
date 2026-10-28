@@ -13,10 +13,10 @@ import {
   type SettingValue,
 } from "@/lib/editor/regions";
 import { MARK_COLORS, type MarkColor } from "@/lib/editor/appearance";
-import { focusBox, focusBoxStyle, focusCenter } from "@/lib/editor/zoom";
-import { clamp, type Point } from "@/lib/geometry";
+import { focusBox, focusCenter } from "@/lib/editor/zoom";
+import { clamp, percentStyle, type Point } from "@/lib/geometry";
 import { ColorSwatches } from "../ColorPicker";
-import { NumberField, ValueInput, SwitchField } from "../Panel";
+import { Dim, NumberField, ValueInput, SwitchField } from "../Panel";
 
 const MARK_OPTIONS = (Object.keys(MARK_COLORS) as MarkColor[]).map((mark) => ({
   value: mark,
@@ -120,7 +120,9 @@ export default function SettingControl({
       );
     case "focus":
       return region && onCenter ? (
-        <Focus region={region} crop={crop} onCenter={onCenter} />
+        <Dim when={values.focus === "Follow cursor"}>
+          <Focus region={region} crop={crop} onCenter={onCenter} />
+        </Dim>
       ) : null;
     case "hint":
       return (
@@ -186,7 +188,7 @@ function Focus({
         <div className="absolute inset-x-0 top-1/2 h-px bg-hairline" />
         <div
           className="absolute border border-dashed border-highlight/60"
-          style={focusBoxStyle(region, crop)}
+          style={percentStyle(box)}
         />
         <div
           className="absolute size-2 -translate-1/2 rounded-full bg-highlight"

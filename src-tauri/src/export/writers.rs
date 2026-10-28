@@ -115,7 +115,8 @@ pub(super) fn write_mp4(
         let _ = finished.send(());
     });
     unsafe { writer.finishWritingWithCompletionHandler(&on_finish) };
-    let _ = wait.recv();
+    wait.recv_timeout(Duration::from_secs(30))
+        .context("finishing the file took longer than 30 seconds")?;
     ensure!(
         unsafe { writer.status() } == AVAssetWriterStatus::Completed,
         "could not finish the file: {}",

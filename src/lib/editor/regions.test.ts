@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   addRegion,
+  ALL_KINDS,
   KINDS,
   amountAt,
   blockValue,
@@ -138,10 +139,17 @@ describe("regions", () => {
   test.each([
     ["z", "zoom"],
     ["S", "speed"],
-    ["x", undefined],
+    ["q", undefined],
   ] as const)("regionKindForKey(%p) matches in either case", (key, kind) => {
     expect(regionKindForKey(key)).toBe(kind);
   });
+
+  test.each(ALL_KINDS.filter((kind) => REGIONS[kind].status === "soon"))(
+    "the key of coming-soon %s adds nothing",
+    (kind) => {
+      expect(regionKindForKey(REGIONS[kind].key)).toBeUndefined();
+    },
+  );
 });
 
 test("changeRegion changes one region, and nothing when nothing changes", () => {

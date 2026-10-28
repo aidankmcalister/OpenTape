@@ -16,6 +16,7 @@ import {
   suggestedSpeeds,
   suggestedZooms,
   outsideAlpha,
+  plainOr,
 } from "./cursor";
 import { type CursorSettings, DEFAULT_CURSOR } from "./appearance";
 import type { Region } from "./regions";
@@ -76,16 +77,13 @@ test("a ring shows for half a second after its click, in the export's 60 steps",
 
 test("a ring grows and fades with a line 8% of its size, and a ripple sends a second one after it", () => {
   expect(ringCircles("ring", 0, 100)).toEqual([
-    { radius: 20, alpha: 1, isFilled: false, line: 8 },
+    { radius: 20, alpha: 1, line: 8 },
   ]);
   expect(ringCircles("ring", 1, 16)[0]).toMatchObject({
     radius: 8,
     line: 1.28,
   });
-  expect(ringCircles("pulse", 0, 100)[0]).toMatchObject({
-    isFilled: true,
-    line: 0,
-  });
+  expect(ringCircles("pulse", 0, 100)[0]).toMatchObject({ line: 0 });
   expect(ringCircles("ripple", 0.2, 100)).toHaveLength(1);
   expect(ringCircles("ripple", 0.5, 100)).toHaveLength(2);
 });
@@ -226,15 +224,15 @@ test("a shake, out and back within a moment, is removed", () => {
 });
 
 test("looping and stopping early count from the kept video's ends, so trimming doesn't cut them off", () => {
-  const clips = [{ id: 1, startMs: 500, endMs: 3000 }];
-  const looped = cursorPath(TRACK, { ...RAW, loops: true }, DURATION, clips);
+  const kept = { startMs: 500, endMs: 3000 };
+  const looped = cursorPath(TRACK, { ...RAW, loops: true }, DURATION, kept);
   expect(looped(3000)!.x).toBeCloseTo(0.25);
   expect(looped(3000)!.y).toBeCloseTo(0.25);
   const stopped = cursorPath(
     TRACK,
     { ...RAW, stopsBeforeEnd: 2.5 },
     DURATION,
-    clips,
+    kept,
   );
   expect(stopped(900)!.x).toBeCloseTo(0.25);
   const exported = exportCursor(
@@ -242,7 +240,8 @@ test("looping and stopping early count from the kept video's ends, so trimming d
     [],
     { ...RAW, loops: true },
     DURATION,
-    clips,
+    VIEW,
+    kept,
   )!;
   const end = exported.points.find(({ t }) => Math.abs(t - 3) < 0.01)!;
   expect(end.x).toBeCloseTo(0.25);
@@ -290,6 +289,13 @@ test("visibleBox finds the pixels that show, or the whole picture when none do",
   });
 });
 
+const BOX = { x: 0, y: 0, width: 1000, height: 500 };
+const VIEW = {
+  zoom: [{ scale: 1, x: 0.5, y: 0.5 }],
+  recording: BOX,
+  video: BOX,
+};
+
 const IMAGES = ["arrow", "text", "pointer"].map((kind) => ({
   kind,
   png: "",
@@ -332,11 +338,11 @@ test("plain mode shows the real cursor 1:1, whatever the Styled settings say", (
   expect(spotAt(3900)).toMatchObject({ ...real, kind: "pointer" });
   expect(spotAt(DURATION)!.x).toBeCloseTo(0.5);
   expect(cursorUnit(TRACK, plain)).toBe(1 / 2000);
-  expect(outsideAlpha(plain, { x: 1.5, y: 0.5 })).toBe(1);
+  expect(plainOr(plain).hidesOutside).toBe(false);
   expect(ringEvents(CLICKS, plain)).toEqual([]);
   expect(
-    exportCursor({ ...TRACK, images: IMAGES }, [], plain, DURATION),
-  ).toMatchObject({ unit: 1 / 2000, dot: 0, outsideFade: 0 });
+    exportCursor({ ...TRACK, images: IMAGES }, [], plain, DURATION, VIEW),
+  ).toMatchObject({ unit: 1 / 2000, dot: 0 });
 });
 
 test("with every switch off and no smoothing, angle or early stop, Styled draws the real path", () => {
@@ -355,7 +361,6 @@ test("with every switch off and no smoothing, angle or early stop, Styled draws 
   const plain = cursorPath(TRACK, { ...off, mode: "Plain" }, DURATION);
   for (let ms = 0; ms <= DURATION; ms += 50)
     expect(styled(ms)).toEqual(plain(ms));
-  expect(outsideAlpha(off, { x: 1.5, y: 0.5 })).toBe(1);
   expect(ringEvents(CLICKS, off)).toEqual([]);
 });
 
@@ -367,6 +372,7 @@ test("Size scales the cursor from 3.375 times real size at 100%, the same on the
     [],
     RAW,
     DURATION,
+    VIEW,
   );
   expect(exported!.unit).toBe(cursorUnit(TRACK, RAW));
 });
@@ -375,16 +381,15 @@ test("Hidden draws no cursor and no click effect anywhere", () => {
   const hidden = { ...EVERYTHING, mode: "Hidden" as const };
   expect(cursorPath(TRACK, hidden, DURATION)(500)).toBeNull();
   expect(
-    exportCursor({ ...TRACK, images: IMAGES }, [], hidden, DURATION),
+    exportCursor({ ...TRACK, images: IMAGES }, [], hidden, DURATION, VIEW),
   ).toBeNull();
   expect(ringEvents(CLICKS, hidden)).toEqual([]);
 });
 
 test("the export gets the cursor in output time with its picture, press and fade, thinned where still", () => {
   const track = { ...TRACK, images: IMAGES };
-  const cursor = exportCursor(track, [], RAW, DURATION)!;
+  const cursor = exportCursor(track, [], RAW, DURATION, VIEW)!;
   expect(cursor.dot).toBe(0);
-  expect(cursor.outsideFade).toBe(0);
   expect(cursor.points[0]).toMatchObject({ t: 0, x: 0, y: 0, image: 0 });
   expect(cursor.points.some(({ image }) => image === 2)).toBe(true);
   expect(cursor.points.length).toBeLessThan(DURATION / (1000 / 60));
@@ -393,23 +398,47 @@ test("the export gets the cursor in output time with its picture, press and fade
     [],
     { ...RAW, presses: true, hidesWhenStill: true, hidesOutside: true },
     DURATION,
+    VIEW,
   )!;
   expect(Math.min(...styled.points.map(({ scale }) => scale))).toBeCloseTo(
     0.85,
   );
   expect(styled.points[styled.points.length - 1].alpha).toBe(0);
-  expect(styled.outsideFade).toBe(0.03);
   const arrow = exportCursor(
     track,
     [],
     { ...RAW, alwaysArrow: true },
     DURATION,
+    VIEW,
   );
   expect(arrow!.points.every(({ image }) => image === 0)).toBe(true);
-  expect(exportCursor(track, [], { ...RAW, style: "Dot" }, DURATION)!.dot).toBe(
-    14,
-  );
-  expect(exportCursor(TRACK, [], RAW, DURATION)).toBeNull();
+  expect(
+    exportCursor(track, [], { ...RAW, style: "Dot" }, DURATION, VIEW)!.dot,
+  ).toBe(14);
+  expect(exportCursor(TRACK, [], RAW, DURATION, VIEW)).toBeNull();
+});
+
+test("Hide outside fades an export point when a zoom moves the view off a still cursor", () => {
+  const still = {
+    ...TRACK,
+    images: IMAGES,
+    moves: [{ ms: 0, x: 0.5, y: 0.5 }],
+  };
+  const zoom = Array.from({ length: 241 }, (_, frame) => ({
+    scale: 1 + frame / 120,
+    x: 0,
+    y: 0.5,
+  }));
+  const alphas = (hidesOutside: boolean) =>
+    exportCursor(still, [], { ...RAW, hidesOutside }, DURATION, {
+      ...VIEW,
+      zoom,
+    })!.points.map(({ alpha }) => alpha);
+  expect(alphas(false).every((alpha) => alpha === 1)).toBe(true);
+  const faded = alphas(true);
+  expect(faded[0]).toBe(1);
+  expect(faded.some((alpha) => alpha > 0 && alpha < 1)).toBe(true);
+  expect(faded[faded.length - 1]).toBe(0);
 });
 
 test("each style draws its own arrow, hand and text beam, and macOS keeps the real pictures", () => {
@@ -640,14 +669,12 @@ test("a click ring plays in output time, so it lasts as long on the stage as in 
 test("the cursor stays put when still or outside, unless those switches are on", () => {
   expect(DEFAULT_CURSOR.hidesWhenStill).toBe(false);
   expect(DEFAULT_CURSOR.hidesOutside).toBe(false);
-  expect(outsideAlpha(DEFAULT_CURSOR, { x: 1.4, y: 0.5 })).toBe(1);
-  expect(outsideAlpha(DEFAULT_CURSOR, { x: 0.5, y: -2 })).toBe(1);
+  expect(outsideAlpha(false, { x: 1.4, y: 0.5 })).toBe(1);
 });
 
 test("Hide outside fades the cursor as its tip leaves the view, never all at once", () => {
-  const hides = { ...DEFAULT_CURSOR, hidesOutside: true };
-  expect(outsideAlpha(hides, { x: 0.5, y: 0.5 })).toBe(1);
-  expect(outsideAlpha(hides, { x: 1, y: 1 })).toBe(1);
-  expect(outsideAlpha(hides, { x: 1.01, y: 0.5 })).toBeCloseTo(2 / 3);
-  expect(outsideAlpha(hides, { x: 0.5, y: 1.2 })).toBe(0);
+  expect(outsideAlpha(true, { x: 0.5, y: 0.5 })).toBe(1);
+  expect(outsideAlpha(true, { x: 1, y: 1 })).toBe(1);
+  expect(outsideAlpha(true, { x: 1.01, y: 0.5 })).toBeCloseTo(2 / 3);
+  expect(outsideAlpha(true, { x: 0.5, y: 1.2 })).toBe(0);
 });

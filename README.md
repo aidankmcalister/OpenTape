@@ -1,6 +1,6 @@
 # screen-recorder
 
-A small, free, open-source screen recorder for macOS, for demos, social posts and code videos. You record a display, a window or an area from a floating bar, then save the clip or polish it in an editor.
+A small, free, open-source screen recorder for macOS, made for demos, social posts and code videos. You record from a floating bar, then save the clip or open it in an editor.
 
 ## What it does
 
@@ -9,7 +9,7 @@ A small, free, open-source screen recorder for macOS, for demos, social posts an
 - Get suggested zooms where you clicked or typed, and speed-ups where you typed. Suggested zooms follow the cursor, and every suggestion is a block on the timeline you can keep, change or remove.
 - Draw a smoothed cursor from the recorded cursor path. It tilts as it moves, comes in several styles or as the real macOS pointer, and can show click rings.
 - Frame the recording on a gradient, color or picture background, with padding, rounded corners, shadow and border, at Auto, 16:9, 9:16, 1:1 or 4:5. A wide recording can fill a tall frame and keep the action in view.
-- Cut and trim the recording, add zoom and speed blocks, set the microphone and system audio volume, undo and redo, and find any action with ⌘K.
+- Cut and trim the recording, add zoom and speed blocks, and set the microphone and system audio volume, with undo and redo. ⌘K finds any action.
 - Export to MP4 or GIF at 720p, 1080p or 4K, 30 or 60 fps, to a file or the clipboard.
 
 ## Status
@@ -18,7 +18,7 @@ Early, unreleased and macOS only. Everything listed above works. Camera recordin
 
 ## Download
 
-There's no signed build to download yet. Until there is, build it from source: install the requirements below, then follow Run it, or run `bun tauri build` for an app in `src-tauri/target/release/bundle/macos/`. That needs the signing certificate described under Run it.
+There's no signed build to download yet, so build it from source: install the requirements below, then follow Run it. `bun tauri build` makes an app in `src-tauri/target/release/bundle/macos/`; it needs the signing certificate described under Run it.
 
 ## Requirements
 
@@ -57,11 +57,11 @@ The TypeScript types in `src/lib/bindings.ts` are generated from the Rust types 
 
 - Screen Recording. macOS asks the first time the app reads the screen, when you pick a mode. If it's off, the record bar shows the error. Turn it on in System Settings, Privacy & Security, Screen & System Audio Recording.
 - Microphone. macOS asks the first time you record with a microphone chosen in the record bar. System audio needs nothing more than Screen Recording.
-- Nothing else. The cursor log polls the cursor position and shape, and notes when a key was pressed (only the time, never which key, read from macOS's count of key presses) so the editor can suggest zooms and speed-ups where you typed. None of it needs Accessibility or Input Monitoring permission, and it stays with the recording on your Mac. Listing cameras and microphones needs no permission either. The camera will ask once camera recording is built.
+- Nothing else. The cursor log polls the cursor position and shape. It also reads macOS's count of key presses to note when a key was pressed (only the time, never which key), so the editor can suggest zooms and speed-ups where you typed. None of it needs Accessibility or Input Monitoring permission, and it stays with the recording on your Mac. Listing cameras and microphones needs no permission either. The camera will ask once camera recording is built.
 
 ## Where things go
 
-The app doesn't keep recordings. A recording waits in a hidden folder (`~/Library/Application Support/com.aidankmcalister.screen-recorder/recordings/`) only while the preview or editor shows it. Save in the preview, or Export in the editor, puts a file in `~/Downloads` (or the folder chosen in Settings); closing either window deletes the hidden copy, after asking if nothing was saved. If the app crashes, the next launch opens the last recording in the preview so it can still be saved. Quitting while recording (⌘Q, logging out or shutting down) stops the recording the way Stop does, and the next launch opens it the same way.
+The app doesn't keep recordings. A recording waits in a hidden folder (`~/Library/Application Support/com.aidankmcalister.screen-recorder/recordings/`) only while the preview or editor shows it. Save in the preview, or Export in the editor, puts a file in `~/Downloads` (or the folder chosen in Settings). Closing either window deletes the hidden copy, and asks first if nothing was saved. If the app crashes, the next launch opens the last recording in the preview so it can still be saved. Quitting while recording (⌘Q, logging out or shutting down) stops the recording the way Stop does, and the next launch opens it the same way.
 
 Warnings, errors and crashes go to a small log, `~/Library/Logs/com.aidankmcalister.screen-recorder/screen-recorder.log`, that stays on your Mac. The app sends nothing anywhere.
 
@@ -115,4 +115,4 @@ Bug reports and small fixes are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) cove
 
 [MIT](LICENSE). The bundled fonts, Space Grotesk and IBM Plex Mono, are under the SIL Open Font License 1.1.
 
-Recording and editing are free and open source, and will stay that way. Some optional extras may cost money one day, such as pro export formats or extra effect packs. Nothing that's free would move behind a paywall.
+Recording and editing are free and open source, and will stay that way. Some optional extras, such as pro export formats or extra effect packs, may cost money one day, but nothing that's free will move behind a paywall.

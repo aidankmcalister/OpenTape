@@ -2,10 +2,18 @@ import type {
   CursorImage,
   CursorPoint,
   ExportCursor,
+  ExportLayout,
   ExportRing,
+  ExportZoom,
   RingStyle,
 } from "@/lib/bindings";
-import { clamp, type Point } from "@/lib/geometry";
+import {
+  clamp,
+  type Point,
+  type Rect,
+  relativeTo,
+  type Size,
+} from "@/lib/geometry";
 import {
   CURSOR_STYLES,
   type CursorPaint,
@@ -23,7 +31,6 @@ import {
   type Setting,
   type Span,
 } from "./regions";
-import { type Clip, keptClips } from "./clips";
 import { FRAME_MS, STEP_MS } from "./timeline";
 import { centeredOn } from "./zoom";
 
@@ -96,9 +103,9 @@ const CURSOR_SCALE = 3.375;
 export const DOT_POINTS = 14;
 
 export const CURSOR_MODES: Record<CursorMode, string> = {
-  Hidden: "No cursor is drawn over the recording.",
+  Hidden: "Draws no cursor over the recording.",
   Plain: "Shows the cursor exactly as macOS drew it.",
-  Styled: "Size, motion, tilt and click effects apply.",
+  Styled: "Applies size, motion, tilt and click effects.",
 };
 
 export const CURSOR_SECTIONS: { title: string; settings: Setting[] }[] = [
@@ -144,13 +151,13 @@ export const CURSOR_SECTIONS: { title: string; settings: Setting[] }[] = [
         kind: "switch",
         key: "hidesOutside",
         label: "Hide outside the recording",
-        help: "Fades the cursor out as its tip leaves the visible recording, so it never hangs over the background.",
+        help: "Fades the cursor out as its tip leaves the visible recording, so it doesn't hang over the background.",
       },
       {
         kind: "switch",
         key: "loops",
         label: "Loop back to the start",
-        help: "Glides the cursor back to where the video starts over the last second, so the video loops smoothly.",
+        help: "Glides the cursor back to where the video starts over the last second, so the loop has no jump.",
       },
       {
         kind: "slider",
@@ -212,7 +219,7 @@ export const CURSOR_SECTIONS: { title: string; settings: Setting[] }[] = [
         kind: "switch",
         key: "presses",
         label: "Press on click",
-        help: "Shrinks the cursor a little while the left button is held.",
+        help: "Shrinks the cursor a little while you hold the left button.",
       },
     ],
   },
@@ -449,11 +456,13 @@ type CursorSpot = {
   kind: string;
 };
 
+type Pose = Pick<CursorSpot, "x" | "y" | "angle">;
+
 export function cursorPath(
   track: CursorTrack,
   chosen: CursorSettings,
   durationMs: number,
-  clips: Clip[] = [],
+  { startMs, endMs }: Span = { startMs: 0, endMs: durationMs },
 ): (ms: number) => CursorSpot | null {
   const settings = plainOr(chosen);
   if (settings.mode === "Hidden" || track.moves.length === 0) return () => null;
@@ -469,12 +478,10 @@ export function cursorPath(
     settings.leadsHovers && settings.smoothing > 0
       ? (damping / stiffness) * 1000
       : 0;
-  const kept = keptClips(clips, durationMs);
-  const [startMs, endMs] = [kept[0].startMs, kept[kept.length - 1].endMs];
   const stopMs = endMs - settings.stopsBeforeEnd * 1000;
   const targetAt = (ms: number) =>
     positionAt(moves, Math.min(ms + leadMs, stopMs));
-  const steps: Omit<CursorSpot, "alpha" | "scale" | "kind">[] = [];
+  const steps: Pose[] = [];
   let [x, y, vx, vy] = [moves[0].x, moves[0].y, 0, 0];
   let [lean, spin] = [0, 0];
   for (let ms = 0; ms <= lastMs + 3000; ms += STEP_MS) {
@@ -499,22 +506,21 @@ export function cursorPath(
       index > 0 &&
       (move.x !== moves[index - 1].x || move.y !== moves[index - 1].y),
   );
+  const blend = (from: Pose, to: Pose, share: number) => ({
+    x: from.x + (to.x - from.x) * share,
+    y: from.y + (to.y - from.y) * share,
+    angle: from.angle + (to.angle - from.angle) * share,
+  });
   const stepAt = (ms: number) => {
     const index = clamp(ms / STEP_MS, 0, steps.length - 1);
     const [from, to] = [steps[Math.floor(index)], steps[Math.ceil(index)]];
-    const share = index - Math.floor(index);
-    const mix = (key: "x" | "y" | "angle") =>
-      from[key] + (to[key] - from[key]) * share;
-    return { x: mix("x"), y: mix("y"), angle: mix("angle") };
+    return blend(from, to, index - Math.floor(index));
   };
   const start = stepAt(startMs);
   return (ms) => {
-    const now = stepAt(ms);
     const back = settings.loops
       ? smoothstep(clamp((ms - endMs + LOOP_MS) / LOOP_MS, 0, 1))
       : 0;
-    const mix = (key: "x" | "y" | "angle") =>
-      now[key] + (start[key] - now[key]) * back;
     const lastMovedMs = movedAt[firstAfter(movedAt, ms) - 1]?.ms ?? 0;
     const alpha = settings.hidesWhenStill
       ? clamp(1 - (ms - lastMovedMs - IDLE_MS) / FADE_MS, 0, 1)
@@ -525,19 +531,26 @@ export function cursorPath(
     const scale = settings.presses
       ? 1 - PRESS_DIP * pressAt(track.presses, ms)
       : 1;
-    return {
-      x: mix("x"),
-      y: mix("y"),
-      angle: mix("angle"),
-      alpha,
-      scale,
-      kind,
-    };
+    return { ...blend(stepAt(ms), start, back), alpha, scale, kind };
   };
 }
 
-export function outsideAlpha(settings: CursorSettings, tip: Point): number {
-  if (!plainOr(settings).hidesOutside) return 1;
+export function zoomedTip(
+  spot: Point,
+  video: Rect,
+  size: Size,
+  { scale, x, y }: ExportZoom,
+): Point {
+  const zoomed = (at: number, share: number, length: number) =>
+    share * length + (at - share * length) * scale;
+  return {
+    x: zoomed(video.x + spot.x * video.width, x, size.width),
+    y: zoomed(video.y + spot.y * video.height, y, size.height),
+  };
+}
+
+export function outsideAlpha(hides: boolean, tip: Point): number {
+  if (!hides) return 1;
   const outside = Math.max(0, -tip.x, tip.x - 1, -tip.y, tip.y - 1);
   return clamp(1 - outside / OUTSIDE_FADE, 0, 1);
 }
@@ -553,11 +566,11 @@ function withoutShakes(
     const anchor = kept[kept.length - 1];
     const isSoon = (at: number) =>
       at < moves.length && moves[at].ms - moves[index].ms < SHAKE_MS;
-    let back = index;
-    while (isSoon(back) && points(moves[back], anchor) >= threshold / 2) back++;
-    const strays = moves
-      .slice(index, back)
-      .some((move) => points(move, anchor) > threshold);
+    let [back, strays] = [index, false];
+    while (isSoon(back) && points(moves[back], anchor) >= threshold / 2) {
+      strays ||= points(moves[back], anchor) > threshold;
+      back++;
+    }
     if (strays && isSoon(back)) index = back - 1;
     else kept.push(moves[index]);
   }
@@ -614,11 +627,14 @@ export function exportCursor(
   regions: Region[],
   settings: CursorSettings,
   durationMs: number,
-  clips: Clip[] = [],
+  view: Pick<ExportLayout, "zoom" | "recording" | "video">,
+  kept?: Span,
 ): ExportCursor | null {
-  const spotAt = cursorPath(track, settings, durationMs, clips);
+  const spotAt = cursorPath(track, settings, durationMs, kept);
   if (!spotAt(0) || track.images.length === 0) return null;
   const { style, hidesOutside } = plainOr(settings);
+  const { zoom, recording } = view;
+  const video = relativeTo(view.video, recording);
   const imageOf = (kind: string) =>
     Math.max(
       0,
@@ -629,9 +645,14 @@ export function exportCursor(
     const spot = spotAt(ms);
     if (!spot) continue;
     const { kind, ...rest } = spot;
+    const outputMs = outputAt(regions, ms);
+    const step = Math.min(Math.round(outputMs / FRAME_MS), zoom.length - 1);
+    const tip = zoomedTip(spot, video, recording, zoom[step]);
+    const share = { x: tip.x / recording.width, y: tip.y / recording.height };
     points.push({
-      t: outputAt(regions, ms) / 1000,
+      t: outputMs / 1000,
       ...rest,
+      alpha: rest.alpha * outsideAlpha(hidesOutside, share),
       image: imageOf(kind),
     });
   }
@@ -644,7 +665,6 @@ export function exportCursor(
     images: track.images,
     unit: cursorUnit(track, settings),
     dot: style === "Dot" ? DOT_POINTS : 0,
-    outsideFade: hidesOutside ? OUTSIDE_FADE : 0,
   };
 }
 
@@ -849,7 +869,6 @@ export function ringCircles(style: RingStyle, progress: number, size: number) {
   const ring = (at: number) => ({
     radius: (size / 2) * (0.4 + 0.6 * at),
     alpha: 1 - at,
-    isFilled: false,
     line: size * 0.08,
   });
   if (style === "pulse") {
@@ -857,7 +876,6 @@ export function ringCircles(style: RingStyle, progress: number, size: number) {
       {
         radius: (size / 2) * (0.3 + 0.7 * progress),
         alpha: 0.5 * (1 - progress),
-        isFilled: true,
         line: 0,
       },
     ];

@@ -35,6 +35,15 @@ export function rectStyle(rect: Rect) {
   return { left: rect.x, top: rect.y, width: rect.width, height: rect.height };
 }
 
+export function percentStyle(rect: Rect) {
+  return {
+    left: `${rect.x * 100}%`,
+    top: `${rect.y * 100}%`,
+    width: `${rect.width * 100}%`,
+    height: `${rect.height * 100}%`,
+  };
+}
+
 export function fitInside(bounds: Size, ratio: number): Size {
   const width = Math.min(bounds.width, bounds.height * ratio);
   return { width, height: width / ratio };

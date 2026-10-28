@@ -10,9 +10,9 @@ import {
 } from "./geometry";
 import {
   createClock,
-  estimateTime,
   formatClock,
   formatTime,
+  playingTime,
   seekTarget,
   seekVideo,
   twoDigits,
@@ -122,60 +122,14 @@ describe("clock", () => {
     clock.set(3);
     expect(heard).toBe(2);
   });
+});
 
-  const PLAYING = {
-    currentTime: 2,
-    playbackRate: 1,
-    paused: false,
-    seeking: false,
-    duration: 10,
-  };
-  const LAST = { seconds: 2, at: 1000 };
-
-  test("a playing video counts on from when its time last moved", () => {
-    const { seconds, sighting } = estimateTime(LAST, 1250, PLAYING);
-    expect(seconds).toBe(2.25);
-    expect(sighting).toBe(LAST);
-  });
-
-  test("a moved time restarts the count from now", () => {
-    const { seconds, sighting } = estimateTime(LAST, 1500, {
-      ...PLAYING,
-      currentTime: 2.4,
-    });
-    expect(seconds).toBe(2.4);
-    expect(sighting).toEqual({ seconds: 2.4, at: 1500 });
-  });
-
-  test("a seek while playing holds still until it lands, then counts from there", () => {
-    const seeking = estimateTime(LAST, 1500, {
-      ...PLAYING,
-      currentTime: 6,
-      seeking: true,
-    });
-    expect(seeking.seconds).toBe(6);
-    const landed = estimateTime(seeking.sighting, 1750, {
-      ...PLAYING,
-      currentTime: 6,
-    });
-    expect(landed.seconds).toBe(6.25);
-  });
-
-  test.each([
-    ["follows the playback rate", LAST, 1500, { playbackRate: 2 }, 3],
-    ["holds still while paused", LAST, 5000, { paused: true }, 2],
-    [
-      "stops at the video's end",
-      { seconds: 9.9, at: 0 },
-      5000,
-      { currentTime: 9.9 },
-      10,
-    ],
-  ])("the estimate %s", (_, last, now, video, expected) => {
-    expect(estimateTime(last, now, { ...PLAYING, ...video }).seconds).toBe(
-      expected,
-    );
-  });
+test.each([
+  ["follows the video forward", 2, 2.1, 2.1],
+  ["holds through a small step back", 2.1, 2.0, 2.1],
+  ["follows a big jump back, like a loop", 9.8, 0.1, 0.1],
+])("the playing time %s", (_, shown, current, expected) => {
+  expect(playingTime(shown, current)).toBe(expected);
 });
 
 describe("oneAtATime", () => {

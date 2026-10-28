@@ -44,6 +44,28 @@ fn zooming_grows_the_recording_about_its_focus() {
 }
 
 #[test]
+fn a_blur_covers_its_share_of_the_video_measured_from_the_bottom() {
+    let blur = ExportBlur {
+        start: 0.0,
+        end: 1.0,
+        x: 0.25,
+        y: 0.1,
+        width: 0.5,
+        height: 0.2,
+        radius: 16.0,
+    };
+    let video = PixelRect {
+        x: 10.0,
+        y: 20.0,
+        width: 200.0,
+        height: 100.0,
+    };
+    let area = blur.area(&video, 300);
+    assert_eq!((area.origin.x, area.origin.y), (60.0, 250.0));
+    assert_eq!((area.size.width, area.size.height), (100.0, 20.0));
+}
+
+#[test]
 fn the_zoom_is_read_at_the_nearest_step_and_holds_past_the_end() {
     let step = |scale| ExportZoom { scale, ..NO_ZOOM };
     let zoom = [step(1.0), step(1.2), step(1.5)];
@@ -137,6 +159,17 @@ fn exports_a_recording_in_the_default_appearance() {
             vec![ExportCut {
                 start: 3.0,
                 end: 4.0,
+            }]
+        }),
+        blurs: std::env::var("EXPORT_TEST_BLUR").map_or(vec![], |_| {
+            vec![ExportBlur {
+                start: 0.0,
+                end: 3.0,
+                x: 0.35,
+                y: 0.4,
+                width: 0.3,
+                height: 0.2,
+                radius: 16.0 * scale,
             }]
         }),
         rings: vec![],

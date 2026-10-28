@@ -32,7 +32,7 @@ import { frameCrop } from "@/lib/editor/appearance";
 import { timeMap } from "@/lib/editor/clips";
 import { ringEvents } from "@/lib/editor/cursor";
 import ModifierEditor from "@/components/editor/timeline/ModifierEditor";
-import { KINDS, regionKindForKey } from "@/lib/editor/regions";
+import { laneKinds, regionKindForKey } from "@/lib/editor/regions";
 import type { EditorAction } from "@/lib/editor/keymap";
 
 export default function Editor() {
@@ -75,12 +75,11 @@ function Workspace({
   );
   const app = useAppSettings();
   useSavedProject(edits, app.newProject);
-  const lanes = useLanes();
-  const editing = edits.project.regions.find(
-    ({ id }) => id === edits.editingId,
-  );
-  const focusedZoom =
-    editing?.kind === "zoom" && edits.selectedIds.length === 1 ? editing : null;
+  const lanes = useLanes(laneKinds(edits.shown));
+  const editing =
+    edits.selectedIds.length === 1
+      ? edits.project.regions.find(({ id }) => id === edits.editingId)
+      : undefined;
   const { appearance, regions, clips } = edits.project;
   const soloed = lanes.solo
     ? regions.filter(({ kind }) => kind === lanes.solo)
@@ -130,7 +129,7 @@ function Workspace({
   };
   useKeymap(actions, (key) => {
     const kind = regionKindForKey(key);
-    if (!kind || !KINDS.includes(kind)) return false;
+    if (!kind) return false;
     edits.add(kind);
     return true;
   });
@@ -183,13 +182,15 @@ function Workspace({
             rings={rings}
             cursor={cursor}
             durationMs={playback.durationMs}
-            focus={
-              focusedZoom && {
-                zoom: focusedZoom,
-                onMove: (center) =>
-                  edits.setRegion(focusedZoom.id, { center }, true),
-                onDone: edits.commit,
-              }
+            editing={
+              editing
+                ? {
+                    region: editing,
+                    onChange: (change) =>
+                      edits.setRegion(editing.id, change, true),
+                    onDone: edits.commit,
+                  }
+                : null
             }
             {...playback.videoProps}
           />
@@ -198,6 +199,7 @@ function Workspace({
               playback={playback}
               moves={moves}
               edits={edits}
+              lanes={lanes}
               hasSound={hasSound}
               isAddOpen={isAddOpen}
               onAddOpenChange={setIsAddOpen}

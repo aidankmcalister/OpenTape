@@ -7,7 +7,7 @@ import {
 } from "react";
 import {
   createClock,
-  estimateTime,
+  playingTime,
   seekTarget,
   seekVideo,
   type Clock,
@@ -35,11 +35,12 @@ export function useVideoClock(
     sync();
     if (!isPlaying) return unsync;
 
-    let sighting = { seconds: element.currentTime, at: performance.now() };
-    let frame = requestAnimationFrame(function track(now) {
-      const estimate = estimateTime(sighting, now, element);
-      sighting = estimate.sighting;
-      clock.set(element.seeking ? seekTarget(element) : estimate.seconds);
+    let frame = requestAnimationFrame(function track() {
+      clock.set(
+        element.seeking
+          ? seekTarget(element)
+          : playingTime(clock.seconds(), element.currentTime),
+      );
       frame = requestAnimationFrame(track);
     });
     return () => {
@@ -68,7 +69,7 @@ export function useClockValue<T>(
   return useSyncExternalStore(clock.subscribe, () => {
     const value = select(clock.seconds());
     const json = JSON.stringify(value);
-    if (last.current?.json === json) return last.current.value;
+    if (last.current && last.current.json === json) return last.current.value;
     last.current = { value, json };
     return value;
   });

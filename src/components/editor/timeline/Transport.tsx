@@ -26,7 +26,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { Playback, useTimeMap } from "@/hooks/editor/usePlayback";
-import type { Edits } from "@/hooks/editor/useProject";
+import type { Edits, Lanes } from "@/hooks/editor/useProject";
 import { useClockValue } from "@/hooks/useVideoClock";
 import { formatTime, type Clock } from "@/lib/time";
 import AddMenu from "./AddMenu";
@@ -37,6 +37,7 @@ export default function Transport({
   playback,
   moves,
   edits,
+  lanes,
   hasSound,
   isAddOpen,
   onAddOpenChange,
@@ -44,6 +45,7 @@ export default function Transport({
   playback: Playback;
   moves: ReturnType<typeof useTimeMap>;
   edits: Edits;
+  lanes: Lanes;
   hasSound: boolean;
   isAddOpen: boolean;
   onAddOpenChange: (isOpen: boolean) => void;
@@ -72,6 +74,7 @@ export default function Transport({
           isOpen={isAddOpen}
           onOpenChange={onAddOpenChange}
           onAdd={edits.add}
+          lanes={lanes}
         />
       </div>
       <div className="flex justify-center gap-1">

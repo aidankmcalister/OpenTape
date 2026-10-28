@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { Plus } from "lucide-react";
+import { ChevronsDownUp, ChevronsUpDown, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -16,22 +16,21 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  ALL_KINDS,
-  REGIONS,
-  STATUSES,
-  type RegionKind,
-} from "@/lib/editor/regions";
+import { Separator } from "@/components/ui/separator";
+import type { Lanes } from "@/hooks/editor/useProject";
+import { KINDS, REGIONS, type RegionKind } from "@/lib/editor/regions";
 import { KindTile } from "./kinds";
 
 export default function AddMenu({
   isOpen,
   onOpenChange,
   onAdd,
+  lanes,
 }: {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   onAdd: (kind: RegionKind) => void;
+  lanes: Lanes;
 }) {
   const search = useRef<HTMLInputElement>(null);
   return (
@@ -43,41 +42,60 @@ export default function AddMenu({
       >
         <Plus />
       </PopoverTrigger>
-      <PopoverContent align="start" initialFocus={search} className="w-60 p-0">
+      <PopoverContent
+        align="start"
+        initialFocus={search}
+        className="w-60 gap-0 p-0"
+      >
         <Command>
           <CommandInput ref={search} placeholder="Search modifiers" />
           <CommandList className="scroll-fade-b">
             <CommandEmpty>No modifiers found.</CommandEmpty>
-            {STATUSES.map(({ status, label }) => {
-              const group = ALL_KINDS.filter(
-                (kind) => REGIONS[kind].status === status,
-              );
-              if (group.length === 0) return null;
-              return (
-                <CommandGroup key={status} heading={label}>
-                  {group.map((kind) => (
-                    <CommandItem
-                      key={kind}
-                      value={REGIONS[kind].label}
-                      keywords={[REGIONS[kind].key]}
-                      disabled={status === "soon"}
-                      onSelect={() => {
-                        onAdd(kind);
-                        onOpenChange(false);
-                      }}
-                    >
-                      <KindTile kind={kind} />
-                      {REGIONS[kind].label}
-                      <CommandShortcut>
-                        <Kbd>{REGIONS[kind].key}</Kbd>
-                      </CommandShortcut>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              );
-            })}
+            <CommandGroup heading="Modifiers">
+              {KINDS.map((kind) => (
+                <CommandItem
+                  key={kind}
+                  value={REGIONS[kind].label}
+                  keywords={[REGIONS[kind].key]}
+                  onSelect={() => {
+                    onAdd(kind);
+                    onOpenChange(false);
+                  }}
+                >
+                  <KindTile kind={kind} />
+                  {REGIONS[kind].label}
+                  <CommandShortcut>
+                    <Kbd>{REGIONS[kind].key}</Kbd>
+                  </CommandShortcut>
+                </CommandItem>
+              ))}
+            </CommandGroup>
           </CommandList>
         </Command>
+        {lanes.hasLanes ? (
+          <>
+            <Separator />
+            <div className="p-1">
+              <Button
+                variant="ghost"
+                className="w-full justify-start"
+                onClick={() => {
+                  lanes.toggleAll();
+                  onOpenChange(false);
+                }}
+              >
+                {lanes.isAllCollapsed ? (
+                  <ChevronsUpDown data-icon="inline-start" />
+                ) : (
+                  <ChevronsDownUp data-icon="inline-start" />
+                )}
+                {lanes.isAllCollapsed
+                  ? "Expand all lanes"
+                  : "Collapse all lanes"}
+              </Button>
+            </div>
+          </>
+        ) : null}
       </PopoverContent>
     </Popover>
   );

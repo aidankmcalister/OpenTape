@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use tauri::{AppHandle, Manager};
 
 use crate::capture::{EVENTS_FILE, META_FILE};
-use crate::current_recording::{CurrentRecording, is_video};
+use crate::current_recording::{CurrentRecording, PROJECT_FILE, is_video};
 
 const VIDEO_VAR: &str = "EDIT_VIDEO";
 const TEST_CLIP: &str = "Screen Recorder test clip";
@@ -53,6 +53,10 @@ fn open_editor(app: &AppHandle, choice: &str) -> Result<()> {
     if !copy.exists() {
         std::fs::copy(&source, &copy)
             .with_context(|| format!("could not copy {}", source.display()))?;
+    }
+    let project = folder.join(PROJECT_FILE);
+    if project.exists() {
+        std::fs::remove_file(project)?;
     }
     current.keep(app, copy)?;
     current.edit(app)

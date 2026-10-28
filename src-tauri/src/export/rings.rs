@@ -42,7 +42,6 @@ pub(crate) struct ExportRing {
 pub(super) struct Circle {
     pub(super) radius: f64,
     pub(super) alpha: f64,
-    pub(super) is_filled: bool,
     pub(super) line: f64,
 }
 
@@ -50,7 +49,6 @@ pub(super) fn circles(style: RingStyle, progress: f64, size: f64) -> Vec<Circle>
     let ring = |at: f64| Circle {
         radius: size / 2.0 * (0.4 + 0.6 * at),
         alpha: 1.0 - at,
-        is_filled: false,
         line: size * 0.08,
     };
     match style {
@@ -58,7 +56,6 @@ pub(super) fn circles(style: RingStyle, progress: f64, size: f64) -> Vec<Circle>
         RingStyle::Pulse => vec![Circle {
             radius: size / 2.0 * (0.3 + 0.7 * progress),
             alpha: 0.5 * (1.0 - progress),
-            is_filled: true,
             line: 0.0,
         }],
         RingStyle::Ripple => [progress, progress - 0.3]
@@ -124,13 +121,13 @@ impl ExportRing {
                 CGPoint::new(center - radius, center - radius),
                 CGSize::new(radius * 2.0, radius * 2.0),
             );
-            if circle.is_filled {
-                CGContext::set_fill_color_with_color(context, Some(&color));
-                CGContext::fill_ellipse_in_rect(context, rect);
-            } else {
+            if circle.line > 0.0 {
                 CGContext::set_stroke_color_with_color(context, Some(&color));
                 CGContext::set_line_width(context, circle.line);
                 CGContext::stroke_ellipse_in_rect(context, rect);
+            } else {
+                CGContext::set_fill_color_with_color(context, Some(&color));
+                CGContext::fill_ellipse_in_rect(context, rect);
             }
         }
         let image = CGBitmapContextCreateImage(context).context("could not finish a click ring")?;
@@ -149,7 +146,6 @@ mod tests {
             [Circle {
                 radius: 20.0,
                 alpha: 1.0,
-                is_filled: false,
                 line: 8.0
             }]
         );
@@ -158,7 +154,6 @@ mod tests {
         assert_eq!(circles(RingStyle::Ring, 1.0, 100.0)[0].radius, 50.0);
         assert_eq!(circles(RingStyle::Ripple, 0.2, 100.0).len(), 1);
         assert_eq!(circles(RingStyle::Ripple, 0.5, 100.0).len(), 2);
-        assert!(circles(RingStyle::Pulse, 0.0, 100.0)[0].is_filled);
     }
 
     #[test]

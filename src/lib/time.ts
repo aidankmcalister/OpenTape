@@ -39,24 +39,10 @@ export function createClock(): Clock & { set: (seconds: number) => void } {
   };
 }
 
-type Sighting = { seconds: number; at: number };
+const JITTER_S = 0.25;
 
-export function estimateTime(
-  last: Sighting,
-  now: number,
-  video: Pick<
-    HTMLVideoElement,
-    "currentTime" | "playbackRate" | "paused" | "seeking" | "duration"
-  >,
-): { sighting: Sighting; seconds: number } {
-  const isStill = video.paused || video.seeking;
-  const sighting =
-    !isStill && video.currentTime === last.seconds
-      ? last
-      : { seconds: video.currentTime, at: now };
-  const elapsed = ((now - sighting.at) / 1000) * video.playbackRate;
-  const estimate = sighting.seconds + elapsed;
-  return { sighting, seconds: Math.min(estimate, video.duration || estimate) };
+export function playingTime(shown: number, current: number): number {
+  return current < shown && shown - current < JITTER_S ? shown : current;
 }
 
 const waitingSeeks = new WeakMap<HTMLVideoElement, number>();

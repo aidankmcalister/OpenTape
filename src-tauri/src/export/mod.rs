@@ -49,6 +49,7 @@ pub(crate) struct ExportLayout {
     zoom_rate: f64,
     speed: Vec<ExportSpeed>,
     cuts: Vec<ExportCut>,
+    blurs: Vec<ExportBlur>,
     rings: Vec<ExportRing>,
     cursor: Option<ExportCursor>,
     sound: ExportSound,
@@ -89,6 +90,30 @@ impl ExportSound {
 pub(crate) struct ExportCut {
     start: f64,
     end: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, TS)]
+#[ts(export, export_to = "bindings.ts")]
+pub(crate) struct ExportBlur {
+    start: f64,
+    end: f64,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    radius: f64,
+}
+
+impl ExportBlur {
+    fn area(&self, video: &PixelRect, height: u32) -> CGRect {
+        CGRect::new(
+            CGPoint::new(
+                video.x + self.x * video.width,
+                f64::from(height) - video.y - (self.y + self.height) * video.height,
+            ),
+            CGSize::new(self.width * video.width, self.height * video.height),
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, TS)]
@@ -215,6 +240,17 @@ pub(crate) fn export(
                 let video = zoomed(&scene.video, &scene.recording, zoom);
                 let place = placement(&video, scene.height, natural);
                 let mut frame = request.sourceImage().imageByApplyingTransform(place);
+                for blur in scene
+                    .blurs
+                    .iter()
+                    .filter(|blur| (blur.start..blur.end).contains(&now))
+                {
+                    frame = frame
+                        .imageByClampingToExtent()
+                        .imageByApplyingGaussianBlurWithSigma(blur.radius * zoom.scale)
+                        .imageByCroppingToRect(blur.area(&video, scene.height))
+                        .imageByCompositingOverImage(&frame);
+                }
                 for ring in scene.rings.iter().filter(|ring| ring.is_showing(now)) {
                     if let Ok(image) =
                         ring.image(now, &video, zoom.scale, scene.height, &ring_pictures)
@@ -223,14 +259,11 @@ pub(crate) fn export(
                     }
                 }
                 let mut image = cutout.imageByCompositingOverImage(&frame);
-                if let Some(Ok(Some(drawn))) =
-                    scene
-                        .cursor
-                        .as_ref()
-                        .zip(pictures.as_ref())
-                        .map(|(cursor, pictures)| {
-                            cursor.image(now, &video, &scene.recording, scene.height, pictures)
-                        })
+                if let Some(Ok(Some(drawn))) = scene
+                    .cursor
+                    .as_ref()
+                    .zip(pictures.as_ref())
+                    .map(|(cursor, pictures)| cursor.image(now, &video, scene.height, pictures))
                 {
                     image = drawn.imageByCompositingOverImage(&image);
                 }

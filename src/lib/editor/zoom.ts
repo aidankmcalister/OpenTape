@@ -312,13 +312,3 @@ function ease(progress: number): number {
   }
   return bezier(low, y1, y2);
 }
-
-export function focusBoxStyle(zoom: Region, crop?: Point) {
-  const { x, y, width, height } = focusBox(zoom, crop);
-  return {
-    left: `${x * 100}%`,
-    top: `${y * 100}%`,
-    width: `${width * 100}%`,
-    height: `${height * 100}%`,
-  };
-}
