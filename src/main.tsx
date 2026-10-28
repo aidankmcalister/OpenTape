@@ -10,10 +10,12 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Editor from "@/pages/Editor";
 import Picker from "@/pages/Picker";
 import RecordingPreview from "@/pages/RecordingPreview";
+import Settings from "@/pages/Settings";
 
 function WindowContent({ label }: { label: string }) {
   if (label === "editor") return <Editor />;
   if (label === "preview") return <RecordingPreview />;
+  if (label === "settings") return <Settings />;
   if (label.startsWith("picker-")) {
     return <Picker displayId={Number(label.slice("picker-".length))} />;
   }

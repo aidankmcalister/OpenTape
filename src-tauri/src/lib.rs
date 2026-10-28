@@ -8,6 +8,7 @@ mod macos;
 mod picker;
 mod recording;
 mod settings;
+mod tray;
 mod util;
 mod windows;
 
@@ -31,6 +32,7 @@ pub(crate) enum PageEvent {
     PickerSession(Session),
     PickerCursor(Point),
     PickerRecording(Option<Frame>),
+    PickerCountdown(Option<u32>),
     PickerKey(PickerKey),
     PickerClosed,
     RecordingStatus(RecordingStatus),
@@ -40,6 +42,8 @@ pub(crate) enum PageEvent {
     PreviewKey(PreviewKey),
     ExportProgress(f32),
     ExportAndClose,
+    NewRecording,
+    SettingsChanged(settings::Settings),
 }
 
 impl PageEvent {
@@ -65,16 +69,17 @@ impl PageEvent {
 }
 
 pub(crate) trait KeySet: Copy + Send + Sync + 'static {
-    const KEYS: [Self; 3];
+    const KEYS: &'static [Self];
     fn shortcut(self) -> Shortcut;
     fn press(self, app: &AppHandle);
 
     fn take(app: &AppHandle) -> Result<(), ShortcutError> {
-        let shortcuts = Self::KEYS.map(Self::shortcut);
+        let shortcuts = Self::KEYS.iter().map(|key| key.shortcut());
         app.global_shortcut()
             .on_shortcuts(shortcuts, |app, pressed, event| {
                 let key = Self::KEYS
-                    .into_iter()
+                    .iter()
+                    .copied()
                     .find(|key| key.shortcut() == *pressed);
                 if let (Some(key), ShortcutState::Pressed) = (key, event.state) {
                     key.press(app);
@@ -84,13 +89,18 @@ pub(crate) trait KeySet: Copy + Send + Sync + 'static {
 
     fn give_back(app: &AppHandle) -> Result<(), ShortcutError> {
         app.global_shortcut()
-            .unregister_multiple(Self::KEYS.map(Self::shortcut))
+            .unregister_multiple(Self::KEYS.iter().map(|key| key.shortcut()))
     }
 }
 
 #[tauri::command]
 fn quit(app: AppHandle) {
     app.exit(0);
+}
+
+#[tauri::command]
+fn relaunch(app: AppHandle) {
+    app.request_restart();
 }
 
 pub fn run() -> tauri::Result<()> {
@@ -123,6 +133,7 @@ pub fn run() -> tauri::Result<()> {
                 downloads: path.download_dir()?,
                 copies: path.app_cache_dir()?.join("copies"),
             }));
+            tray::setup(app.handle())?;
             app.manage(settings::AppSettings::load(
                 path.app_config_dir()?.join("settings.json"),
             ));
@@ -148,7 +159,7 @@ pub fn run() -> tauri::Result<()> {
         })
         .invoke_handler(tauri::generate_handler![
             recording::recording_status,
-            recording::set_capture_audio,
+            recording::set_capture_inputs,
             recording::pause_recording,
             recording::restart_recording,
             recording::stop_recording,
@@ -177,17 +188,25 @@ pub fn run() -> tauri::Result<()> {
             settings::choose_save_folder,
             settings::open_notices,
             settings::open_repo,
+            settings::open_settings,
+            settings::has_screen_access,
+            settings::open_screen_settings,
             current_recording::commands::save_project,
             current_recording::commands::add_background,
             current_recording::commands::export_recording,
             current_recording::commands::show_export_in_finder,
-            quit
+            quit,
+            relaunch
         ])
         .build(tauri::generate_context!())?
-        .run(|app, event| {
-            if let RunEvent::Exit = event {
-                recording::stop_before_quit(app);
+        .run(|app, event| match event {
+            RunEvent::Exit => recording::stop_before_quit(app),
+            RunEvent::Reopen { .. } => {
+                if let Err(err) = current_recording::commands::show_again(app) {
+                    log::error!("could not show the app again: {err:#}");
+                }
             }
+            _ => {}
         });
     Ok(())
 }

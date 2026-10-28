@@ -13,6 +13,7 @@ use anyhow::{Result, anyhow, bail};
 use cidre::{
     arc, av,
     av::AssetWriterStatus as Status,
+    av::capture::{VideoDataOutputSampleBufDelegate, VideoDataOutputSampleBufDelegateImpl},
     blocks, cf, cm, define_obj_type, ns, objc, os,
     sc::{
         self,
@@ -20,7 +21,7 @@ use cidre::{
     },
 };
 
-use super::Audio;
+use super::Inputs;
 use super::plan::CaptureSize;
 use super::timeline::Timeline;
 use crate::util::{lock, wait};
@@ -109,9 +110,74 @@ unsafe extern "C" {
     ) -> os::Status;
 }
 
-define_obj_type!(pub Recorder + OutputImpl, RecorderState, RECORDER);
+impl RecorderState {
+    fn add_frame(&mut self, sample_buf: &cm::SampleBuf, is_camera: bool) {
+        let Some(image) = sample_buf.image_buf() else {
+            return;
+        };
+        if self.writer.status() != Status::Writing {
+            return;
+        }
+        let source = if is_camera { "camera" } else { "screen" };
+        let captured = sample_buf.pts();
+        let mut timeline = lock(&self.timeline);
+        let Some(video_time) = timeline.video_time(captured.as_secs()) else {
+            return;
+        };
+        if !timeline.accept_frame(video_time, is_camera) {
+            log::warn!(
+                "skipped a {source} frame whose time did not move forward ({:.6} s)",
+                captured.as_secs()
+            );
+            return;
+        }
+        let first_frame_time = match self.first_frame_time {
+            Some(time) => time,
+            None => {
+                let Some(start) = timeline.session_start(video_time, is_camera) else {
+                    return;
+                };
+                self.writer
+                    .start_session_at_src_time(cm::Time::with_secs(start, captured.scale));
+                *self.first_frame_time.insert(captured.as_secs())
+            }
+        };
+        if self.input.is_ready_for_more_media_data() {
+            let pts = cm::Time::with_secs(video_time, captured.scale);
+            let _ = self.adaptor.append_pixel_buf_with_pts(image, pts);
+            if self.writer.status() == Status::Failed {
+                log::warn!(
+                    "the {source} file failed at the frame {:.3} s in: {:#}",
+                    captured.as_secs() - first_frame_time,
+                    write_error(&self.writer)
+                );
+            }
+        }
+    }
+}
+
+define_obj_type!(
+    pub Recorder + OutputImpl + VideoDataOutputSampleBufDelegateImpl,
+    RecorderState,
+    RECORDER
+);
 
 impl Output for Recorder {}
+
+impl VideoDataOutputSampleBufDelegate for Recorder {}
+
+#[objc::add_methods]
+impl VideoDataOutputSampleBufDelegateImpl for Recorder {
+    extern "C" fn impl_capture_output_did_output_sample_buf_from_connection(
+        &mut self,
+        _cmd: Option<&objc::Sel>,
+        _output: &av::CaptureOutput,
+        sample_buf: &cm::SampleBuf,
+        _connection: &av::CaptureConnection,
+    ) {
+        self.inner_mut().add_frame(sample_buf, true);
+    }
+}
 
 #[objc::add_methods]
 impl OutputImpl for Recorder {
@@ -136,24 +202,7 @@ impl OutputImpl for Recorder {
             }
             return;
         }
-        let Some(image) = sample_buf.image_buf() else {
-            return;
-        };
-        let captured = sample_buf.pts();
-        let Some(video_time) = lock(&state.timeline).video_time(captured.as_secs()) else {
-            return;
-        };
-        let pts = cm::Time::with_secs(video_time, captured.scale);
-        if state.first_frame_time.is_none() {
-            if state.writer.status() != Status::Writing {
-                return;
-            }
-            state.writer.start_session_at_src_time(pts);
-            state.first_frame_time = Some(captured.as_secs());
-        }
-        if state.input.is_ready_for_more_media_data() {
-            let _ = state.adaptor.append_pixel_buf_with_pts(image, pts);
-        }
+        state.add_frame(sample_buf, false);
     }
 }
 
@@ -190,7 +239,7 @@ fn stop_reason(code: ns::Integer, description: String) -> String {
 pub(super) fn create_recorder(
     path: &Path,
     size: CaptureSize,
-    audio: &Audio,
+    audio: &Inputs,
     timeline: Arc<Mutex<Timeline>>,
 ) -> Result<arc::R<Recorder>> {
     let _ = std::fs::remove_file(path);
@@ -295,7 +344,7 @@ pub(super) fn finish_writing(recorder: &mut Recorder, video_end: f64) -> Result<
 
 fn write_error(writer: &av::AssetWriter) -> anyhow::Error {
     match writer.error() {
-        Some(err) => anyhow!("could not write the video: {}", *err),
+        Some(err) => anyhow!("could not write the video: {:?}", *err),
         None => anyhow!("could not write the video"),
     }
 }

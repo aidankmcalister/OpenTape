@@ -4,6 +4,7 @@ import { rectStyle, roundedRectPath } from "@/lib/geometry";
 import AreaBox from "@/components/picker/AreaBox";
 import CaptureBar, {
   CaptureTile,
+  Countdown,
   DimOutside,
 } from "@/components/picker/CaptureBar";
 import {
@@ -13,11 +14,14 @@ import {
 import { usePicker } from "@/hooks/picker/usePicker";
 
 export default function Picker({ displayId }: { displayId: number }) {
-  const { view, framing, record } = usePicker(displayId);
+  const { view, framing, countdown, record } = usePicker(displayId);
   if (framing.windowRect) {
     return (
       <div className="fixed inset-0">
         <DimOutside rect={framing.windowRect} />
+        <div className="absolute" style={rectStyle(framing.windowRect)}>
+          <Countdown value={countdown} />
+        </div>
       </div>
     );
   }
@@ -28,7 +32,15 @@ export default function Picker({ displayId }: { displayId: number }) {
         display={view.display}
         hasBox={view.hasBox}
         isFraming={framing.isFraming}
+        countdown={countdown}
       />
+    );
+  }
+  if (framing.isFraming) {
+    return (
+      <div className="fixed inset-0">
+        <Countdown value={countdown} />
+      </div>
     );
   }
   const { highlight } = view;

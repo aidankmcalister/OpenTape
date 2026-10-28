@@ -6,9 +6,12 @@ pub(super) fn host_time_now() -> f64 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct Timeline {
-    started: f64,
+    pub(super) started: f64,
     pauses: Vec<[f64; 2]>,
     paused_at: Option<f64>,
+    screen_start: Option<f64>,
+    last_screen_frame: f64,
+    last_camera_frame: f64,
 }
 
 impl Timeline {
@@ -17,6 +20,9 @@ impl Timeline {
             started,
             pauses: Vec::new(),
             paused_at: None,
+            screen_start: None,
+            last_screen_frame: f64::NEG_INFINITY,
+            last_camera_frame: f64::NEG_INFINITY,
         }
     }
 
@@ -54,6 +60,26 @@ impl Timeline {
             cut += end - start;
         }
         Some(captured - cut)
+    }
+
+    pub(super) fn session_start(&mut self, video_time: f64, is_camera: bool) -> Option<f64> {
+        if is_camera {
+            return self.screen_start.filter(|&start| video_time >= start);
+        }
+        Some(*self.screen_start.get_or_insert(video_time))
+    }
+
+    pub(super) fn accept_frame(&mut self, video_time: f64, is_camera: bool) -> bool {
+        let last = if is_camera {
+            &mut self.last_camera_frame
+        } else {
+            &mut self.last_screen_frame
+        };
+        if video_time <= *last {
+            return false;
+        }
+        *last = video_time;
+        true
     }
 
     pub(super) fn video_end(&self, now: f64) -> f64 {
@@ -113,5 +139,45 @@ mod tests {
         assert_eq!(timeline.video_time(3.0), Some(1.0));
         assert_eq!(timeline.video_time(9.0), Some(4.0));
         assert_eq!(timeline.video_end(10.0), 5.0);
+    }
+
+    #[test]
+    fn the_camera_should_start_with_the_screen_and_skip_the_same_pauses() {
+        let mut timeline = Timeline::new(10.0);
+        assert_eq!(timeline.session_start(10.2, true), None);
+        assert_eq!(timeline.session_start(10.5, false), Some(10.5));
+        assert_eq!(timeline.session_start(10.4, true), None);
+        assert_eq!(timeline.session_start(10.9, true), Some(10.5));
+        assert_eq!(timeline.session_start(11.0, false), Some(10.5));
+        timeline.pause(12.0);
+        timeline.resume(14.0);
+        let camera_frames = [(11.5, Some(11.5)), (13.0, None), (14.5, Some(12.5))];
+        for (captured, video_time) in camera_frames {
+            assert_eq!(
+                timeline.video_time(captured),
+                video_time,
+                "camera at {captured}"
+            );
+        }
+    }
+
+    #[test]
+    fn each_source_should_skip_a_frame_that_does_not_move_forward() {
+        let mut timeline = Timeline::new(10.0);
+        let frames = [
+            (10.5, true, true),
+            (10.5, true, false),
+            (10.4, true, false),
+            (10.5, false, true),
+            (10.6, true, true),
+            (10.5, false, false),
+        ];
+        for (video_time, is_camera, accepted) in frames {
+            assert_eq!(
+                timeline.accept_frame(video_time, is_camera),
+                accepted,
+                "{video_time} camera={is_camera}"
+            );
+        }
     }
 }

@@ -1,6 +1,7 @@
 import type { ComponentProps, ReactNode } from "react";
 import { SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
 import { Switch } from "@/components/ui/switch";
 import {
   Tooltip,
@@ -12,6 +13,7 @@ import { Help } from "../timeline/SettingControl";
 import { ExportChoices } from "../header/ExportButton";
 import type { AppSettings } from "@/hooks/useAppSettings";
 import type { Appearance } from "@/lib/editor/appearance";
+import { shortcutLabel } from "@/lib/shortcut";
 
 export default function SettingsDialog({
   app,
@@ -35,19 +37,44 @@ export default function SettingsDialog({
   );
 }
 
-function SettingsBody({
+export function SettingsBody({
   app,
   appearance,
 }: {
   app: AppSettings;
-  appearance: Appearance;
+  appearance?: Appearance;
 }) {
   const { settings, change, chooseSaveFolder, exportSettings, version } = app;
   if (!settings) return null;
-  const { saveFolder, suggestsEdits } = settings;
+  const { saveFolder, suggestsEdits, recordShortcut, countsDown } = settings;
   const saved = settings.appearance !== null;
   return (
     <>
+      <DialogSection title="Recording">
+        <Row label="Start or stop recording">
+          <Kbd>{shortcutLabel(recordShortcut)}</Kbd>
+          <Button
+            variant="secondary"
+            onClick={() => app.setIsSettingShortcut(true)}
+            onKeyDown={app.pressShortcut}
+            onBlur={() => app.setIsSettingShortcut(false)}
+          >
+            {app.isSettingShortcut ? "Press keys…" : "Change…"}
+          </Button>
+        </Row>
+        <Row
+          label={
+            <Help text="Counts 3, 2, 1 on what you're recording. Esc cancels.">
+              Count down before recording
+            </Help>
+          }
+        >
+          <Switch
+            checked={countsDown}
+            onCheckedChange={(checked) => change({ countsDown: checked })}
+          />
+        </Row>
+      </DialogSection>
       <DialogSection title="Files">
         <Row label="Save exports to">
           {saveFolder ? (
@@ -100,19 +127,21 @@ function SettingsBody({
           <span className="text-label text-muted-foreground">
             {saved ? "From a recording" : "Built-in"}
           </span>
-          <Button
-            variant="secondary"
-            onClick={() =>
-              change({
-                appearance: {
-                  ...appearance,
-                  fill: { ...appearance.fill, image: null },
-                },
-              })
-            }
-          >
-            Set from this recording
-          </Button>
+          {appearance ? (
+            <Button
+              variant="secondary"
+              onClick={() =>
+                change({
+                  appearance: {
+                    ...appearance,
+                    fill: { ...appearance.fill, image: null },
+                  },
+                })
+              }
+            >
+              Set from this recording
+            </Button>
+          ) : null}
         </Row>
       </DialogSection>
       <DialogSection title="About">

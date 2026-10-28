@@ -35,9 +35,11 @@ impl Shell for AppHandle {
     }
 }
 
-pub(crate) fn show_again(app: &AppHandle) -> Result<()> {
+pub(crate) fn show_again(app: &AppHandle) -> Result<Window> {
     let shown = app.state::<CurrentRecording>().shown();
-    show(app, shown.map_or(Window::Bar, |(window, _)| window))
+    let window = shown.map_or(Window::Bar, |(window, _)| window);
+    show(app, window)?;
+    Ok(window)
 }
 
 fn show(app: &AppHandle, window: Window) -> Result<()> {

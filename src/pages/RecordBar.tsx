@@ -19,7 +19,17 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { MorphPill, PillDivider } from "@/components/Pill";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  MorphLabel,
+  MorphPill,
+  PillDivider,
+  PillMessage,
+} from "@/components/Pill";
 import { formatClock } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { barLayer } from "@/lib/bar/bar";
@@ -45,11 +55,33 @@ export default function RecordBar() {
     <div className="flex h-screen w-screen justify-center">
       <MorphPill
         isDragRegion
-        active={barLayer(bar.phase, bar.error)}
+        active={barLayer(bar.phase, bar.error, bar.hasScreenAccess)}
         onShape={bar.shape}
         layerClassName="gap-1 p-2"
         layers={{
           setup: <Setup bar={bar} options={options} />,
+          permission: (
+            <>
+              <CircleAlert className="ml-3 size-4 shrink-0 text-destructive" />
+              <span className="px-2 text-xs">
+                {bar.hasOpenedSettings
+                  ? "Turn on screen-recorder there, then quit and reopen it to record."
+                  : "Turn on Screen Recording in System Settings to record your screen."}
+              </span>
+              <Button
+                variant={bar.hasOpenedSettings ? "ghost" : "default"}
+                size="pill"
+                onClick={bar.openScreenSettings}
+              >
+                Open System Settings
+              </Button>
+              {bar.hasOpenedSettings ? (
+                <Button size="pill" onClick={bar.relaunch}>
+                  Quit and Reopen
+                </Button>
+              ) : null}
+            </>
+          ),
           recording: <Recording bar={bar} />,
           error: (
             <>
@@ -113,12 +145,20 @@ function Setup({
         ))}
       </ToggleGroup>
       <PillDivider />
-      <DeviceButton
-        isOn={options.camera !== null}
-        icon={options.camera ? <Video /> : <VideoOff />}
-        label={options.camera?.name ?? "No camera"}
-        onClick={options.chooseCamera}
-      />
+      <Tooltip open={!options.canRecordCamera && bar.hoveredName === "camera"}>
+        <TooltipTrigger
+          render={<span data-hover="camera" className="inline-flex" />}
+        >
+          <DeviceButton
+            isOn={options.camera !== null}
+            icon={options.camera ? <Video /> : <VideoOff />}
+            label={options.camera?.name ?? "No camera"}
+            disabled={!options.canRecordCamera}
+            onClick={options.chooseCamera}
+          />
+        </TooltipTrigger>
+        <TooltipContent side="right">Coming soon</TooltipContent>
+      </Tooltip>
       <DeviceButton
         isOn={options.microphone !== null}
         icon={options.microphone ? <Mic /> : <MicOff />}
@@ -168,21 +208,24 @@ function DeviceButton({
   isOn,
   icon,
   label,
+  disabled,
   onClick,
 }: {
   isOn: boolean;
   icon: ReactNode;
   label: string;
+  disabled?: boolean;
   onClick: (anchor: HTMLElement) => void;
 }) {
   return (
     <Button
       variant={isOn ? "selected" : "ghost"}
       size="pill"
+      disabled={disabled}
       onClick={(event) => onClick(event.currentTarget)}
     >
       {icon}
-      <span className="max-w-40 truncate">{label}</span>
+      <MorphLabel text={label} className="max-w-40 truncate" />
     </Button>
   );
 }
@@ -199,6 +242,9 @@ function Recording({ bar }: { bar: Bar }) {
         )}
       />
       <Elapsed timer={bar.timer} />
+      {bar.timer.status.microphoneRefused ? (
+        <PillMessage icon={<MicOff />}>Microphone access is off</PillMessage>
+      ) : null}
       <div className="flex items-center gap-2">
         <Button
           variant="ghost"

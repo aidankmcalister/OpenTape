@@ -1,16 +1,18 @@
-import { useEffect, useState } from "react";
+import { type KeyboardEvent, useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
-import { useInvokeOnMount } from "@/hooks/useTauri";
+import { useRustValue } from "@/hooks/useTauri";
 import type { Settings } from "@/lib/bindings";
 import { type Appearance, readAppearance } from "@/lib/editor/appearance";
 import { readExport } from "@/lib/editor/export";
 import { NEW_PROJECT } from "@/lib/editor/project";
+import { shortcutFromKey } from "@/lib/shortcut";
 
 export function useAppSettings() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [version, setVersion] = useState("");
-  useInvokeOnMount("get_settings", setSettings);
+  const [isSettingShortcut, setIsSettingShortcut] = useState(false);
+  useRustValue("get_settings", "settings-changed", setSettings);
   useEffect(() => {
     getVersion().then(setVersion).catch(console.error);
   }, []);
@@ -19,12 +21,25 @@ export function useAppSettings() {
     if (!settings) return;
     const next = { ...settings, ...part };
     setSettings(next);
-    invoke("set_settings", { settings: next }).catch(console.error);
+    invoke("set_settings", { settings: next }).catch((err) => {
+      console.error(err);
+      setSettings(settings);
+    });
   }
 
   return {
     settings,
     change,
+    isSettingShortcut,
+    setIsSettingShortcut,
+    pressShortcut: (event: KeyboardEvent) => {
+      if (!isSettingShortcut) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const shortcut = shortcutFromKey(event);
+      if (event.key === "Escape" || shortcut) setIsSettingShortcut(false);
+      if (shortcut) change({ recordShortcut: shortcut });
+    },
     chooseSaveFolder: async () => {
       const folder = await invoke<string | null>("choose_save_folder");
       if (folder) change({ saveFolder: folder });

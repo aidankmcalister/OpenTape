@@ -7,7 +7,7 @@ use anyhow::{Context, Result, ensure};
 use serde::Serialize;
 use ts_rs::TS;
 
-use crate::capture::{EVENTS_FILE, META_FILE};
+use crate::capture::{EVENTS_FILE, META_FILE, VIDEO_FILE};
 use crate::export::{self, ExportLayout, ExportOptions};
 use crate::macos::{Alert, Choice};
 use crate::util::lock;
@@ -141,7 +141,8 @@ impl CurrentRecording {
         let Some(folder) = newest else {
             return Ok(());
         };
-        let video = video_in(&folder).filter(|video| video.metadata().is_ok_and(|it| it.len() > 0));
+        let video = Some(folder.join(VIDEO_FILE))
+            .filter(|video| video.metadata().is_ok_and(|it| it.len() > 0));
         match video {
             Some(video) => self.keep(shell, video),
             None => std::fs::remove_dir_all(&folder)
@@ -308,13 +309,6 @@ pub(crate) fn is_video(path: &Path) -> bool {
         path.extension().and_then(|ext| ext.to_str()),
         Some("mov" | "mp4")
     )
-}
-
-fn video_in(folder: &Path) -> Option<PathBuf> {
-    std::fs::read_dir(folder).ok()?.find_map(|entry| {
-        let path = entry.ok()?.path();
-        is_video(&path).then_some(path)
-    })
 }
 
 fn folder_name(folder: &Path) -> String {

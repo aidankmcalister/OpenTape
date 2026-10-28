@@ -245,12 +245,14 @@ fn recover_should_offer_the_newest_left_behind_recording_and_delete_older_ones()
     let older = left_behind(&current, "2026-10-24 09.00.00", b"video");
     let newest = left_behind(&current, "2026-10-25 09.00.00", b"video");
     let dev = left_behind(&current, "Screen Recorder test clip", b"video");
+    for camera in ["camera.mov", "a-camera.mov", "z-camera.mov"] {
+        std::fs::write(newest.join(camera), b"face").expect("the temp camera can be written");
+    }
     current.recover(&shell).expect("the folder reads");
     assert_eq!(*shell.switches.borrow(), [(Window::Bar, Window::Preview)]);
-    assert_eq!(
-        current.shown().expect("offered").1.name,
-        "2026-10-25 09.00.00"
-    );
+    let shown = current.shown().expect("offered").1;
+    assert_eq!(shown.name, "2026-10-25 09.00.00");
+    assert!(shown.video_path.ends_with("recording.mov"));
     assert!(!older.exists());
     assert!(newest.exists());
     assert!(dev.exists());

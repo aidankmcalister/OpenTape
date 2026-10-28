@@ -1,7 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { LogicalPosition } from "@tauri-apps/api/dpi";
-import { CheckMenuItem, Menu, MenuItem } from "@tauri-apps/api/menu";
+import {
+  CheckMenuItem,
+  Menu,
+  MenuItem,
+  PredefinedMenuItem,
+} from "@tauri-apps/api/menu";
 import { usePointerHover } from "@/hooks/usePointerHover";
 import {
   useInvokeOnMount,
@@ -18,8 +23,16 @@ type Timer = { status: RecordingStatus; receivedAt: number };
 export function useRecordBar() {
   const [pickerMode, setPickerMode] = useState<Mode | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [hasScreenAccess, setHasScreenAccess] = useState<boolean | null>(null);
+  const [hasOpenedSettings, setHasOpenedSettings] = useState(false);
+  const lastMode = useRef<Mode>("display");
   const [timer, setTimer] = useState<Timer>({
-    status: { phase: "idle", error: null, elapsedMs: 0 },
+    status: {
+      phase: "idle",
+      error: null,
+      elapsedMs: 0,
+      microphoneRefused: false,
+    },
     receivedAt: 0,
   });
   const oneAtATime = useOneAtATime();
@@ -30,8 +43,13 @@ export function useRecordBar() {
     if (status.error) setError(status.error);
   }
   useRustValue("recording_status", "recording-status", applyStatus);
+  useInvokeOnMount("has_screen_access", setHasScreenAccess);
   useTauriEvent("picker-closed", () => setPickerMode(null));
-  const { setPointer } = usePointerHover();
+  useTauriEvent("new-recording", () => {
+    if (phase === "idle" && !pickerMode && hasScreenAccess !== false)
+      void chooseMode(lastMode.current);
+  });
+  const { hoveredName, setPointer } = usePointerHover();
   useTauriEvent("bar-pointer", setPointer, "window");
 
   async function attempt(job: () => Promise<unknown>) {
@@ -39,7 +57,23 @@ export function useRecordBar() {
       await oneAtATime(job);
     } catch (err) {
       setError(String(err));
+      invoke<boolean>("has_screen_access")
+        .then(setHasScreenAccess)
+        .catch(console.error);
     }
+  }
+
+  async function chooseMode(mode: Mode | null) {
+    setError(null);
+    await attempt(async () => {
+      if (mode) {
+        await invoke("open_picker", { mode });
+        setPickerMode(mode);
+        lastMode.current = mode;
+      } else {
+        await invoke("close_picker");
+      }
+    });
   }
 
   return {
@@ -47,17 +81,15 @@ export function useRecordBar() {
     phase,
     timer,
     error,
-    chooseMode: async (mode: Mode | null) => {
-      setError(null);
-      await attempt(async () => {
-        if (mode) {
-          await invoke("open_picker", { mode });
-          setPickerMode(mode);
-        } else {
-          await invoke("close_picker");
-        }
-      });
+    hasScreenAccess,
+    hasOpenedSettings,
+    hoveredName,
+    chooseMode,
+    openScreenSettings: () => {
+      setHasOpenedSettings(true);
+      invoke("open_screen_settings").catch(console.error);
     },
+    relaunch: () => void invoke("relaunch").catch(console.error),
     togglePause: () =>
       attempt(() => invoke("pause_recording", { paused: phase !== "paused" })),
     restart: () => attempt(() => invoke("restart_recording")),
@@ -66,6 +98,11 @@ export function useRecordBar() {
     openSettings: (anchor: HTMLElement) =>
       oneAtATime(async () =>
         popupBelow(anchor, [
+          await MenuItem.new({
+            text: "Settings…",
+            action: () => void invoke("open_settings").catch(console.error),
+          }),
+          await PredefinedMenuItem.new({ item: "Separator" }),
           await MenuItem.new({ text: "Quit screen-recorder", action: quit }),
         ]),
       ).catch(console.error),
@@ -96,11 +133,12 @@ export function useCaptureOptions() {
     () => localStorage.setItem("capture-options", JSON.stringify(options)),
     [options],
   );
+  const cameraId = import.meta.env.DEV ? options.cameraId : null;
   useEffect(() => {
-    invoke("set_capture_audio", { microphoneId, systemAudio }).catch(
+    invoke("set_capture_inputs", { cameraId, microphoneId, systemAudio }).catch(
       console.error,
     );
-  }, [microphoneId, systemAudio]);
+  }, [cameraId, microphoneId, systemAudio]);
 
   async function chooseDevice(anchor: HTMLElement, kind: keyof Devices) {
     const key = kind === "cameras" ? "cameraId" : "microphoneId";
@@ -123,7 +161,8 @@ export function useCaptureOptions() {
   }
 
   return {
-    camera: devices.cameras.find(({ id }) => id === options.cameraId) ?? null,
+    camera: devices.cameras.find(({ id }) => id === cameraId) ?? null,
+    canRecordCamera: import.meta.env.DEV,
     microphone,
     systemAudio,
     chooseCamera: (anchor: HTMLElement) => void chooseDevice(anchor, "cameras"),
@@ -154,7 +193,7 @@ function quit() {
 
 async function popupBelow(
   anchor: HTMLElement,
-  items: (MenuItem | CheckMenuItem)[],
+  items: (MenuItem | CheckMenuItem | PredefinedMenuItem)[],
 ) {
   const { left, bottom } = anchor.getBoundingClientRect();
   const menu = await Menu.new({ items });

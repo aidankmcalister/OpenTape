@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use tauri::{AppHandle, Manager};
 
-use crate::capture::{EVENTS_FILE, META_FILE};
+use crate::capture::{CAMERA_FILE, EVENTS_FILE, META_FILE};
 use crate::current_recording::{CurrentRecording, PROJECT_FILE, is_video};
 
 const VIDEO_VAR: &str = "EDIT_VIDEO";
@@ -40,7 +40,7 @@ fn open_editor(app: &AppHandle, choice: &str) -> Result<()> {
     };
     let folder = current.named_folder(&name);
     std::fs::create_dir_all(&folder)?;
-    for log in [EVENTS_FILE, META_FILE] {
+    for log in [EVENTS_FILE, META_FILE, CAMERA_FILE] {
         let from = source.with_file_name(log);
         if from.exists() && !folder.join(log).exists() {
             std::fs::copy(&from, folder.join(log))?;

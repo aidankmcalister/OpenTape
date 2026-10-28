@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from "react";
+import { type ComponentProps, type ReactNode, useState } from "react";
 import { Separator } from "@/components/ui/separator";
 import { useMorph } from "@/hooks/useMorph";
 import type { Animation } from "@/lib/bindings";
@@ -79,5 +79,39 @@ export function MorphPill<Key extends string>({
         </div>
       ))}
     </Pill>
+  );
+}
+
+export function MorphLabel({
+  text,
+  className,
+}: {
+  text: string;
+  className?: string;
+}) {
+  const [texts, setTexts] = useState([text]);
+  const last = texts[texts.length - 1];
+  if (last !== text) setTexts([last, text]);
+  const morph = useMorph(text, undefined, 0);
+  return (
+    <span
+      className="relative block shrink-0 overflow-x-clip"
+      style={morph.pillStyle}
+      data-morph-width={morph.pillStyle?.width}
+    >
+      {texts.map((shown) => (
+        <span
+          key={shown}
+          className={cn(
+            "absolute top-0 left-1/2 w-max -translate-x-1/2 morph-hidden data-[active=true]:morph-shown",
+            !morph.pillStyle && "relative",
+            className,
+          )}
+          {...morph.layerProps(shown)}
+        >
+          {shown}
+        </span>
+      ))}
+    </span>
   );
 }

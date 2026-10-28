@@ -20,8 +20,13 @@ export function parseOptions(saved: string | null): SavedOptions {
   }
 }
 
-export function barLayer(phase: Phase, error: string | null) {
+export function barLayer(
+  phase: Phase,
+  error: string | null,
+  hasScreenAccess: boolean | null,
+) {
   if (phase !== "idle") return "recording";
+  if (hasScreenAccess === false) return "permission";
   return error ? "error" : "setup";
 }
 

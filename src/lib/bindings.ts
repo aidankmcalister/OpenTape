@@ -48,7 +48,7 @@ export type Frame = { x: number, y: number, width: number, height: number, };
 
 export type Mode = "display" | "window" | "area";
 
-export type PageEvent = { "event": "picker-session", "payload": Session } | { "event": "picker-cursor", "payload": Point } | { "event": "picker-recording", "payload": Frame | null } | { "event": "picker-key", "payload": PickerKey } | { "event": "picker-closed" } | { "event": "recording-status", "payload": RecordingStatus } | { "event": "current-recording", "payload": ShownRecording | null } | { "event": "bar-pointer", "payload": Point | null } | { "event": "preview-pointer", "payload": Point | null } | { "event": "preview-key", "payload": PreviewKey } | { "event": "export-progress", "payload": number } | { "event": "export-and-close" };
+export type PageEvent = { "event": "picker-session", "payload": Session } | { "event": "picker-cursor", "payload": Point } | { "event": "picker-recording", "payload": Frame | null } | { "event": "picker-countdown", "payload": number | null } | { "event": "picker-key", "payload": PickerKey } | { "event": "picker-closed" } | { "event": "recording-status", "payload": RecordingStatus } | { "event": "current-recording", "payload": ShownRecording | null } | { "event": "bar-pointer", "payload": Point | null } | { "event": "preview-pointer", "payload": Point | null } | { "event": "preview-key", "payload": PreviewKey } | { "event": "export-progress", "payload": number } | { "event": "export-and-close" } | { "event": "new-recording" } | { "event": "settings-changed", "payload": Settings };
 
 export type Phase = "idle" | "starting" | "recording" | "paused" | "stopping";
 
@@ -60,13 +60,13 @@ export type Point = { x: number, y: number, };
 
 export type PreviewKey = "edit" | "copy" | "save";
 
-export type RecordingStatus = { phase: Phase, error: string | null, elapsedMs: number, };
+export type RecordingStatus = { phase: Phase, error: string | null, elapsedMs: number, microphoneRefused: boolean, };
 
 export type RingStyle = "ring" | "pulse" | "ripple";
 
 export type Session = { mode: Mode, sources: Sources, pinnedWindowId: number | null, areaDisplayId: number | null, };
 
-export type Settings = { saveFolder: string | null, export: unknown, appearance: unknown, suggestsEdits: boolean, };
+export type Settings = { saveFolder: string | null, export: unknown, appearance: unknown, suggestsEdits: boolean, recordShortcut: string, countsDown: boolean, };
 
 export type Setup = { session: Session, cursor: Point | null, };
 

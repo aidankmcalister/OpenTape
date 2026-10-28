@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the app windows",
-  "windows": ["bar", "editor", "picker-*", "preview"],
+  "windows": ["bar", "editor", "picker-*", "preview", "settings"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging"

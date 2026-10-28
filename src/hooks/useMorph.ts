@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import type { Animation } from "@/lib/bindings";
 import type { Size } from "@/lib/geometry";
 import { EASE } from "@/lib/time";
@@ -8,6 +9,7 @@ const MORPH: Animation = { durationMs: 400, ease: [...EASE] };
 export function useMorph<Key extends string>(
   active: Key,
   onShape?: (size: Size, animation: Animation | null) => void,
+  edge = 2,
 ) {
   const layers = useRef(new Map<Key, HTMLElement>());
   const shaped = useRef<Size | null>(null);
@@ -28,9 +30,17 @@ export function useMorph<Key extends string>(
     const layer = layers.current.get(active);
     if (!layer) return;
     const reshape = () => {
+      const width = (element: HTMLElement) =>
+        parseFloat(getComputedStyle(element).width) || element.offsetWidth;
+      const settling = [
+        ...layer.querySelectorAll<HTMLElement>("[data-morph-width]"),
+      ].reduce(
+        (sum, inner) => sum + Number(inner.dataset.morphWidth) - width(inner),
+        0,
+      );
       const next = {
-        width: layer.offsetWidth + 2,
-        height: layer.offsetHeight + 2,
+        width: Math.round(width(layer) + settling) + edge,
+        height: layer.offsetHeight + edge,
       };
       const last = shaped.current;
       if (last?.width === next.width && last.height === next.height) return;
@@ -41,8 +51,16 @@ export function useMorph<Key extends string>(
     reshape();
     const observer = new ResizeObserver(reshape);
     observer.observe(layer);
-    return () => observer.disconnect();
-  }, [active]);
+    const settles = new MutationObserver(() => flushSync(reshape));
+    settles.observe(layer, {
+      subtree: true,
+      attributeFilter: ["data-morph-width"],
+    });
+    return () => {
+      observer.disconnect();
+      settles.disconnect();
+    };
+  }, [active, edge]);
 
   const { durationMs, ease } = morphAnimation();
   return {

@@ -14,7 +14,7 @@ A small, free, open-source screen recorder for macOS, made for demos, social pos
 
 ## Status
 
-Early, unreleased and macOS only. Everything listed above works. Camera recording isn't built yet, and captions, annotations, blur, highlights and title cards are planned.
+Early, unreleased and macOS only. Everything listed above works. The camera records to its own file, but the editor doesn't show it yet, and captions, annotations, blur, highlights and title cards are planned.
 
 ## Download
 
@@ -35,7 +35,7 @@ bun install
 bun tauri dev
 ```
 
-The app opens to the record bar at the bottom of your screen. There's no main window.
+The app opens to the record bar at the bottom of your screen, with an icon in the menu bar for New recording, Stop, Settings and Quit. There's no main window; clicking the Dock icon brings the record bar back.
 
 To work on the editor without recording first, run `bun run dev:editor`. It opens `~/Downloads/Screen Recorder test clip/recording.mov`, with the `events.jsonl` and `meta.json` beside it if they're there. `EDIT_VIDEO=latest bun run dev:editor` opens the newest video in Downloads instead, and `EDIT_VIDEO=/path/to/video.mp4 bun run dev:editor` opens any video.
 
@@ -55,9 +55,9 @@ The TypeScript types in `src/lib/bindings.ts` are generated from the Rust types 
 
 ## Permissions
 
-- Screen Recording. macOS asks the first time the app reads the screen, when you pick a mode. If it's off, the record bar shows the error. Turn it on in System Settings, Privacy & Security, Screen & System Audio Recording.
-- Microphone. macOS asks the first time you record with a microphone chosen in the record bar. System audio needs nothing more than Screen Recording.
-- Nothing else. The cursor log polls the cursor position and shape. It also reads macOS's count of key presses to note when a key was pressed (only the time, never which key), so the editor can suggest zooms and speed-ups where you typed. None of it needs Accessibility or Input Monitoring permission, and it stays with the recording on your Mac. Listing cameras and microphones needs no permission either. The camera will ask once camera recording is built.
+- Screen Recording. While it's off, the record bar says so and opens System Settings, Privacy & Security, Screen & System Audio Recording for you. macOS applies it only after the app restarts, so the bar then offers Quit and Reopen.
+- Microphone and Camera. macOS asks the first time you record with one chosen in the record bar. If you say no, the recording goes ahead without it, and for the microphone the bar says Microphone access is off. System audio needs nothing more than Screen Recording.
+- Nothing else. The cursor log polls the cursor position and shape. It also reads macOS's count of key presses to note when a key was pressed (only the time, never which key), so the editor can suggest zooms and speed-ups where you typed. None of it needs Accessibility or Input Monitoring permission, and it stays with the recording on your Mac. Listing cameras and microphones needs no permission either.
 
 ## Where things go
 
@@ -70,7 +70,7 @@ Warnings, errors and crashes go to a small log, `~/Library/Logs/com.aidankmcalis
 ```
 src/                     the frontend (React, TypeScript, Tailwind)
   main.tsx               one entry for every window; picks a page by window label
-  pages/                 one page per window: RecordBar, Picker, RecordingPreview, Editor
+  pages/                 one page per window: RecordBar, Picker, RecordingPreview, Editor, Settings
   components/            looks: shared ones at the top (Pill, MorphPill)
     ui/                  shadcn components on Base UI
     picker/ editor/ …    pieces that belong to one window
@@ -89,7 +89,8 @@ src-tauri/src/           the Rust side
   windows/               the record bar, preview and editor windows; floating.rs shows, hides and places them
   macos/                 AppKit wrappers: main thread, panels, alerts, and the glass
   geometry.rs            points and rectangles, top-left and bottom-left
-  settings.rs            app settings (settings.json)
+  settings.rs            app settings (settings.json) and the Settings window
+  tray.rs                the menu-bar icon and its menu
   util.rs                small shared helpers and the error type commands return
 ```
 

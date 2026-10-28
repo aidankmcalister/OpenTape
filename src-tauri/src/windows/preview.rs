@@ -36,7 +36,7 @@ pub(crate) enum PreviewKey {
 }
 
 impl KeySet for PreviewKey {
-    const KEYS: [Self; 3] = [Self::Edit, Self::Copy, Self::Save];
+    const KEYS: &'static [Self] = &[Self::Edit, Self::Copy, Self::Save];
 
     fn shortcut(self) -> Shortcut {
         match self {

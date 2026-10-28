@@ -18,6 +18,7 @@ pub(crate) use self::sources::Session;
 use self::sources::{Mode, Setup, apply_safe_tops, framing};
 use crate::capture::Target;
 use crate::geometry::{Frame, Point};
+use crate::settings::AppSettings;
 use crate::util::{CmdResult, Poller, lock, run_blocking};
 use crate::windows::{bar, safe_tops};
 use crate::{KeySet, PageEvent, macos, recording};
@@ -88,19 +89,27 @@ pub(crate) fn record(app: AppHandle, state: State<'_, PickerState>, target: Targ
     else {
         return Ok(());
     };
-    let frame_overlay = framing
-        .as_ref()
-        .and_then(|framing| app.get_webview_window(&overlay_label(framing.display_id)));
+    let counts_down = app.state::<AppSettings>().current().counts_down;
+    let display_id = match (&framing, &target) {
+        (Some(framing), _) => Some(framing.display_id),
+        (None, Target::Display { display_id }) if counts_down => Some(*display_id),
+        (None, _) => None,
+    };
+    let frame_overlay = display_id.and_then(|id| app.get_webview_window(&overlay_label(id)));
     close(&app, frame_overlay.as_ref().map(|overlay| overlay.label()))?;
-    if let (Some(overlay), Some(framing)) = (frame_overlay, framing) {
-        let framed = overlay.set_ignore_cursor_events(true).and_then(|()| {
-            PageEvent::PickerRecording(framing.window).send_to(&app, overlay.label())
-        });
+    if let Some(overlay) = &frame_overlay {
+        let window = framing.and_then(|framing| framing.window);
+        let framed = overlay
+            .set_ignore_cursor_events(true)
+            .and_then(|()| PageEvent::PickerRecording(window).send_to(&app, overlay.label()));
         if framed.is_err() {
-            put_away(&overlay);
+            put_away(overlay);
         }
     }
-    recording::start(app, target);
+    let countdown_on = frame_overlay
+        .filter(|_| counts_down)
+        .map(|overlay| overlay.label().to_owned());
+    recording::start(app, target, countdown_on);
     Ok(())
 }
 
@@ -136,7 +145,7 @@ pub(crate) enum PickerKey {
 }
 
 impl KeySet for PickerKey {
-    const KEYS: [Self; 3] = [Self::Escape, Self::Enter, Self::Tab];
+    const KEYS: &'static [Self] = &[Self::Escape, Self::Enter, Self::Tab];
 
     fn shortcut(self) -> Shortcut {
         let code = match self {

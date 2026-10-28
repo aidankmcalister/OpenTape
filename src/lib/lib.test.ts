@@ -8,6 +8,7 @@ import {
   relativeTo,
   roundedRectPath,
 } from "./geometry";
+import { shortcutFromKey, shortcutLabel } from "./shortcut";
 import {
   createClock,
   formatClock,
@@ -239,5 +240,44 @@ describe("seekVideo", () => {
     fake.land();
     expect(fake.started).toEqual([1, 3]);
     expect(seekTarget(video)).toBe(3);
+  });
+});
+
+describe("shortcut", () => {
+  const press = (code: string, held: string[] = []) => ({
+    code,
+    ctrlKey: held.includes("ctrl"),
+    altKey: held.includes("alt"),
+    shiftKey: held.includes("shift"),
+    metaKey: held.includes("meta"),
+  });
+
+  test.each([
+    ["⌥⇧R", press("KeyR", ["alt", "shift"]), "Alt+Shift+KeyR"],
+    ["⌘1", press("Digit1", ["meta"]), "Super+Digit1"],
+    [
+      "⌃⌥⇧⌘F5",
+      press("F5", ["meta", "shift", "alt", "ctrl"]),
+      "Control+Alt+Shift+Super+F5",
+    ],
+  ])("shortcutFromKey turns %s into the text Rust parses", (_, key, text) => {
+    expect(shortcutFromKey(key)).toBe(text);
+  });
+
+  test.each([
+    ["a plain key, which would steal typing", press("KeyR")],
+    ["Shift alone, which would steal capitals", press("KeyR", ["shift"])],
+    ["a modifier on its own", press("AltLeft", ["alt"])],
+    ["Shift held on its own", press("ShiftRight", ["alt", "shift"])],
+  ])("shortcutFromKey refuses %s", (_, key) => {
+    expect(shortcutFromKey(key)).toBeNull();
+  });
+
+  test.each([
+    ["Alt+Shift+KeyR", "⌥⇧R"],
+    ["Control+Super+Digit3", "⌃⌘3"],
+    ["Alt+Space", "⌥Space"],
+  ])("shortcutLabel shows %p as %p", (text, label) => {
+    expect(shortcutLabel(text)).toBe(label);
   });
 });

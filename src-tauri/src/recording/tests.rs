@@ -2,7 +2,7 @@ use super::*;
 
 fn recording() -> RecordingState {
     let state = RecordingState::default();
-    state.claim_start().expect("idle can start");
+    state.claim_start(false).expect("idle can start");
     state.mark_started(RunningRecording::fake("/tmp/recording.mov"));
     state
 }
@@ -41,8 +41,8 @@ fn next_phase_should_allow_only_these_moves() {
 #[test]
 fn a_start_should_let_one_click_through_and_say_why_it_failed() {
     let state = RecordingState::default();
-    assert!(state.claim_start().is_ok());
-    assert!(state.claim_start().is_err());
+    assert!(state.claim_start(false).is_ok());
+    assert!(state.claim_start(false).is_err());
     assert!(state.take_running(Action::Stop, None).is_err());
     assert!(state.set_paused(true).is_err());
     assert_eq!(phase(&state), Phase::Starting);
@@ -50,7 +50,7 @@ fn a_start_should_let_one_click_through_and_say_why_it_failed() {
     let status = state.status();
     assert_eq!(status.phase, Phase::Idle);
     assert_eq!(status.error.as_deref(), Some("could not start capture"));
-    state.claim_start().expect("idle can start again");
+    state.claim_start(false).expect("idle can start again");
     assert_eq!(state.status().error, None);
 }
 
@@ -74,7 +74,7 @@ fn pause_resume_and_stop_should_move_a_recording_along() {
     assert_eq!(saved.video_path, "/tmp/recording.mov");
     state.mark_idle(None);
     assert_eq!(phase(&state), Phase::Idle);
-    assert!(state.claim_start().is_ok());
+    assert!(state.claim_start(false).is_ok());
 }
 
 #[test]
@@ -96,7 +96,7 @@ fn restart_should_only_restart_the_recording_it_paused() {
         .take_running(Action::Stop, None)
         .expect("paused can stop");
     state.mark_idle(None);
-    state.claim_start().expect("idle can start");
+    state.claim_start(false).expect("idle can start");
     state.mark_started(RunningRecording::fake("/tmp/next.mov"));
     assert!(state.take_running(Action::Restart, Some(second)).is_err());
     assert_eq!(phase(&state), Phase::Recording);
@@ -105,7 +105,7 @@ fn restart_should_only_restart_the_recording_it_paused() {
 #[test]
 fn a_capture_that_stops_by_itself_should_only_stop_its_own_recording() {
     let state = RecordingState::default();
-    state.claim_start().expect("idle can start");
+    state.claim_start(false).expect("idle can start");
     let first = state.next_recording_number();
     state.mark_started(RunningRecording::fake("/tmp/first.mov"));
     state
@@ -122,12 +122,52 @@ fn a_capture_that_stops_by_itself_should_only_stop_its_own_recording() {
 }
 
 #[test]
+fn a_countdown_should_start_the_recording_once_unless_canceled() {
+    let state = RecordingState::default();
+    let id = state
+        .claim_start(true)
+        .expect("idle can start")
+        .expect("it counts down");
+    assert!(state.is_counting(id));
+    assert_eq!(phase(&state), Phase::Starting);
+    assert!(state.end_countdown(id));
+    assert!(!state.end_countdown(id));
+    assert!(!state.cancel_countdown());
+    assert_eq!(phase(&state), Phase::Starting);
+}
+
+#[test]
+fn canceling_a_countdown_should_go_idle_and_stop_only_that_countdown() {
+    let state = RecordingState::default();
+    let first = state.claim_start(true).expect("idle can start");
+    assert!(state.cancel_countdown());
+    assert_eq!(phase(&state), Phase::Idle);
+    assert!(!state.cancel_countdown());
+    let second = state.claim_start(true).expect("idle can start again");
+    assert_ne!(first, second);
+    assert!(!state.end_countdown(first.expect("it counted down")));
+    assert!(state.end_countdown(second.expect("it counts down")));
+}
+
+#[test]
+fn a_start_without_a_countdown_should_have_nothing_to_cancel() {
+    let state = RecordingState::default();
+    assert_eq!(state.claim_start(false).expect("idle can start"), None);
+    assert!(!state.cancel_countdown());
+    assert_eq!(phase(&state), Phase::Starting);
+}
+
+#[test]
 fn status_should_reach_the_frontend_in_its_shape() {
     let status = RecordingStatus {
         phase: Phase::Paused,
         error: None,
         elapsed_ms: 1500,
+        microphone_refused: true,
     };
     let json = serde_json::to_string(&status).expect("status serializes");
-    assert_eq!(json, r#"{"phase":"paused","error":null,"elapsedMs":1500}"#);
+    assert_eq!(
+        json,
+        r#"{"phase":"paused","error":null,"elapsedMs":1500,"microphoneRefused":true}"#
+    );
 }

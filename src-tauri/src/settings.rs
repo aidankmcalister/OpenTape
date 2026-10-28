@@ -3,13 +3,19 @@ use std::process::Command;
 use std::sync::Mutex;
 
 use anyhow::{Context, Result, ensure};
+use cidre::cg;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, State, path::BaseDirectory};
+use tauri::window::Color;
+use tauri::{
+    AppHandle, Manager, State, Theme, WebviewUrl, WebviewWindowBuilder, path::BaseDirectory,
+};
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_global_shortcut::Shortcut;
 use ts_rs::TS;
 
 use crate::current_recording::CurrentRecording;
 use crate::util::{CmdResult, lock, run_blocking};
+use crate::{PageEvent, tray};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
@@ -21,6 +27,8 @@ pub(crate) struct Settings {
     #[ts(type = "unknown")]
     pub appearance: Option<serde_json::Value>,
     pub suggests_edits: bool,
+    pub record_shortcut: String,
+    pub counts_down: bool,
 }
 
 impl Default for Settings {
@@ -30,9 +38,13 @@ impl Default for Settings {
             export: None,
             appearance: None,
             suggests_edits: true,
+            record_shortcut: "Alt+Shift+KeyR".into(),
+            counts_down: true,
         }
     }
 }
+
+pub(crate) const WINDOW: &str = "settings";
 
 pub(crate) struct AppSettings {
     path: PathBuf,
@@ -72,6 +84,9 @@ fn read(path: &Path) -> Settings {
 
 pub(crate) fn apply(app: &AppHandle) {
     let settings = app.state::<AppSettings>().current();
+    if let Err(err) = tray::set_record_shortcut(app, &settings.record_shortcut) {
+        log::warn!("could not take {}: {err:#}", settings.record_shortcut);
+    }
     app.state::<CurrentRecording>()
         .set_save_folder(settings.save_folder.map(PathBuf::from));
 }
@@ -83,8 +98,38 @@ pub(crate) fn get_settings(settings: State<'_, AppSettings>) -> Settings {
 
 #[tauri::command]
 pub(crate) fn set_settings(app: AppHandle, settings: Settings) -> CmdResult {
-    app.state::<AppSettings>().save(settings)?;
+    settings
+        .record_shortcut
+        .parse::<Shortcut>()
+        .with_context(|| format!("{} isn't a shortcut", settings.record_shortcut))?;
+    app.state::<AppSettings>().save(settings.clone())?;
     apply(&app);
+    PageEvent::SettingsChanged(settings).send_to_each(&app, |_| true)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) async fn open_settings(app: AppHandle) -> CmdResult {
+    show_window(&app)?;
+    Ok(())
+}
+
+pub(crate) fn show_window(app: &AppHandle) -> Result<()> {
+    let window = match app.get_webview_window(WINDOW) {
+        Some(window) => window,
+        None => WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::default())
+            .title("Settings")
+            .inner_size(520.0, 640.0)
+            .resizable(false)
+            .maximizable(false)
+            .minimizable(false)
+            .theme(Some(Theme::Dark))
+            .background_color(Color(14, 14, 16, 255))
+            .center()
+            .build()?,
+    };
+    window.show()?;
+    window.set_focus()?;
     Ok(())
 }
 
@@ -123,21 +168,38 @@ pub(crate) async fn open_notices(app: AppHandle) -> CmdResult {
 }
 
 const REPO_URL: &str = "https://github.com/aidankmcalister/screen-recorder";
+const SCREEN_RECORDING_SETTINGS: &str =
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
 
 #[tauri::command]
 pub(crate) async fn open_repo() -> CmdResult {
-    run_blocking(|| {
-        let status = Command::new("/usr/bin/open").arg(REPO_URL).status()?;
-        ensure!(status.success(), "could not open {REPO_URL}");
+    Ok(open_url(REPO_URL).await?)
+}
+
+#[tauri::command]
+pub(crate) fn has_screen_access() -> bool {
+    cg::screen_capture_access::preflight()
+}
+
+#[tauri::command]
+pub(crate) async fn open_screen_settings() -> CmdResult {
+    cg::screen_capture_access::request();
+    Ok(open_url(SCREEN_RECORDING_SETTINGS).await?)
+}
+
+async fn open_url(url: &'static str) -> Result<()> {
+    run_blocking(move || {
+        let status = Command::new("/usr/bin/open").arg(url).status()?;
+        ensure!(status.success(), "could not open {url}");
         Ok(())
     })
-    .await?;
-    Ok(())
+    .await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tauri_plugin_global_shortcut::Modifiers;
 
     #[test]
     fn a_missing_or_broken_file_should_give_the_defaults() {
@@ -152,6 +214,22 @@ mod tests {
             .expect("the temp file can be written");
         assert_eq!(read(&path).save_folder.as_deref(), Some("/tmp/x"));
         assert!(read(&path).suggests_edits);
+        assert!(read(&path).counts_down);
+    }
+
+    #[test]
+    fn the_default_record_shortcut_should_be_option_shift_r() {
+        let shortcut: Shortcut = Settings::default()
+            .record_shortcut
+            .parse()
+            .expect("the default parses");
+        assert_eq!(
+            shortcut,
+            Shortcut::new(
+                Some(Modifiers::ALT | Modifiers::SHIFT),
+                tauri_plugin_global_shortcut::Code::KeyR
+            )
+        );
     }
 
     #[test]
