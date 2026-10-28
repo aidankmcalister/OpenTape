@@ -3,10 +3,10 @@
 <plist version="1.0">
 <dict>
   <key>NSMicrophoneUsageDescription</key>
-  <string>screen-recorder records your microphone when you choose one in the record bar.</string>
+  <string>OpenTape records your microphone when you choose one in the record bar.</string>
   <key>NSCameraUsageDescription</key>
-  <string>screen-recorder records your camera when you choose one in the record bar.</string>
+  <string>OpenTape records your camera when you choose one in the record bar.</string>
   <key>NSScreenCaptureUsageDescription</key>
-  <string>screen-recorder records the display, window or area you pick in the record bar.</string>
+  <string>OpenTape records the display, window or area you pick in the record bar.</string>
 </dict>
 </plist>

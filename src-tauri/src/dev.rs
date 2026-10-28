@@ -7,7 +7,7 @@ use crate::capture::{CAMERA_FILE, EVENTS_FILE, META_FILE};
 use crate::current_recording::{CurrentRecording, PROJECT_FILE, is_video};
 
 const VIDEO_VAR: &str = "EDIT_VIDEO";
-const TEST_CLIP: &str = "Screen Recorder test clip";
+const TEST_CLIP: &str = "OpenTape test clip";
 
 pub(crate) fn open_editor_if_asked(app: &AppHandle) -> bool {
     let Ok(choice) = std::env::var(VIDEO_VAR) else {

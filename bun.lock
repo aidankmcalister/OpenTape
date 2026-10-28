@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "screen-recorder",
+      "name": "opentape",
       "dependencies": {
         "@base-ui/react": "^1.9.0",
         "@fontsource-variable/space-grotesk": "^5.3.0",

@@ -103,7 +103,7 @@ export function useRecordBar() {
             action: () => void invoke("open_settings").catch(console.error),
           }),
           await PredefinedMenuItem.new({ item: "Separator" }),
-          await MenuItem.new({ text: "Quit screen-recorder", action: quit }),
+          await MenuItem.new({ text: "Quit OpenTape", action: quit }),
         ]),
       ).catch(console.error),
     hide: () => void invoke("hide_bar").catch(console.error),

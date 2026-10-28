@@ -52,13 +52,13 @@ pub(crate) fn setup(app: &AppHandle) -> tauri::Result<()> {
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, "quit", "Quit screen-recorder", true, None::<&str>)?,
+            &MenuItem::with_id(app, "quit", "Quit OpenTape", true, None::<&str>)?,
         ],
     )?;
     TrayIconBuilder::new()
         .icon(Image::from_bytes(include_bytes!("../icons/tray.png"))?)
         .icon_as_template(true)
-        .tooltip("screen-recorder")
+        .tooltip("OpenTape")
         .menu(&menu)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "new" => new_recording(app, None),

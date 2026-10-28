@@ -35,4 +35,4 @@ body:
     id: logs
     attributes:
       label: Logs or screenshots
-      description: Paste the end of the app's log, `~/Library/Logs/com.aidankmcalister.screen-recorder/screen-recorder.log` (in Finder, choose Go > Go to Folder and paste the path), and add a screenshot if it helps. The log holds only warnings, errors and crashes, and the app never sends it anywhere.
+      description: Paste the end of the app's log, `~/Library/Logs/com.aidankmcalister.opentape/OpenTape.log` (in Finder, choose Go > Go to Folder and paste the path), and add a screenshot if it helps. The log holds only warnings, errors and crashes, and the app never sends it anywhere.

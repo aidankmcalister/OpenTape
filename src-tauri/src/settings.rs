@@ -167,7 +167,7 @@ pub(crate) async fn open_notices(app: AppHandle) -> CmdResult {
     Ok(())
 }
 
-const REPO_URL: &str = "https://github.com/aidankmcalister/screen-recorder";
+const REPO_URL: &str = "https://github.com/aidankmcalister/OpenTape";
 const SCREEN_RECORDING_SETTINGS: &str =
     "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
 
@@ -203,7 +203,7 @@ mod tests {
 
     #[test]
     fn a_missing_or_broken_file_should_give_the_defaults() {
-        let folder = std::env::temp_dir().join("screen-recorder-test-settings");
+        let folder = std::env::temp_dir().join("opentape-test-settings");
         let _ = std::fs::remove_dir_all(&folder);
         let path = folder.join("settings.json");
         assert_eq!(read(&path), Settings::default());
@@ -234,7 +234,7 @@ mod tests {
 
     #[test]
     fn saving_should_write_the_file_and_read_back() {
-        let folder = std::env::temp_dir().join("screen-recorder-test-settings-save");
+        let folder = std::env::temp_dir().join("opentape-test-settings-save");
         let _ = std::fs::remove_dir_all(&folder);
         let settings = AppSettings::load(folder.join("settings.json"));
         let chosen = Settings {

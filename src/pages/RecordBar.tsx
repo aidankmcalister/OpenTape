@@ -64,7 +64,7 @@ export default function RecordBar() {
               <CircleAlert className="ml-3 size-4 shrink-0 text-destructive" />
               <span className="px-2 text-xs">
                 {bar.hasOpenedSettings
-                  ? "Turn on screen-recorder there, then quit and reopen it to record."
+                  ? "Turn on OpenTape there, then quit and reopen it to record."
                   : "Turn on Screen Recording in System Settings to record your screen."}
               </span>
               <Button

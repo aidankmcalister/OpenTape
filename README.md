@@ -1,7 +1,7 @@
 <div align="center">
-  <img src=".github/logo.svg" width="120" alt="screen-recorder logo"/>
+  <img src=".github/logo.svg" width="120" alt="OpenTape logo"/>
 
-  <h1>screen-recorder</h1>
+  <h1>OpenTape</h1>
 
   <p>A free, open-source screen recorder for macOS that turns a raw recording into a polished demo.</p>
 
@@ -10,7 +10,7 @@
   [![Built with Tauri](https://img.shields.io/badge/built_with-Tauri_2-D1440D?style=flat&colorA=18181C)](https://tauri.app)
 
   <p>
-    <a href="https://github.com/aidankmcalister/screen-recorder/issues">Issues</a>
+    <a href="https://github.com/aidankmcalister/OpenTape/issues">Issues</a>
     ·
     <a href="CONTRIBUTING.md">Contributing</a>
     ·

@@ -42,7 +42,7 @@ impl Shell for FakeShell {
 }
 
 fn keeping_one(test: &str, shell: &FakeShell) -> (CurrentRecording, PathBuf) {
-    let root = std::env::temp_dir().join(format!("screen-recorder-test-{test}"));
+    let root = std::env::temp_dir().join(format!("opentape-test-{test}"));
     let _ = std::fs::remove_dir_all(&root);
     let current = CurrentRecording::new(Folders {
         storage: root.join("recordings"),
@@ -229,7 +229,7 @@ fn left_behind(current: &CurrentRecording, name: &str, video: &[u8]) -> PathBuf 
 }
 
 fn nothing_open(test: &str) -> CurrentRecording {
-    let root = std::env::temp_dir().join(format!("screen-recorder-test-{test}"));
+    let root = std::env::temp_dir().join(format!("opentape-test-{test}"));
     let _ = std::fs::remove_dir_all(&root);
     CurrentRecording::new(Folders {
         storage: root.join("recordings"),
@@ -244,7 +244,7 @@ fn recover_should_offer_the_newest_left_behind_recording_and_delete_older_ones()
     let current = nothing_open("recover");
     let older = left_behind(&current, "2026-10-24 09.00.00", b"video");
     let newest = left_behind(&current, "2026-10-25 09.00.00", b"video");
-    let dev = left_behind(&current, "Screen Recorder test clip", b"video");
+    let dev = left_behind(&current, "OpenTape test clip", b"video");
     for camera in ["camera.mov", "a-camera.mov", "z-camera.mov"] {
         std::fs::write(newest.join(camera), b"face").expect("the temp camera can be written");
     }

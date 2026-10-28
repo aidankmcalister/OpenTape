@@ -25,7 +25,7 @@ bun tauri dev
 
 The app opens to the record bar at the bottom of your screen, with an icon in the menu bar. There's no main window; clicking the Dock icon or New recording in the menu brings the record bar back.
 
-To work on the editor without recording first, run `bun run dev:editor`. It opens `~/Downloads/Screen Recorder test clip/recording.mov`, with the `events.jsonl` and `meta.json` beside it if they're there. `EDIT_VIDEO=latest bun run dev:editor` opens the newest video in Downloads instead, and `EDIT_VIDEO=/path/to/video.mp4 bun run dev:editor` opens any video.
+To work on the editor without recording first, run `bun run dev:editor`. It opens `~/Downloads/OpenTape test clip/recording.mov`, with the `events.jsonl` and `meta.json` beside it if they're there. `EDIT_VIDEO=latest bun run dev:editor` opens the newest video in Downloads instead, and `EDIT_VIDEO=/path/to/video.mp4 bun run dev:editor` opens any video.
 
 To test anything involving permissions, build a debug app instead with `bun tauri build --debug`. It's signed with a local certificate named `screen-recorder dev` (`bundle.macOS.signingIdentity` in `src-tauri/tauri.conf.json`), so macOS keeps your permission between rebuilds. Make a self-signed code-signing certificate with that name in Keychain Access, or change the field. `bun tauri build` makes the app in `src-tauri/target/release/bundle/macos/`.
 
@@ -51,9 +51,9 @@ The TypeScript types in `src/lib/bindings.ts` are generated from the Rust types 
 
 ## Where things go
 
-A recording waits in a hidden folder (`~/Library/Application Support/com.aidankmcalister.screen-recorder/recordings/`) only while the preview or editor shows it. Save in the preview, or Export in the editor, puts a file in `~/Downloads` (or the folder chosen in Settings). Closing either window deletes the hidden copy, and asks first if nothing was saved. If the app crashes, the next launch opens the last recording in the preview so it can still be saved. Quitting while recording stops the recording the way Stop does.
+A recording waits in a hidden folder (`~/Library/Application Support/com.aidankmcalister.opentape/recordings/`) only while the preview or editor shows it. Save in the preview, or Export in the editor, puts a file in `~/Downloads` (or the folder chosen in Settings). Closing either window deletes the hidden copy, and asks first if nothing was saved. If the app crashes, the next launch opens the last recording in the preview so it can still be saved. Quitting while recording stops the recording the way Stop does.
 
-Warnings, errors and crashes go to a small log, `~/Library/Logs/com.aidankmcalister.screen-recorder/screen-recorder.log`, that stays on your Mac.
+Warnings, errors and crashes go to a small log, `~/Library/Logs/com.aidankmcalister.opentape/OpenTape.log`, that stays on your Mac.
 
 ## How the code is laid out
 

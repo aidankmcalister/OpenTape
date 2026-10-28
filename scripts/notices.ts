@@ -20,7 +20,7 @@ async function crateNotices(): Promise<Notice[]> {
       license: license.id,
       text: license.text,
       usedBy: license.used_by
-        .filter(({ crate }) => crate.name !== "screen-recorder")
+        .filter(({ crate }) => crate.name !== "opentape")
         .map(({ crate }) => `${crate.name} ${crate.version}`),
     }),
   );
@@ -77,9 +77,9 @@ function section(title: string, notices: Notice[]) {
 }
 
 const notices = [
-  "Third-party notices for screen-recorder",
+  "Third-party notices for OpenTape",
   "",
-  "screen-recorder is MIT licensed (see LICENSE). It includes the open-source software below, whose licenses require these notices to ship with it. Each license text appears once, with the packages that use it. The bundled fonts, Space Grotesk and IBM Plex Mono, are under the SIL Open Font License in the npm section.",
+  "OpenTape is MIT licensed (see LICENSE). It includes the open-source software below, whose licenses require these notices to ship with it. Each license text appears once, with the packages that use it. The bundled fonts, Space Grotesk and IBM Plex Mono, are under the SIL Open Font License in the npm section.",
   "",
   section("npm packages", await npmNotices()),
   section("Rust crates", await crateNotices()),

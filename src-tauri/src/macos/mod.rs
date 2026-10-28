@@ -82,7 +82,7 @@ pub(crate) fn float_panel(ns_window: &NSWindow, level: NSWindowLevel) {
 define_class!(
     #[unsafe(super(NSPanel, NSWindow, NSResponder, NSObject))]
     #[thread_kind = MainThreadOnly]
-    #[name = "ScreenRecorderPanel"]
+    #[name = "OpenTapePanel"]
     struct FloatingPanel;
 
     impl FloatingPanel {
