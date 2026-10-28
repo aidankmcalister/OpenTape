@@ -1,12 +1,10 @@
 import type { CSSProperties } from "react";
 import {
+  AudioLines,
   Captions,
   Droplet,
   FastForward,
-  Highlighter,
   type LucideIcon,
-  Pencil,
-  Type,
   ZoomIn,
 } from "lucide-react";
 import { REGIONS, type RegionKind } from "@/lib/editor/regions";
@@ -15,11 +13,9 @@ import { cn } from "@/lib/utils";
 export const REGION_ICONS: Record<RegionKind, LucideIcon> = {
   zoom: ZoomIn,
   speed: FastForward,
-  captions: Captions,
-  annotation: Pencil,
   blur: Droplet,
-  highlight: Highlighter,
-  titleCard: Type,
+  captions: Captions,
+  audio: AudioLines,
 };
 
 export function hueOf(kind: RegionKind) {

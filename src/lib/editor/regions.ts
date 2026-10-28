@@ -1,14 +1,7 @@
 import { type Point, type Rect, clamp } from "@/lib/geometry";
 import type { MarkColor } from "./appearance";
 
-export type RegionKind =
-  | "zoom"
-  | "speed"
-  | "captions"
-  | "annotation"
-  | "blur"
-  | "highlight"
-  | "titleCard";
+export type RegionKind = "zoom" | "speed" | "blur" | "captions" | "audio";
 
 export type Region = {
   id: number;
@@ -40,7 +33,6 @@ export type Setting =
       unit: string;
       initial?: number;
       help?: string;
-      onlyWith?: string;
     }
   | {
       kind: "choice";
@@ -136,8 +128,6 @@ export const REGIONS: Record<
     ],
     shows: (value) => `${value("amount")}×`,
   },
-  captions: comingSoon("Captions", "X", "167 139 250"),
-  annotation: comingSoon("Annotation", "N", "244 114 182"),
   blur: {
     status: "ready",
     label: "Blur",
@@ -156,8 +146,8 @@ export const REGIONS: Record<
     ],
     shows: (value) => String(value("strength")),
   },
-  highlight: comingSoon("Highlight", "H", "250 204 21"),
-  titleCard: comingSoon("Title card", "T", "251 113 133"),
+  captions: comingSoon("Captions", "X", "167 139 250"),
+  audio: comingSoon("Audio", "A", "52 199 140"),
 };
 
 export function blurOf(region: Region) {

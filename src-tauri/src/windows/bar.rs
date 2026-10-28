@@ -5,7 +5,7 @@ use objc2::MainThreadOnly;
 use objc2_app_kit::NSWindow;
 use objc2_foundation::NSSize;
 use serde::Serialize;
-use tauri::{Manager, WebviewWindow};
+use tauri::{AppHandle, Manager, WebviewWindow};
 use ts_rs::TS;
 
 use super::floating::{Anchor, Behavior, Floating, Hover};
@@ -96,6 +96,11 @@ pub(crate) fn shape_bar(
         let_clicks_through(ns_window);
     })?;
     Ok(())
+}
+
+#[tauri::command]
+pub(crate) fn hide_bar(app: AppHandle) {
+    WINDOW.hide(&app);
 }
 
 pub(crate) fn setup(bar: &WebviewWindow) -> tauri::Result<()> {

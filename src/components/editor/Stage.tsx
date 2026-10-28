@@ -15,7 +15,7 @@ import {
   cursorPictures,
   cursorUnit,
   outsideAlpha,
-  plainOr,
+  nativeOr,
   type CursorTrack,
   type RingEvent,
   ringCircles,
@@ -299,7 +299,7 @@ function Cursor({
     () => cursorPath(track, settings, durationMs, { startMs, endMs }),
     [track, settings, durationMs, startMs, endMs],
   );
-  const { style, hidesOutside } = plainOr(settings);
+  const { style, hidesOutside } = nativeOr(settings);
   const pictures = useMemo(
     () => cursorPictures(track.images, style),
     [track.images, style],

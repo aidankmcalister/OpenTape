@@ -119,8 +119,8 @@ function Setup({
       <Button
         variant="ghost"
         size="icon-pill"
-        aria-label="Quit"
-        onClick={() => void bar.quit()}
+        aria-label="Hide the record bar"
+        onClick={bar.hide}
       >
         <X />
       </Button>

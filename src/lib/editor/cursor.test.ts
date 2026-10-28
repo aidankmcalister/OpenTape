@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
 import {
-  CURSOR_SECTIONS,
   cursorPath,
   cursorPictures,
   cursorUnit,
@@ -16,7 +15,7 @@ import {
   suggestedSpeeds,
   suggestedZooms,
   outsideAlpha,
-  plainOr,
+  nativeOr,
 } from "./cursor";
 import { type CursorSettings, DEFAULT_CURSOR } from "./appearance";
 import type { Region } from "./regions";
@@ -50,18 +49,15 @@ const CLICKS: CursorClick[] = [
 
 const PULSE = { ...DEFAULT_CURSOR, clickEffect: "Pulse" as const };
 
-test("the click effect rings left clicks, right clicks only when asked, and nothing when off or plain", () => {
+test("the click effect rings left clicks only, and nothing when off or native", () => {
   expect(ringEvents(CLICKS, PULSE)).toEqual([
     { ms: 1000, x: 0.25, y: 0.5, color: "#ff7a1a", size: 40, style: "pulse" },
   ]);
-  expect(ringEvents(CLICKS, { ...PULSE, ringsRightClicks: true })).toHaveLength(
-    2,
-  );
-  expect(
-    ringEvents(CLICKS, { ...PULSE, ringColor: "blue", ringSize: 64 }),
-  ).toMatchObject([{ color: "#3d9bff", size: 64 }]);
+  expect(ringEvents(CLICKS, { ...PULSE, ringColor: "blue" })).toMatchObject([
+    { color: "#3d9bff" },
+  ]);
   expect(ringEvents(CLICKS, DEFAULT_CURSOR)).toEqual([]);
-  expect(ringEvents(CLICKS, { ...PULSE, mode: "Plain" })).toEqual([]);
+  expect(ringEvents(CLICKS, { ...PULSE, mode: "Native" })).toEqual([]);
 });
 
 test("a ring shows for half a second after its click, in the export's 60 steps", () => {
@@ -101,14 +97,8 @@ const TRACK = readCursor(
     '{"type":"move","t":102,"x":1000,"y":540}',
   ].join("\n"),
 );
-const RAW: CursorSettings = {
-  ...DEFAULT_CURSOR,
-  smoothing: 0,
-  tilts: false,
-  presses: false,
-  leadsHovers: false,
-  steadiesChanges: false,
-};
+const NATIVE: CursorSettings = { ...DEFAULT_CURSOR, mode: "Native" };
+const STYLED: CursorSettings = { ...DEFAULT_CURSOR, smoothing: 0 };
 const DURATION = 4000;
 
 test("readCursor keeps the shape changes and how long the button was held", () => {
@@ -122,88 +112,61 @@ test("readCursor keeps the shape changes and how long the button was held", () =
   expect(TRACK.aspect).toBe(1000 / 2000);
 });
 
-test("without smoothing, the cursor moves in a straight line between logged points", () => {
-  const spot = cursorPath(TRACK, RAW, DURATION)(500)!;
+test("native, the cursor moves in a straight line between logged points", () => {
+  const spot = cursorPath(TRACK, NATIVE, DURATION)(500)!;
   expect(spot.x).toBeCloseTo(0.25);
   expect(spot.y).toBeCloseTo(0.25);
   expect(spot).toMatchObject({ angle: 0, alpha: 1, scale: 1, kind: "arrow" });
-  expect(cursorPath(TRACK, RAW, DURATION)(9000)).toMatchObject({
+  expect(cursorPath(TRACK, NATIVE, DURATION)(9000)).toMatchObject({
     x: 0.5,
     y: 0.5,
   });
 });
 
-test("with smoothing, the cursor trails the mouse, overshoots a little, then settles", () => {
+test("with smoothing, the cursor overshoots a little, then settles", () => {
   const along = (ms: number) =>
-    cursorPath(TRACK, { ...RAW, smoothing: 50 }, DURATION)(ms)!.x;
-  expect(along(500)).toBeLessThan(0.25);
+    cursorPath(TRACK, DEFAULT_CURSOR, DURATION)(ms)!.x;
   const peak = Math.max(...[1000, 1100, 1200, 1300, 1400].map(along));
   expect(peak).toBeGreaterThan(0.5);
   expect(peak).toBeLessThan(0.53);
   expect(along(3000)).toBeCloseTo(0.5, 3);
 });
 
-test("moving right tilts the cursor, the amount scales it, and it swings back", () => {
-  const tilted = cursorPath(TRACK, { ...RAW, tilts: true }, DURATION);
-  const stronger = cursorPath(
-    TRACK,
-    { ...RAW, tilts: true, tilt: 100 },
-    DURATION,
-  );
+test("moving right tilts a styled cursor, and it swings back", () => {
+  const tilted = cursorPath(TRACK, STYLED, DURATION);
   expect(tilted(600)!.angle).toBeGreaterThan(1);
-  expect(stronger(600)!.angle).toBeGreaterThan(tilted(600)!.angle);
   expect(Math.abs(tilted(3500)!.angle)).toBeLessThan(0.5);
-  expect(cursorPath(TRACK, { ...RAW, angle: 10 }, DURATION)(500)!.angle).toBe(
-    10,
-  );
 });
 
-test("the shape follows the log, steadies quick flips, or stays an arrow", () => {
-  const spotAt = cursorPath(TRACK, RAW, DURATION);
+test("the shape follows the log, and a styled cursor skips quick flips", () => {
+  const spotAt = cursorPath(TRACK, NATIVE, DURATION);
   expect(spotAt(1620)!.kind).toBe("text");
   expect(spotAt(1700)!.kind).toBe("pointer");
-  const steady = cursorPath(TRACK, { ...RAW, steadiesChanges: true }, DURATION);
+  const steady = cursorPath(TRACK, STYLED, DURATION);
   expect(steady(1620)!.kind).toBe("arrow");
   expect(steady(1700)!.kind).toBe("pointer");
-  const arrow = cursorPath(TRACK, { ...RAW, alwaysArrow: true }, DURATION);
-  expect(arrow(1700)!.kind).toBe("arrow");
 });
 
 test("a click presses the cursor in while the button is held, then lets it go", () => {
-  const spotAt = cursorPath(TRACK, { ...RAW, presses: true }, DURATION);
+  const spotAt = cursorPath(TRACK, STYLED, DURATION);
   expect(spotAt(1400)!.scale).toBe(1);
   expect(spotAt(1650)!.scale).toBeCloseTo(0.85);
   expect(spotAt(2000)!.scale).toBe(1);
 });
 
 test("the cursor fades out once still for two seconds, and can be turned off", () => {
-  const spotAt = cursorPath(TRACK, { ...RAW, hidesWhenStill: true }, DURATION);
+  const spotAt = cursorPath(
+    TRACK,
+    { ...STYLED, hidesWhenStill: true },
+    DURATION,
+  );
   expect(spotAt(3000)?.alpha).toBe(1);
   expect(spotAt(3150)?.alpha).toBeCloseTo(0.5);
   expect(spotAt(3400)?.alpha).toBe(0);
+  expect(cursorPath(TRACK, STYLED, DURATION)(3400)?.alpha).toBe(1);
   expect(
-    cursorPath(TRACK, { ...RAW, hidesWhenStill: false }, DURATION)(3400)?.alpha,
-  ).toBe(1);
-  expect(
-    cursorPath(TRACK, { ...RAW, mode: "Hidden" }, DURATION)(500),
+    cursorPath(TRACK, { ...STYLED, mode: "Hidden" }, DURATION)(500),
   ).toBeNull();
-});
-
-test("stopping before the end freezes the cursor, and looping lands it exactly where it started", () => {
-  const stopped = cursorPath(TRACK, { ...RAW, stopsBeforeEnd: 3.5 }, DURATION);
-  expect(stopped(900)!.x).toBeCloseTo(0.25);
-  const looped = cursorPath(TRACK, { ...RAW, loops: true }, DURATION);
-  expect(looped(DURATION)!.x).toBeCloseTo(0);
-  expect(looped(2500)!.x).toBeCloseTo(0.5);
-  const smooth = cursorPath(
-    TRACK,
-    { ...DEFAULT_CURSOR, smoothing: 100, loops: true },
-    DURATION,
-  );
-  const [start, end] = [smooth(0)!, smooth(DURATION)!];
-  expect(end.x).toBeCloseTo(start.x);
-  expect(end.y).toBeCloseTo(start.y);
-  expect(end.angle).toBeCloseTo(start.angle);
 });
 
 test("a shake, out and back within a moment, is removed", () => {
@@ -217,34 +180,15 @@ test("a shake, out and back within a moment, is removed", () => {
       '{"type":"move","t":101,"x":100,"y":40}',
     ].join("\n"),
   );
-  const kept = cursorPath(shaky, { ...RAW, removesShakes: true }, DURATION);
-  const shook = cursorPath(shaky, { ...RAW, removesShakes: false }, DURATION);
+  const kept = cursorPath(shaky, STYLED, DURATION);
+  const shook = cursorPath(shaky, NATIVE, DURATION);
   expect(shook(550)!.x).toBeCloseTo(0.08);
   expect(kept(550)!.x).toBeLessThan(0.055);
 });
 
-test("looping and stopping early count from the kept video's ends, so trimming doesn't cut them off", () => {
-  const kept = { startMs: 500, endMs: 3000 };
-  const looped = cursorPath(TRACK, { ...RAW, loops: true }, DURATION, kept);
-  expect(looped(3000)!.x).toBeCloseTo(0.25);
-  expect(looped(3000)!.y).toBeCloseTo(0.25);
-  const stopped = cursorPath(
-    TRACK,
-    { ...RAW, stopsBeforeEnd: 2.5 },
-    DURATION,
-    kept,
-  );
-  expect(stopped(900)!.x).toBeCloseTo(0.25);
-  const exported = exportCursor(
-    { ...TRACK, images: IMAGES },
-    [],
-    { ...RAW, loops: true },
-    DURATION,
-    VIEW,
-    kept,
-  )!;
-  const end = exported.points.find(({ t }) => Math.abs(t - 3) < 0.01)!;
-  expect(end.x).toBeCloseTo(0.25);
+test("the cursor stops at the kept video's end, so trimming doesn't show the move to Stop", () => {
+  const kept = { startMs: 0, endMs: 500 };
+  expect(cursorPath(TRACK, NATIVE, DURATION, kept)(900)!.x).toBeCloseTo(0.25);
 });
 
 test("a shake is removed even from rest or over several samples, if it jumps at least the shake size", () => {
@@ -263,17 +207,10 @@ test("a shake is removed even from rest or over several samples, if it jumps at 
       at(3010, 800),
     ],
   };
-  const removing = { ...RAW, removesShakes: true, shakeThreshold: 8 };
-  const kept = cursorPath(track, removing, DURATION);
+  const kept = cursorPath(track, STYLED, DURATION);
   expect(kept(1010)!.x * 2000).toBeCloseTo(101, 0);
   expect(kept(2050)!.x * 2000).toBeCloseTo(600);
   expect(kept(3000)!.x * 2000).toBeCloseTo(805);
-  const bigger = cursorPath(
-    track,
-    { ...removing, shakeThreshold: 25 },
-    DURATION,
-  );
-  expect(bigger(1010)!.x * 2000).toBeGreaterThan(115);
 });
 
 test("visibleBox finds the pixels that show, or the whole picture when none do", () => {
@@ -309,26 +246,15 @@ const EVERYTHING: CursorSettings = {
   ...DEFAULT_CURSOR,
   size: 200,
   style: "Dot",
-  alwaysArrow: true,
   smoothing: 100,
   hidesWhenStill: true,
   hidesOutside: true,
-  loops: true,
-  stopsBeforeEnd: 3.5,
-  angle: 20,
-  tilts: true,
-  tilt: 100,
   clickEffect: "Ripple",
-  ringsRightClicks: true,
-  presses: true,
-  removesShakes: true,
-  steadiesChanges: true,
-  leadsHovers: true,
 };
 
-test("plain mode shows the real cursor 1:1, whatever the Styled settings say", () => {
-  const plain = { ...EVERYTHING, mode: "Plain" as const };
-  const spotAt = cursorPath(TRACK, plain, DURATION);
+test("native mode shows the real cursor 1:1, whatever the Styled settings say", () => {
+  const native = { ...EVERYTHING, mode: "Native" as const };
+  const spotAt = cursorPath(TRACK, native, DURATION);
   const real = { angle: 0, alpha: 1, scale: 1 };
   expect(spotAt(500)).toMatchObject({ ...real, kind: "arrow" });
   expect(spotAt(500)!.x).toBeCloseTo(0.25);
@@ -337,44 +263,28 @@ test("plain mode shows the real cursor 1:1, whatever the Styled settings say", (
   expect(spotAt(1650)).toMatchObject({ ...real, kind: "text" });
   expect(spotAt(3900)).toMatchObject({ ...real, kind: "pointer" });
   expect(spotAt(DURATION)!.x).toBeCloseTo(0.5);
-  expect(cursorUnit(TRACK, plain)).toBe(1 / 2000);
-  expect(plainOr(plain).hidesOutside).toBe(false);
-  expect(ringEvents(CLICKS, plain)).toEqual([]);
+  expect(cursorUnit(TRACK, native)).toBe(1 / 2000);
+  expect(nativeOr(native).hidesOutside).toBe(false);
+  expect(ringEvents(CLICKS, native)).toEqual([]);
   expect(
-    exportCursor({ ...TRACK, images: IMAGES }, [], plain, DURATION, VIEW),
+    exportCursor({ ...TRACK, images: IMAGES }, [], native, DURATION, VIEW),
   ).toMatchObject({ unit: 1 / 2000, dot: 0 });
 });
 
-test("with every switch off and no smoothing, angle or early stop, Styled draws the real path", () => {
-  const switches = CURSOR_SECTIONS.flatMap(({ settings }) => settings)
-    .filter((setting) => setting.kind === "switch")
-    .map(({ key }) => [key, false]);
-  const off: CursorSettings = {
-    ...EVERYTHING,
-    ...Object.fromEntries(switches),
-    smoothing: 0,
-    angle: 0,
-    stopsBeforeEnd: 0,
-    clickEffect: "None",
-  };
-  const styled = cursorPath(TRACK, off, DURATION);
-  const plain = cursorPath(TRACK, { ...off, mode: "Plain" }, DURATION);
-  for (let ms = 0; ms <= DURATION; ms += 50)
-    expect(styled(ms)).toEqual(plain(ms));
-  expect(ringEvents(CLICKS, off)).toEqual([]);
-});
-
 test("Size scales the cursor from 3.375 times real size at 100%, the same on the stage and in the export", () => {
-  expect(cursorUnit(TRACK, RAW)).toBeCloseTo(3.375 / 2000, 10);
-  expect(cursorUnit(TRACK, { ...RAW, size: 200 })).toBeCloseTo(6.75 / 2000, 10);
+  expect(cursorUnit(TRACK, STYLED)).toBeCloseTo(3.375 / 2000, 10);
+  expect(cursorUnit(TRACK, { ...STYLED, size: 200 })).toBeCloseTo(
+    6.75 / 2000,
+    10,
+  );
   const exported = exportCursor(
     { ...TRACK, images: IMAGES },
     [],
-    RAW,
+    STYLED,
     DURATION,
     VIEW,
   );
-  expect(exported!.unit).toBe(cursorUnit(TRACK, RAW));
+  expect(exported!.unit).toBe(cursorUnit(TRACK, STYLED));
 });
 
 test("Hidden draws no cursor and no click effect anywhere", () => {
@@ -388,7 +298,7 @@ test("Hidden draws no cursor and no click effect anywhere", () => {
 
 test("the export gets the cursor in output time with its picture, press and fade, thinned where still", () => {
   const track = { ...TRACK, images: IMAGES };
-  const cursor = exportCursor(track, [], RAW, DURATION, VIEW)!;
+  const cursor = exportCursor(track, [], NATIVE, DURATION, VIEW)!;
   expect(cursor.dot).toBe(0);
   expect(cursor.points[0]).toMatchObject({ t: 0, x: 0, y: 0, image: 0 });
   expect(cursor.points.some(({ image }) => image === 2)).toBe(true);
@@ -396,7 +306,7 @@ test("the export gets the cursor in output time with its picture, press and fade
   const styled = exportCursor(
     track,
     [],
-    { ...RAW, presses: true, hidesWhenStill: true, hidesOutside: true },
+    { ...STYLED, hidesWhenStill: true, hidesOutside: true },
     DURATION,
     VIEW,
   )!;
@@ -404,18 +314,10 @@ test("the export gets the cursor in output time with its picture, press and fade
     0.85,
   );
   expect(styled.points[styled.points.length - 1].alpha).toBe(0);
-  const arrow = exportCursor(
-    track,
-    [],
-    { ...RAW, alwaysArrow: true },
-    DURATION,
-    VIEW,
-  );
-  expect(arrow!.points.every(({ image }) => image === 0)).toBe(true);
   expect(
-    exportCursor(track, [], { ...RAW, style: "Dot" }, DURATION, VIEW)!.dot,
+    exportCursor(track, [], { ...STYLED, style: "Dot" }, DURATION, VIEW)!.dot,
   ).toBe(14);
-  expect(exportCursor(TRACK, [], RAW, DURATION, VIEW)).toBeNull();
+  expect(exportCursor(TRACK, [], STYLED, DURATION, VIEW)).toBeNull();
 });
 
 test("Hide outside fades an export point when a zoom moves the view off a still cursor", () => {
@@ -430,7 +332,7 @@ test("Hide outside fades an export point when a zoom moves the view off a still 
     y: 0.5,
   }));
   const alphas = (hidesOutside: boolean) =>
-    exportCursor(still, [], { ...RAW, hidesOutside }, DURATION, {
+    exportCursor(still, [], { ...STYLED, hidesOutside }, DURATION, {
       ...VIEW,
       zoom,
     })!.points.map(({ alpha }) => alpha);
@@ -633,7 +535,7 @@ test("a lone flicker far from the spots around it is dropped, but a real move to
   expect(steadySpots([flicker])).toEqual([flicker]);
 });
 
-test("leading hovers cancels the smoothing lag, so a steady cursor sits where it really is", () => {
+test("a styled cursor leads by its smoothing lag, so a steady cursor sits where it really is", () => {
   const track = {
     ...TRACK,
     moves: Array.from({ length: 301 }, (_, step) => ({
@@ -642,18 +544,16 @@ test("leading hovers cancels the smoothing lag, so a steady cursor sits where it
       y: 0.5,
     })),
   };
-  const lagging = { ...DEFAULT_CURSOR, tilts: false, leadsHovers: false };
-  const leading = { ...lagging, leadsHovers: true };
   const real = 0.1 + 200 * 0.002;
-  const behind = real - cursorPath(track, lagging, DURATION)(2000)!.x;
-  const off = Math.abs(real - cursorPath(track, leading, DURATION)(2000)!.x);
-  expect(behind).toBeGreaterThan(0.01);
+  const off = Math.abs(
+    real - cursorPath(track, DEFAULT_CURSOR, DURATION)(2000)!.x,
+  );
   expect(off).toBeLessThan(0.003);
 });
 
 test("a click ring plays in output time, so it lasts as long on the stage as in an export", () => {
   const rings = ringEvents([{ ms: 1000, x: 0.5, y: 0.5, button: "left" }], {
-    ...RAW,
+    ...STYLED,
     clickEffect: "Ring",
   });
   const fast: Region[] = [

@@ -14,8 +14,8 @@ use ts_rs::TS;
 use self::overlays::{
     is_overlay, overlay_label, overlays, place_glass, prepare_overlays, put_away, show_overlay,
 };
-pub(crate) use self::sources::Session;
-use self::sources::{Mode, Setup, apply_safe_tops, framing};
+pub(crate) use self::sources::{Mode, Session};
+use self::sources::{Setup, apply_safe_tops, framing};
 use crate::capture::Target;
 use crate::geometry::{Frame, Point};
 use crate::settings::AppSettings;

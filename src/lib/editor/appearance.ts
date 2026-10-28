@@ -39,30 +39,17 @@ export type Appearance = {
   cursor: CursorSettings;
 };
 
-export type CursorMode = "Hidden" | "Plain" | "Styled";
+export type CursorMode = "Hidden" | "Native" | "Styled";
 
 export type CursorSettings = {
   mode: CursorMode;
   size: number;
   style: CursorStyle;
-  alwaysArrow: boolean;
   smoothing: number;
   hidesWhenStill: boolean;
   hidesOutside: boolean;
-  loops: boolean;
-  stopsBeforeEnd: number;
-  angle: number;
-  tilts: boolean;
-  tilt: number;
   clickEffect: "None" | "Ring" | "Pulse" | "Ripple";
   ringColor: MarkColor;
-  ringSize: number;
-  ringsRightClicks: boolean;
-  presses: boolean;
-  removesShakes: boolean;
-  shakeThreshold: number;
-  steadiesChanges: boolean;
-  leadsHovers: boolean;
 };
 
 type Amount = {
@@ -142,24 +129,11 @@ export const DEFAULT_CURSOR: CursorSettings = {
   mode: "Styled",
   size: 100,
   style: "macOS",
-  alwaysArrow: false,
   smoothing: 50,
   hidesWhenStill: false,
   hidesOutside: false,
-  loops: false,
-  stopsBeforeEnd: 0,
-  angle: 0,
-  tilts: true,
-  tilt: 50,
   clickEffect: "None",
   ringColor: "orange",
-  ringSize: 40,
-  ringsRightClicks: false,
-  presses: true,
-  removesShakes: true,
-  shakeThreshold: 8,
-  steadiesChanges: true,
-  leadsHovers: true,
 };
 
 export const DEFAULT_APPEARANCE: Appearance = {

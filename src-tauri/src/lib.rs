@@ -42,7 +42,7 @@ pub(crate) enum PageEvent {
     PreviewKey(PreviewKey),
     ExportProgress(f32),
     ExportAndClose,
-    NewRecording,
+    NewRecording(Option<picker::Mode>),
     SettingsChanged(settings::Settings),
 }
 
@@ -172,6 +172,7 @@ pub fn run() -> tauri::Result<()> {
             picker::place_overlay_glass,
             bar::list_devices,
             bar::shape_bar,
+            bar::hide_bar,
             current_recording::commands::save_recording,
             current_recording::commands::copy_recording,
             current_recording::commands::close_recording,

@@ -45,9 +45,9 @@ export function useRecordBar() {
   useRustValue("recording_status", "recording-status", applyStatus);
   useInvokeOnMount("has_screen_access", setHasScreenAccess);
   useTauriEvent("picker-closed", () => setPickerMode(null));
-  useTauriEvent("new-recording", () => {
+  useTauriEvent("new-recording", (mode) => {
     if (phase === "idle" && !pickerMode && hasScreenAccess !== false)
-      void chooseMode(lastMode.current);
+      void chooseMode(mode ?? lastMode.current);
   });
   const { hoveredName, setPointer } = usePointerHover();
   useTauriEvent("bar-pointer", setPointer, "window");
@@ -106,7 +106,7 @@ export function useRecordBar() {
           await MenuItem.new({ text: "Quit screen-recorder", action: quit }),
         ]),
       ).catch(console.error),
-    quit,
+    hide: () => void invoke("hide_bar").catch(console.error),
     shape: ({ width, height }: Size, animation: Animation | null) =>
       void invoke("shape_bar", { width, height, animation }).catch(
         console.error,

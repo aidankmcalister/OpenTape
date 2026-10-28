@@ -15,7 +15,7 @@ import type { CursorStyle } from "@/lib/editor/appearance";
 import {
   cursorPictures,
   type CursorTrack,
-  plainOr,
+  nativeOr,
   type RingEvent,
   SHAPE_RASTER,
 } from "@/lib/editor/cursor";
@@ -74,7 +74,7 @@ export function useExport(
   async function start(size: Size, closes = false) {
     setState({ stage: "exporting", progress: 0 });
     try {
-      const style = plainOr(appearance.cursor).style;
+      const style = nativeOr(appearance.cursor).style;
       const images = await styledImages(cursor.images, style);
       const layout = layoutAt(size, {
         regions,

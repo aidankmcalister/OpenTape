@@ -1,6 +1,3 @@
-import { useState } from "react";
-import { ChevronDown } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { type Edits, useVisibleBox } from "@/hooks/editor/useProject";
 import {
@@ -16,7 +13,6 @@ import {
   type CursorTrack,
 } from "@/lib/editor/cursor";
 import type { SettingValue } from "@/lib/editor/regions";
-import { cn } from "@/lib/utils";
 import { Dim, PanelHeader, Section } from "../Panel";
 import SettingControl from "../timeline/SettingControl";
 
@@ -27,7 +23,6 @@ export default function CursorPanel({
   edits: Edits;
   track: CursorTrack;
 }) {
-  const [isAdvancedOpen, setAdvancedOpen] = useState(false);
   const { cursor } = edits.project.appearance;
   const change = (key: string, value: SettingValue, isPreview?: boolean) =>
     edits.setAppearance({ cursor: { ...cursor, [key]: value } }, isPreview);
@@ -53,48 +48,20 @@ export default function CursorPanel({
         </p>
       </Section>
       <Dim when={!isStyled}>
-        {CURSOR_SECTIONS.map(({ title, settings }) => {
-          const isAdvanced = title === "Advanced";
-          const isOpen = !isAdvanced || isAdvancedOpen;
-          return (
-            <Section
-              key={title}
-              title={title}
-              action={
-                isAdvanced ? (
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    aria-label={
-                      isOpen ? "Collapse advanced" : "Expand advanced"
-                    }
-                    aria-expanded={isOpen}
-                    onClick={() => setAdvancedOpen(!isOpen)}
-                  >
-                    <ChevronDown className={cn(isOpen && "rotate-180")} />
-                  </Button>
-                ) : null
-              }
-            >
-              {title === "Style" ? (
-                <StyleTiles
-                  track={track}
-                  style={cursor.style}
-                  onChange={(style) => change("style", style)}
-                />
-              ) : null}
-              {isOpen
-                ? settings.map((setting, index) => (
-                    <SettingControl
-                      key={index}
-                      setting={setting}
-                      {...control}
-                    />
-                  ))
-                : null}
-            </Section>
-          );
-        })}
+        {CURSOR_SECTIONS.map(({ title, settings }) => (
+          <Section key={title} title={title}>
+            {title === "Style" ? (
+              <StyleTiles
+                track={track}
+                style={cursor.style}
+                onChange={(style) => change("style", style)}
+              />
+            ) : null}
+            {settings.map((setting, index) => (
+              <SettingControl key={index} setting={setting} {...control} />
+            ))}
+          </Section>
+        ))}
       </Dim>
     </>
   );

@@ -239,7 +239,7 @@ impl KeySet for CountdownKey {
 pub(crate) fn start_or_stop(app: &AppHandle) {
     match app.state::<RecordingState>().status().phase {
         Phase::Recording | Phase::Paused => stop_soon(app),
-        Phase::Idle => tray::new_recording(app),
+        Phase::Idle => tray::new_recording(app, None),
         Phase::Starting | Phase::Stopping => {}
     }
 }

@@ -58,6 +58,7 @@ type Event = {
 
 const RING_MS = 500;
 const RING_STEPS = 60;
+const RING_SIZE = 40;
 
 export type CursorMove = { ms: number; x: number; y: number };
 
@@ -90,9 +91,9 @@ export const NO_CURSOR: CursorTrack = {
 const IDLE_MS = 2000;
 const FADE_MS = 300;
 const OUTSIDE_FADE = 0.03;
-const LOOP_MS = 1000;
 const STEADY_MS = 120;
 const SHAKE_MS = 150;
+const SHAKE_POINTS = 8;
 const PRESS_IN_MS = 60;
 const PRESS_OUT_MS = 150;
 const PRESS_DIP = 0.15;
@@ -104,7 +105,7 @@ export const DOT_POINTS = 14;
 
 export const CURSOR_MODES: Record<CursorMode, string> = {
   Hidden: "Draws no cursor over the recording.",
-  Plain: "Shows the cursor exactly as macOS drew it.",
+  Native: "Shows the cursor exactly as macOS drew it.",
   Styled: "Applies size, motion, tilt and click effects.",
 };
 
@@ -120,12 +121,6 @@ export const CURSOR_SECTIONS: { title: string; settings: Setting[] }[] = [
         max: 200,
         step: 5,
         unit: "%",
-      },
-      {
-        kind: "switch",
-        key: "alwaysArrow",
-        label: "Always use pointer",
-        help: "Keeps the arrow, even over links and text.",
       },
     ],
   },
@@ -153,47 +148,6 @@ export const CURSOR_SECTIONS: { title: string; settings: Setting[] }[] = [
         label: "Hide outside the recording",
         help: "Fades the cursor out as its tip leaves the visible recording, so it doesn't hang over the background.",
       },
-      {
-        kind: "switch",
-        key: "loops",
-        label: "Loop back to the start",
-        help: "Glides the cursor back to where the video starts over the last second, so the loop has no jump.",
-      },
-      {
-        kind: "slider",
-        key: "stopsBeforeEnd",
-        label: "Stop before the end",
-        min: 0,
-        max: 3,
-        step: 0.1,
-        unit: "s",
-        help: "Freezes the cursor this long before the end, so the move to the Stop button doesn't show.",
-      },
-    ],
-  },
-  {
-    title: "Rotation",
-    settings: [
-      {
-        kind: "slider",
-        key: "angle",
-        label: "Angle",
-        min: -45,
-        max: 45,
-        step: 1,
-        unit: "°",
-      },
-      { kind: "switch", key: "tilts", label: "Tilt while moving" },
-      {
-        kind: "slider",
-        key: "tilt",
-        label: "Tilt amount",
-        min: 0,
-        max: 100,
-        step: 5,
-        unit: "%",
-        onlyWith: "tilts",
-      },
     ],
   },
   {
@@ -205,56 +159,6 @@ export const CURSOR_SECTIONS: { title: string; settings: Setting[] }[] = [
         options: ["None", "Ring", "Pulse", "Ripple"],
       },
       { kind: "color", key: "ringColor", label: "Color", initial: "orange" },
-      {
-        kind: "slider",
-        key: "ringSize",
-        label: "Ring size",
-        min: 16,
-        max: 96,
-        step: 4,
-        unit: "px",
-      },
-      { kind: "switch", key: "ringsRightClicks", label: "Also on right click" },
-      {
-        kind: "switch",
-        key: "presses",
-        label: "Press on click",
-        help: "Shrinks the cursor a little while you hold the left button.",
-      },
-    ],
-  },
-  {
-    title: "Advanced",
-    settings: [
-      {
-        kind: "switch",
-        key: "removesShakes",
-        label: "Remove shakes",
-        help: "Drops quick jumps that come straight back, like a bumped mouse.",
-      },
-      {
-        kind: "slider",
-        key: "shakeThreshold",
-        label: "Shake size",
-        min: 1,
-        max: 30,
-        step: 1,
-        unit: "pt",
-        help: "Only jumps at least this far count as shakes.",
-        onlyWith: "removesShakes",
-      },
-      {
-        kind: "switch",
-        key: "steadiesChanges",
-        label: "Steady quick cursor changes",
-        help: "Skips cursor shapes that only flash by, like a text beam crossed on the way to a button.",
-      },
-      {
-        kind: "switch",
-        key: "leadsHovers",
-        label: "Keep in sync with hovers",
-        help: "Makes up for the smoothing delay, so the cursor reaches a button as it lights up.",
-      },
     ],
   },
 ];
@@ -421,24 +325,15 @@ export function visibleBox(alpha: ArrayLike<number>, width: number) {
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
-export function plainOr(settings: CursorSettings): CursorSettings {
+export function nativeOr(settings: CursorSettings): CursorSettings {
   if (settings.mode === "Styled") return settings;
   return {
     ...settings,
     style: "macOS",
-    alwaysArrow: false,
     smoothing: 0,
     hidesWhenStill: false,
     hidesOutside: false,
-    loops: false,
-    stopsBeforeEnd: 0,
-    angle: 0,
-    tilts: false,
     clickEffect: "None",
-    presses: false,
-    removesShakes: false,
-    steadiesChanges: false,
-    leadsHovers: false,
   };
 }
 
@@ -462,25 +357,21 @@ export function cursorPath(
   track: CursorTrack,
   chosen: CursorSettings,
   durationMs: number,
-  { startMs, endMs }: Span = { startMs: 0, endMs: durationMs },
+  { endMs }: Span = { startMs: 0, endMs: durationMs },
 ): (ms: number) => CursorSpot | null {
-  const settings = plainOr(chosen);
+  const settings = nativeOr(chosen);
   if (settings.mode === "Hidden" || track.moves.length === 0) return () => null;
-  const moves = settings.removesShakes
-    ? withoutShakes(track, settings.shakeThreshold)
-    : track.moves;
-  const kinds = settings.steadiesChanges ? steadied(track.kinds) : track.kinds;
+  const isStyled = settings.mode === "Styled";
+  const moves = isStyled ? withoutShakes(track) : track.moves;
+  const kinds = isStyled ? steadied(track.kinds) : track.kinds;
   const lastMs = Math.max(moves[moves.length - 1].ms, durationMs);
   const stiffness = 600 * 0.1 ** (settings.smoothing / 100);
   const damping = 2 * 0.84 * Math.sqrt(stiffness);
   const dt = STEP_MS / 1000;
   const leadMs =
-    settings.leadsHovers && settings.smoothing > 0
-      ? (damping / stiffness) * 1000
-      : 0;
-  const stopMs = endMs - settings.stopsBeforeEnd * 1000;
+    isStyled && settings.smoothing > 0 ? (damping / stiffness) * 1000 : 0;
   const targetAt = (ms: number) =>
-    positionAt(moves, Math.min(ms + leadMs, stopMs));
+    positionAt(moves, Math.min(ms + leadMs, endMs));
   const steps: Pose[] = [];
   let [x, y, vx, vy] = [moves[0].x, moves[0].y, 0, 0];
   let [lean, spin] = [0, 0];
@@ -494,12 +385,10 @@ export function cursorPath(
       [vx, vy] = [(target.x - x) / dt, (target.y - y) / dt];
       [x, y] = [target.x, target.y];
     }
-    const want = settings.tilts
-      ? clamp((vx * TILT_PER_SPEED * settings.tilt) / 50, -MAX_TILT, MAX_TILT)
-      : 0;
+    const want = isStyled ? clamp(vx * TILT_PER_SPEED, -MAX_TILT, MAX_TILT) : 0;
     spin += (SWING.stiffness * (want - lean) - SWING.damping * spin) * dt;
     lean += spin * dt;
-    steps.push({ x, y, angle: settings.angle + lean });
+    steps.push({ x, y, angle: lean });
   }
   const movedAt = moves.filter(
     (move, index) =>
@@ -516,22 +405,14 @@ export function cursorPath(
     const [from, to] = [steps[Math.floor(index)], steps[Math.ceil(index)]];
     return blend(from, to, index - Math.floor(index));
   };
-  const start = stepAt(startMs);
   return (ms) => {
-    const back = settings.loops
-      ? smoothstep(clamp((ms - endMs + LOOP_MS) / LOOP_MS, 0, 1))
-      : 0;
     const lastMovedMs = movedAt[firstAfter(movedAt, ms) - 1]?.ms ?? 0;
     const alpha = settings.hidesWhenStill
       ? clamp(1 - (ms - lastMovedMs - IDLE_MS) / FADE_MS, 0, 1)
       : 1;
-    const kind = settings.alwaysArrow
-      ? "arrow"
-      : (kinds[firstAfter(kinds, ms) - 1]?.kind ?? "arrow");
-    const scale = settings.presses
-      ? 1 - PRESS_DIP * pressAt(track.presses, ms)
-      : 1;
-    return { ...blend(stepAt(ms), start, back), alpha, scale, kind };
+    const kind = kinds[firstAfter(kinds, ms) - 1]?.kind ?? "arrow";
+    const scale = isStyled ? 1 - PRESS_DIP * pressAt(track.presses, ms) : 1;
+    return { ...stepAt(ms), alpha, scale, kind };
   };
 }
 
@@ -555,10 +436,7 @@ export function outsideAlpha(hides: boolean, tip: Point): number {
   return clamp(1 - outside / OUTSIDE_FADE, 0, 1);
 }
 
-function withoutShakes(
-  { moves, pointShare, aspect }: CursorTrack,
-  threshold: number,
-) {
+function withoutShakes({ moves, pointShare, aspect }: CursorTrack) {
   const points = (a: CursorMove, b: CursorMove) =>
     Math.hypot(a.x - b.x, (a.y - b.y) * aspect) / pointShare;
   const kept = moves.slice(0, 1);
@@ -567,8 +445,8 @@ function withoutShakes(
     const isSoon = (at: number) =>
       at < moves.length && moves[at].ms - moves[index].ms < SHAKE_MS;
     let [back, strays] = [index, false];
-    while (isSoon(back) && points(moves[back], anchor) >= threshold / 2) {
-      strays ||= points(moves[back], anchor) > threshold;
+    while (isSoon(back) && points(moves[back], anchor) >= SHAKE_POINTS / 2) {
+      strays ||= points(moves[back], anchor) > SHAKE_POINTS;
       back++;
     }
     if (strays && isSoon(back)) index = back - 1;
@@ -594,10 +472,6 @@ function pressAt(presses: CursorTrack["presses"], ms: number): number {
         : 1 - (ms - untilMs) / PRESS_OUT_MS;
     return Math.max(deepest, dip);
   }, 0);
-}
-
-function smoothstep(share: number) {
-  return share * share * (3 - 2 * share);
 }
 
 export function positionAt(moves: CursorMove[], ms: number) {
@@ -632,7 +506,7 @@ export function exportCursor(
 ): ExportCursor | null {
   const spotAt = cursorPath(track, settings, durationMs, kept);
   if (!spotAt(0) || track.images.length === 0) return null;
-  const { style, hidesOutside } = plainOr(settings);
+  const { style, hidesOutside } = nativeOr(settings);
   const { zoom, recording } = view;
   const video = relativeTo(view.video, recording);
   const imageOf = (kind: string) =>
@@ -838,18 +712,17 @@ export function ringEvents(
   clicks: CursorClick[],
   settings: CursorSettings,
 ): RingEvent[] {
-  const { clickEffect, ringColor, ringSize, ringsRightClicks } =
-    plainOr(settings);
+  const { clickEffect, ringColor } = nativeOr(settings);
   if (clickEffect === "None") return [];
   const style = clickEffect.toLowerCase() as RingStyle;
   return clicks
-    .filter(({ button }) => button === "left" || ringsRightClicks)
+    .filter(({ button }) => button === "left")
     .map(({ ms, x, y }) => ({
       ms,
       x,
       y,
       color: MARK_COLORS[ringColor],
-      size: ringSize,
+      size: RING_SIZE,
       style,
     }));
 }

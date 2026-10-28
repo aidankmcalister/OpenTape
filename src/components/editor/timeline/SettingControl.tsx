@@ -45,8 +45,7 @@ export default function SettingControl({
     initialOf(setting)) as SettingValue;
   switch (setting.kind) {
     case "slider": {
-      const { key, label, min, max, step, unit, help, onlyWith } = setting;
-      if (onlyWith && !values[onlyWith]) return null;
+      const { key, label, min, max, step, unit, help } = setting;
       return (
         <Slider
           min={min}
