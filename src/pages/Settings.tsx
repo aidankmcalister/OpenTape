@@ -4,8 +4,16 @@ import { useAppSettings } from "@/hooks/useAppSettings";
 export default function Settings() {
   const app = useAppSettings();
   return (
-    <main className="h-screen overflow-y-auto bg-background">
-      <SettingsBody app={app} />
+    <main className="flex h-screen flex-col bg-background">
+      <header
+        data-tauri-drag-region
+        className="flex h-title-bar shrink-0 items-center pl-traffic-lights text-muted-foreground"
+      >
+        Settings
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <SettingsBody app={app} />
+      </div>
     </main>
   );
 }

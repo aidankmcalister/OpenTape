@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use tauri::{AppHandle, Manager};
 
 use crate::capture::{CAMERA_FILE, EVENTS_FILE, META_FILE};
-use crate::current_recording::{CurrentRecording, PROJECT_FILE, is_video};
+use crate::current_recording::{CurrentRecording, PROJECT_FILE};
 
 const VIDEO_VAR: &str = "EDIT_VIDEO";
 const TEST_CLIP: &str = "OpenTape test clip";
@@ -81,4 +81,11 @@ fn newest_video(folder: &Path) -> Result<PathBuf> {
     newest
         .map(|(_, path)| path)
         .with_context(|| format!("no .mp4 or .mov in {}", folder.display()))
+}
+
+fn is_video(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|ext| ext.to_str()),
+        Some("mov" | "mp4")
+    )
 }

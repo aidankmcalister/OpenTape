@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import type { Phase } from "@/lib/bindings";
+import type { Access, Phase } from "@/lib/bindings";
+import type { News } from "@/lib/update";
 import { barLayer, DEFAULT_OPTIONS, elapsedMsAt, parseOptions } from "./bar";
 
 test.each([
@@ -22,23 +23,45 @@ test("parseOptions reads back what was saved", () => {
   expect(parseOptions(JSON.stringify(saved))).toEqual(saved);
 });
 
-test.each<[Phase, string | null, boolean | null, string]>([
-  ["idle", null, true, "setup"],
-  ["idle", null, null, "setup"],
-  ["idle", "Screen recording is off", true, "error"],
-  ["idle", null, false, "permission"],
-  ["idle", "Screen recording is off", false, "permission"],
-  ["starting", null, true, "recording"],
-  ["recording", "Restart failed", true, "recording"],
-  ["recording", null, false, "recording"],
-  ["paused", null, true, "recording"],
-  ["stopping", "Restart failed", true, "recording"],
+test.each<[Phase, Access | undefined, string | null, News | null, string]>([
+  ["idle", "allowed", null, null, "setup"],
+  ["idle", undefined, null, null, "setup"],
+  ["idle", "allowed", null, "available", "updateAvailable"],
+  ["idle", "allowed", "Recording failed", "ready", "error"],
+  ["idle", "notAsked", null, "ready", "permission"],
+  ["idle", "notAsked", "Recording failed", null, "permission"],
+  ["idle", "needsRestart", null, "ready", "restart"],
+  ["starting", "allowed", null, "ready", "recording"],
+  ["recording", "allowed", "Restart failed", null, "recording"],
+  ["recording", "notAsked", null, null, "recording"],
+  ["paused", "allowed", null, "ready", "recording"],
+  ["stopping", "allowed", "Restart failed", null, "recording"],
 ])(
-  "barLayer(%p, %p, screen access %p) shows %p",
-  (phase, error, hasScreenAccess, layer) => {
-    expect(barLayer(phase, error, hasScreenAccess)).toBe(layer);
+  "barLayer(%p, screen %p, error %p, update %p) shows %p",
+  (phase, screenRecording, error, update, layer) => {
+    expect(
+      barLayer({
+        phase,
+        isCountingDown: false,
+        screenRecording,
+        error,
+        update,
+      }),
+    ).toBe(layer);
   },
 );
+
+test("barLayer shows the countdown while it counts down", () => {
+  expect(
+    barLayer({
+      phase: "starting",
+      isCountingDown: true,
+      screenRecording: "allowed",
+      error: null,
+      update: "available",
+    }),
+  ).toBe("countdown");
+});
 
 test.each<[string, Phase, number, number, number]>([
   ["counts on from Rust's time while recording", "recording", 1000, 3500, 7500],
@@ -57,6 +80,7 @@ test.each<[string, Phase, number, number, number]>([
     error: null,
     elapsedMs: 5000,
     microphoneRefused: false,
+    countdown: null,
   };
   expect(elapsedMsAt(status, receivedAt, now)).toBe(elapsed);
 });

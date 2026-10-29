@@ -18,7 +18,7 @@ export function useTimelineDrag(edits: Edits) {
 
   const dragProps = (
     select: (event: PointerEvent<HTMLElement>) => void,
-    onDrag: (deltaMs: number) => void,
+    onDrag: ((deltaMs: number) => void) | null,
     stretch?: Stretching,
     onClick?: () => void,
   ) => ({
@@ -28,6 +28,7 @@ export function useTimelineDrag(edits: Edits) {
       const track = event.currentTarget.closest("[data-track]");
       if (!track?.clientWidth) return;
       select(event);
+      if (!onDrag) return;
       const { clientX: fromX, clientY: fromY } = event;
       const width = track.clientWidth;
       const { lengthMs } = latest.current.time;
@@ -56,14 +57,16 @@ export function useTimelineDrag(edits: Edits) {
 
   return {
     stretch: stretching,
-    region: (id: number, edge: RegionDrag) => {
+    region: (id: number, edge: RegionDrag, isFixed = false) => {
       const ids =
         edge === "move" && edits.selectedIds.includes(id)
           ? edits.selectedIds
           : [id];
       return dragProps(
         (event) => edits.pick(id, event.shiftKey),
-        (deltaMs) => latest.current.retime(ids, edge, deltaMs, true),
+        isFixed
+          ? null
+          : (deltaMs) => latest.current.retime(ids, edge, deltaMs, true),
         { track: "region", id, edge },
         () => edits.openEditor(id),
       );

@@ -39,6 +39,8 @@ impl Shell for FakeShell {
         self.switches.borrow_mut().push((from, to));
         Ok(())
     }
+
+    fn offer_restore(&self, _: bool) {}
 }
 
 fn keeping_one(test: &str, shell: &FakeShell) -> (CurrentRecording, PathBuf) {
@@ -239,7 +241,7 @@ fn nothing_open(test: &str) -> CurrentRecording {
 }
 
 #[test]
-fn recover_should_offer_the_newest_left_behind_recording_and_delete_older_ones() {
+fn recover_should_keep_the_newest_left_behind_recording_quietly_until_restored() {
     let shell = FakeShell::answering(Choice::Cancel);
     let current = nothing_open("recover");
     let older = left_behind(&current, "2026-10-24 09.00.00", b"video");
@@ -249,13 +251,33 @@ fn recover_should_offer_the_newest_left_behind_recording_and_delete_older_ones()
         std::fs::write(newest.join(camera), b"face").expect("the temp camera can be written");
     }
     current.recover(&shell).expect("the folder reads");
+    assert!(shell.switches.borrow().is_empty());
+    assert!(current.shown().is_none());
+    assert!(current.can_restore());
+    current.restore(&shell).expect("the leftover restores");
     assert_eq!(*shell.switches.borrow(), [(Window::Bar, Window::Preview)]);
-    let shown = current.shown().expect("offered").1;
+    assert!(!current.can_restore());
+    let shown = current.shown().expect("restored").1;
     assert_eq!(shown.name, "2026-10-25 09.00.00");
     assert!(shown.video_path.ends_with("recording.mov"));
     assert!(!older.exists());
     assert!(newest.exists());
     assert!(dev.exists());
+}
+
+#[test]
+fn a_new_recording_should_replace_the_left_behind_one() {
+    let shell = FakeShell::answering(Choice::Cancel);
+    let current = nothing_open("replace-leftover");
+    let leftover = left_behind(&current, "2026-10-24 09.00.00", b"video");
+    current.recover(&shell).expect("the folder reads");
+    let fresh = left_behind(&current, "2026-10-25 09.00.00", b"video");
+    current
+        .keep(&shell, fresh.join("recording.mov"))
+        .expect("nothing is open");
+    assert!(!leftover.exists());
+    assert!(fresh.exists());
+    assert!(!current.can_restore());
 }
 
 #[test]

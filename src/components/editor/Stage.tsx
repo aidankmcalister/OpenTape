@@ -22,7 +22,7 @@ import {
   ringsAt,
   zoomedTip,
 } from "@/lib/editor/cursor";
-import { focusAt, focusBox, zoomPath } from "@/lib/editor/zoom";
+import { focusAt, focusBox, followsCursor, zoomPath } from "@/lib/editor/zoom";
 import {
   percentStyle,
   type Point,
@@ -122,7 +122,8 @@ export default function Stage({
                   scale={scale}
                 />
               </Zoom>
-              {editing?.region.kind === "zoom" ? (
+              {editing?.region.kind === "zoom" &&
+              !followsCursor(editing.region) ? (
                 <div className="absolute" style={rectStyle(picture)}>
                   <FocusBox {...editing} crop={{ x: cropX, y: cropY }} />
                 </div>

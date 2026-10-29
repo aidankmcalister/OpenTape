@@ -154,6 +154,24 @@ pub(super) fn framing(session: &Session, target: &Target) -> Option<Framing> {
     }
 }
 
+pub(super) fn target_name(session: &Session, target: &Target) -> String {
+    let Sources {
+        displays, windows, ..
+    } = &session.sources;
+    match *target {
+        Target::Display { display_id } => displays
+            .iter()
+            .find(|display| display.id == display_id)
+            .map(|display| display.name.clone()),
+        Target::Window { window_id } => windows
+            .iter()
+            .find(|window| window.id == window_id)
+            .map(|window| window.app.clone()),
+        Target::Area { .. } => Some("Area".to_owned()),
+    }
+    .unwrap_or_default()
+}
+
 fn window_framing(sources: &Sources, window_id: u32) -> Option<Framing> {
     let window = sources
         .windows

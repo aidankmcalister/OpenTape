@@ -252,7 +252,7 @@ const EVERYTHING: CursorSettings = {
   clickEffect: "Ripple",
 };
 
-test("native mode shows the real cursor 1:1, whatever the Styled settings say", () => {
+test("native mode shows the real cursor at the default size, whatever the Styled settings say", () => {
   const native = { ...EVERYTHING, mode: "Native" as const };
   const spotAt = cursorPath(TRACK, native, DURATION);
   const real = { angle: 0, alpha: 1, scale: 1 };
@@ -263,20 +263,17 @@ test("native mode shows the real cursor 1:1, whatever the Styled settings say", 
   expect(spotAt(1650)).toMatchObject({ ...real, kind: "text" });
   expect(spotAt(3900)).toMatchObject({ ...real, kind: "pointer" });
   expect(spotAt(DURATION)!.x).toBeCloseTo(0.5);
-  expect(cursorUnit(TRACK, native)).toBe(1 / 2000);
+  expect(cursorUnit(TRACK, native)).toBeCloseTo(3.5 / 2000, 10);
   expect(nativeOr(native).hidesOutside).toBe(false);
   expect(ringEvents(CLICKS, native)).toEqual([]);
   expect(
     exportCursor({ ...TRACK, images: IMAGES }, [], native, DURATION, VIEW),
-  ).toMatchObject({ unit: 1 / 2000, dot: 0 });
+  ).toMatchObject({ unit: cursorUnit(TRACK, native), dot: 0 });
 });
 
-test("Size scales the cursor from 3.375 times real size at 100%, the same on the stage and in the export", () => {
-  expect(cursorUnit(TRACK, STYLED)).toBeCloseTo(3.375 / 2000, 10);
-  expect(cursorUnit(TRACK, { ...STYLED, size: 200 })).toBeCloseTo(
-    6.75 / 2000,
-    10,
-  );
+test("Size scales the cursor from 3.5 times real size at 100%, the same on the stage and in the export", () => {
+  expect(cursorUnit(TRACK, STYLED)).toBeCloseTo(3.5 / 2000, 10);
+  expect(cursorUnit(TRACK, { ...STYLED, size: 200 })).toBeCloseTo(7 / 2000, 10);
   const exported = exportCursor(
     { ...TRACK, images: IMAGES },
     [],

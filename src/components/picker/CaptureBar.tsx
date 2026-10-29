@@ -79,24 +79,3 @@ export function DimOutside({ rect }: { rect: Rect }) {
     </>
   );
 }
-
-export function Countdown({ value }: { value: number | null }) {
-  if (value === null) return null;
-  return (
-    <div className="pointer-events-none absolute inset-0 grid place-items-center">
-      <CountdownPill value={value} />
-    </div>
-  );
-}
-
-function CountdownPill({ value }: { value: number }) {
-  const glass = useGlass<HTMLDivElement>();
-  return (
-    <Pill
-      ref={glass}
-      className="size-28 justify-center p-0 font-heading text-6xl font-semibold tabular-nums shadow-pill"
-    >
-      {value}
-    </Pill>
-  );
-}

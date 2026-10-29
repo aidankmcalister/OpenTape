@@ -15,7 +15,7 @@ use self::overlays::{
     is_overlay, overlay_label, overlays, place_glass, prepare_overlays, put_away, show_overlay,
 };
 pub(crate) use self::sources::{Mode, Session};
-use self::sources::{Setup, apply_safe_tops, framing};
+use self::sources::{Setup, apply_safe_tops, framing, target_name};
 use crate::capture::Target;
 use crate::geometry::{Frame, Point};
 use crate::settings::AppSettings;
@@ -56,6 +56,9 @@ pub(crate) async fn open_picker(
 }
 
 pub(crate) fn prepare(app: AppHandle) {
+    if !cg::screen_capture_access::preflight() {
+        return;
+    }
     tauri::async_runtime::spawn(async move {
         let Ok(sources) = run_blocking(sources::list).await else {
             return;
@@ -83,19 +86,15 @@ pub(crate) fn close_picker(app: AppHandle) -> CmdResult {
 
 #[tauri::command]
 pub(crate) fn record(app: AppHandle, state: State<'_, PickerState>, target: Target) -> CmdResult {
-    let Some(framing) = lock(&state.0)
+    let Some((framing, name)) = lock(&state.0)
         .as_ref()
-        .map(|session| framing(session, &target))
+        .map(|session| (framing(session, &target), target_name(session, &target)))
     else {
         return Ok(());
     };
-    let counts_down = app.state::<AppSettings>().current().counts_down;
-    let display_id = match (&framing, &target) {
-        (Some(framing), _) => Some(framing.display_id),
-        (None, Target::Display { display_id }) if counts_down => Some(*display_id),
-        (None, _) => None,
-    };
-    let frame_overlay = display_id.and_then(|id| app.get_webview_window(&overlay_label(id)));
+    let frame_overlay = framing
+        .as_ref()
+        .and_then(|framing| app.get_webview_window(&overlay_label(framing.display_id)));
     close(&app, frame_overlay.as_ref().map(|overlay| overlay.label()))?;
     if let Some(overlay) = &frame_overlay {
         let window = framing.and_then(|framing| framing.window);
@@ -106,10 +105,8 @@ pub(crate) fn record(app: AppHandle, state: State<'_, PickerState>, target: Targ
             put_away(overlay);
         }
     }
-    let countdown_on = frame_overlay
-        .filter(|_| counts_down)
-        .map(|overlay| overlay.label().to_owned());
-    recording::start(app, target, countdown_on);
+    let counts_down = app.state::<AppSettings>().current().counts_down;
+    recording::start(app, target, counts_down.then_some(name));
     Ok(())
 }
 

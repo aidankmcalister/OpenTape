@@ -10,6 +10,7 @@ import {
   Pause,
   Play,
   RotateCcw,
+  RotateCw,
   Scan,
   Settings,
   Square,
@@ -17,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Tooltip,
@@ -28,10 +30,13 @@ import {
   MorphPill,
   PillDivider,
   PillMessage,
+  ProgressRing,
 } from "@/components/Pill";
+import UpdateIcon from "@/components/UpdateIcon";
 import { formatClock } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import { barLayer } from "@/lib/bar/bar";
+import type { Countdown } from "@/lib/bindings";
+import { downloadProgress, type News } from "@/lib/update";
 import {
   useCaptureOptions,
   useElapsedMs,
@@ -54,7 +59,9 @@ export default function RecordBar() {
     <div className="flex h-screen w-screen justify-center">
       <MorphPill
         isDragRegion
-        active={barLayer(bar.phase, bar.error, bar.hasScreenAccess)}
+        active={bar.layer}
+        isInstant={bar.isOffScreen}
+        className={cn(!bar.isReady && "opacity-0")}
         onShape={bar.shape}
         layerClassName="gap-1 p-2"
         layers={{
@@ -62,25 +69,40 @@ export default function RecordBar() {
           permission: (
             <>
               <CircleAlert className="ml-3 size-4 shrink-0 text-destructive" />
-              <span className="px-2 text-xs">
-                {bar.hasOpenedSettings
-                  ? "Turn on OpenTape there, then quit and reopen it to record."
-                  : "Turn on Screen Recording in System Settings to record your screen."}
+              <span className="pr-4 pl-2 text-xs">
+                Screen Recording is off.
               </span>
-              <Button
-                variant={bar.hasOpenedSettings ? "ghost" : "default"}
-                size="pill"
-                onClick={bar.openScreenSettings}
-              >
-                Open System Settings
+              <Button size="pill" onClick={bar.showPermissions}>
+                Review permissions
               </Button>
-              {bar.hasOpenedSettings ? (
-                <Button size="pill" onClick={bar.relaunch}>
-                  Quit and Reopen
-                </Button>
-              ) : null}
             </>
           ),
+          restart: (
+            <>
+              <RotateCw className="ml-3 size-4 shrink-0 text-muted-foreground" />
+              <span className="pr-4 pl-2 text-xs">
+                Restart OpenTape to start recording.
+              </span>
+              <Button variant="ghost" size="pill" onClick={bar.showPermissions}>
+                Permissions
+              </Button>
+              <Button size="pill" onClick={bar.relaunch}>
+                <RotateCw />
+                Restart
+              </Button>
+            </>
+          ),
+          updateAvailable: <UpdateLayer bar={bar} news="available" />,
+          updateDownloading: <UpdateLayer bar={bar} news="downloading" />,
+          updateReady: <UpdateLayer bar={bar} news="ready" />,
+          updateFailed: <UpdateLayer bar={bar} news="failed" />,
+          countdown: bar.countdown ? (
+            <CountingDown
+              countdown={bar.countdown}
+              hasMicrophone={options.microphone !== null}
+              onCancel={bar.cancelCountdown}
+            />
+          ) : null,
           recording: <Recording bar={bar} />,
           error: (
             <>
@@ -120,6 +142,7 @@ function Setup({
         variant="ghost"
         size="icon-pill"
         aria-label="Hide the record bar"
+        disabled={bar.pickerMode !== null || bar.phase !== "idle"}
         onClick={bar.hide}
       >
         <X />
@@ -226,6 +249,81 @@ function DeviceButton({
       {icon}
       <MorphLabel text={label} className="max-w-40 truncate" />
     </Button>
+  );
+}
+
+function CountingDown({
+  countdown: { seconds, secondsLeft, target },
+  hasMicrophone,
+  onCancel,
+}: {
+  countdown: Countdown;
+  hasMicrophone: boolean;
+  onCancel: () => void;
+}) {
+  return (
+    <>
+      <ProgressRing
+        fraction={(secondsLeft - 1) / seconds}
+        sweepsFrom={secondsLeft / seconds}
+        className="ml-1 size-9 font-heading text-heading font-semibold"
+      >
+        {secondsLeft}
+      </ProgressRing>
+      <span className="flex flex-col pr-8 pl-2 tabular-nums">
+        <span>Starting in {secondsLeft}</span>
+        <span className="text-xs font-normal text-muted-foreground">
+          {[target, hasMicrophone ? "mic on" : "mic off"]
+            .filter(Boolean)
+            .join(", ")}
+        </span>
+      </span>
+      <Button variant="ghost" size="pill" onClick={onCancel}>
+        Cancel
+        <Kbd>esc</Kbd>
+      </Button>
+    </>
+  );
+}
+
+function UpdateLayer({ bar, news }: { bar: Bar; news: News }) {
+  const { status, currentVersion, install, restart } = bar.update;
+  const version = "version" in status ? status.version : null;
+  const progress = downloadProgress(status) ?? { percent: 0, detail: "" };
+  const [title, detail] =
+    news === "downloading"
+      ? [`Downloading ${version}`, `${progress.percent}%, ${progress.detail}`]
+      : news === "ready"
+        ? [`OpenTape ${version} is ready`, "Restart to finish updating"]
+        : news === "failed"
+          ? ["Could not update", "Check your connection and try again"]
+          : [`OpenTape ${version} is available`, `You have ${currentVersion}`];
+  return (
+    <>
+      <UpdateIcon
+        news={news}
+        percent={progress.percent}
+        className="ml-1 size-9"
+      />
+      <span className="flex w-60 flex-col pl-2 tabular-nums">
+        <span>{title}</span>
+        <span className="text-xs font-normal text-muted-foreground">
+          {detail}
+        </span>
+      </span>
+      <Button variant="ghost" size="pill" onClick={bar.hideUpdate}>
+        {news === "downloading" ? "Hide" : "Later"}
+      </Button>
+      {news === "downloading" ? null : (
+        <Button size="pill" onClick={news === "ready" ? restart : install}>
+          {news === "ready"
+            ? "Restart"
+            : news === "failed"
+              ? "Try again"
+              : "Update"}
+        </Button>
+      )}
+    </>
   );
 }
 

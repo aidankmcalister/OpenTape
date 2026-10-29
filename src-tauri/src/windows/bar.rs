@@ -1,11 +1,11 @@
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use cidre::{av, ns};
 use objc2::MainThreadOnly;
 use objc2_app_kit::NSWindow;
 use objc2_foundation::NSSize;
 use serde::Serialize;
-use tauri::{AppHandle, Manager, WebviewWindow};
+use tauri::{AppHandle, WebviewWindow};
 use ts_rs::TS;
 
 use super::floating::{Anchor, Behavior, Floating, Hover};
@@ -18,6 +18,8 @@ use crate::macos::{
 use crate::util::CmdResult;
 
 pub(crate) const LABEL: &str = "bar";
+
+static SHOWS_WHEN_READY: AtomicBool = AtomicBool::new(false);
 
 pub(crate) static WINDOW: Floating = Floating::new(Behavior {
     label: LABEL,
@@ -98,6 +100,17 @@ pub(crate) fn shape_bar(
     Ok(())
 }
 
+pub(crate) fn show_when_ready() {
+    SHOWS_WHEN_READY.store(true, Ordering::Relaxed);
+}
+
+#[tauri::command]
+pub(crate) fn bar_ready(app: AppHandle) {
+    if SHOWS_WHEN_READY.swap(false, Ordering::Relaxed) {
+        WINDOW.show_on_main_display(&app);
+    }
+}
+
 #[tauri::command]
 pub(crate) fn hide_bar(app: AppHandle) {
     WINDOW.hide(&app);
@@ -105,9 +118,7 @@ pub(crate) fn hide_bar(app: AppHandle) {
 
 pub(crate) fn setup(bar: &WebviewWindow) -> tauri::Result<()> {
     WINDOW.setup(bar)?;
-    macos::with_ns_window(bar, |ns_window| glass::add(ns_window, ns_window.mtm()))?;
-    WINDOW.show_on_main_display(bar.app_handle());
-    Ok(())
+    macos::with_ns_window(bar, |ns_window| glass::add(ns_window, ns_window.mtm()))
 }
 
 fn let_clicks_through(ns_window: &NSWindow) {

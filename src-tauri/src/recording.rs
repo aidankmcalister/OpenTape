@@ -41,6 +41,16 @@ pub(crate) struct RecordingStatus {
     #[ts(type = "number")]
     pub elapsed_ms: u64,
     pub microphone_refused: bool,
+    pub countdown: Option<Countdown>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "bindings.ts")]
+pub(crate) struct Countdown {
+    pub seconds: u32,
+    pub seconds_left: u32,
+    pub target: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,27 +87,44 @@ struct Inner {
     running: Option<RunningRecording>,
     recordings_started: u64,
     inputs: Inputs,
-    countdown: Option<u64>,
+    countdown: Option<(u64, Countdown)>,
     countdowns_started: u64,
 }
 
 impl RecordingState {
-    fn claim_start(&self, counts_down: bool) -> Result<Option<u64>> {
+    fn claim_start(&self, countdown_target: Option<String>) -> Result<Option<u64>> {
         let mut inner = lock(&self.0);
         inner.phase = next_phase(inner.phase, Action::Start)?;
         inner.error = None;
         inner.countdowns_started += 1;
-        inner.countdown = counts_down.then_some(inner.countdowns_started);
-        Ok(inner.countdown)
+        let id = inner.countdowns_started;
+        inner.countdown = countdown_target.map(|target| {
+            let countdown = Countdown {
+                seconds: COUNTDOWN_SECONDS,
+                seconds_left: COUNTDOWN_SECONDS,
+                target,
+            };
+            (id, countdown)
+        });
+        Ok(inner.countdown.as_ref().map(|_| id))
     }
 
-    fn is_counting(&self, id: u64) -> bool {
-        lock(&self.0).countdown == Some(id)
+    fn tick(&self, id: u64, seconds_left: u32) -> bool {
+        match &mut lock(&self.0).countdown {
+            Some((counting, countdown)) if *counting == id => {
+                countdown.seconds_left = seconds_left;
+                true
+            }
+            _ => false,
+        }
     }
 
     fn end_countdown(&self, id: u64) -> bool {
         let mut inner = lock(&self.0);
-        let ends = inner.countdown == Some(id);
+        let ends = inner
+            .countdown
+            .as_ref()
+            .is_some_and(|(counting, _)| *counting == id);
         if ends {
             inner.countdown = None;
         }
@@ -176,21 +203,22 @@ impl RecordingState {
             error: inner.error.clone(),
             elapsed_ms: (elapsed.max(0.0) * 1000.0) as u64,
             microphone_refused: running.is_some_and(RunningRecording::microphone_refused),
+            countdown: inner
+                .countdown
+                .as_ref()
+                .map(|(_, countdown)| countdown.clone()),
         }
     }
 }
 
-pub(crate) fn start(app: AppHandle, target: Target, countdown_on: Option<String>) {
-    let Ok(countdown) = app
-        .state::<RecordingState>()
-        .claim_start(countdown_on.is_some())
-    else {
+pub(crate) fn start(app: AppHandle, target: Target, countdown_target: Option<String>) {
+    let Ok(countdown) = app.state::<RecordingState>().claim_start(countdown_target) else {
         return;
     };
     announce_status(&app);
     thread::spawn(move || {
-        if let (Some(id), Some(overlay)) = (countdown, countdown_on)
-            && !count_down(&app, id, &overlay)
+        if let Some(id) = countdown
+            && !count_down(&app, id)
         {
             return;
         }
@@ -198,23 +226,22 @@ pub(crate) fn start(app: AppHandle, target: Target, countdown_on: Option<String>
     });
 }
 
-fn count_down(app: &AppHandle, id: u64, overlay: &str) -> bool {
+fn count_down(app: &AppHandle, id: u64) -> bool {
     if let Err(err) = CountdownKey::take(app) {
         log::warn!("could not take Esc, so the countdown can't be canceled: {err}");
     }
     let state = app.state::<RecordingState>();
     for left in (1..=COUNTDOWN_SECONDS).rev() {
-        if !state.is_counting(id) {
+        if !state.tick(id, left) {
             return false;
         }
-        let _ = PageEvent::PickerCountdown(Some(left)).send_to(app, overlay);
+        announce_status(app);
         thread::sleep(Duration::from_secs(1));
     }
     if !state.end_countdown(id) {
         return false;
     }
     let _ = CountdownKey::give_back(app);
-    let _ = PageEvent::PickerCountdown(None).send_to(app, overlay);
     true
 }
 
@@ -234,6 +261,11 @@ impl KeySet for CountdownKey {
             go_idle(app, None);
         }
     }
+}
+
+#[tauri::command]
+pub(crate) fn cancel_countdown(app: AppHandle) {
+    CountdownKey.press(&app);
 }
 
 pub(crate) fn start_or_stop(app: &AppHandle) {

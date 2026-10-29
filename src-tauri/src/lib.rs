@@ -5,19 +5,21 @@ mod dev;
 mod export;
 mod geometry;
 mod macos;
+mod permissions;
 mod picker;
 mod recording;
 mod settings;
 mod tray;
+mod update;
 mod util;
 mod windows;
 
 use current_recording::{CurrentRecording, Folders, ShownRecording};
 use geometry::{Frame, Point};
 use picker::{PickerKey, Session};
-use recording::RecordingStatus;
+use recording::{Phase, RecordingStatus};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, EventTarget, Manager, RunEvent};
+use tauri::{AppHandle, Emitter, EventTarget, Manager, RunEvent, WindowEvent};
 use tauri_plugin_global_shortcut::{
     Error as ShortcutError, GlobalShortcutExt, Shortcut, ShortcutState,
 };
@@ -32,7 +34,6 @@ pub(crate) enum PageEvent {
     PickerSession(Session),
     PickerCursor(Point),
     PickerRecording(Option<Frame>),
-    PickerCountdown(Option<u32>),
     PickerKey(PickerKey),
     PickerClosed,
     RecordingStatus(RecordingStatus),
@@ -44,6 +45,7 @@ pub(crate) enum PageEvent {
     ExportAndClose,
     NewRecording(Option<picker::Mode>),
     SettingsChanged(settings::Settings),
+    UpdateStatus(update::UpdateStatus),
 }
 
 impl PageEvent {
@@ -99,11 +101,16 @@ fn quit(app: AppHandle) {
 }
 
 #[tauri::command]
-fn relaunch(app: AppHandle) {
+fn relaunch(app: AppHandle) -> util::CmdResult {
+    if recording::recording_status(app.state()).phase != Phase::Idle {
+        return Err(anyhow::anyhow!("finish the recording first").into());
+    }
     app.request_restart();
+    Ok(())
 }
 
 pub fn run() -> tauri::Result<()> {
+    permissions::answer_screen_check();
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         log::error!("{info}");
@@ -124,7 +131,14 @@ pub fn run() -> tauri::Result<()> {
         )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .on_window_event(|window, event| {
+            if window.label() == permissions::WINDOW && matches!(event, WindowEvent::Destroyed) {
+                bar::WINDOW.show(window.app_handle());
+            }
+        })
         .manage(recording::RecordingState::default())
+        .manage(update::UpdateState::default())
         .manage(picker::PickerState::default())
         .setup(|app| {
             let path = app.path();
@@ -144,6 +158,10 @@ pub fn run() -> tauri::Result<()> {
             bar::setup(&bar)?;
             preview::setup(app.handle())?;
             editor::setup(app.handle());
+            if let Err(err) = permissions::open_at_launch(app.handle()) {
+                log::error!("could not open the permissions window: {err:#}");
+            }
+            update::check_quietly(app.handle());
 
             picker::prepare(app.handle().clone());
             #[cfg(debug_assertions)]
@@ -159,6 +177,7 @@ pub fn run() -> tauri::Result<()> {
         })
         .invoke_handler(tauri::generate_handler![
             recording::recording_status,
+            recording::cancel_countdown,
             recording::set_capture_inputs,
             recording::pause_recording,
             recording::restart_recording,
@@ -173,7 +192,10 @@ pub fn run() -> tauri::Result<()> {
             bar::list_devices,
             bar::shape_bar,
             bar::hide_bar,
+            bar::bar_ready,
             current_recording::commands::save_recording,
+            current_recording::commands::restore_recording,
+            current_recording::commands::can_restore_recording,
             current_recording::commands::copy_recording,
             current_recording::commands::close_recording,
             current_recording::commands::show_saved_in_finder,
@@ -190,8 +212,17 @@ pub fn run() -> tauri::Result<()> {
             settings::open_notices,
             settings::open_repo,
             settings::open_settings,
-            settings::has_screen_access,
-            settings::open_screen_settings,
+            permissions::permissions,
+            permissions::allow,
+            permissions::show_permissions,
+            permissions::finish_setup,
+            update::update_status,
+            update::check_for_update,
+            update::install_update,
+            update::update_menu,
+            update::choose_update_menu,
+            update::cancel_update,
+            update::open_release_notes,
             current_recording::commands::save_project,
             current_recording::commands::add_background,
             current_recording::commands::export_recording,

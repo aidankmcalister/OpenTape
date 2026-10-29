@@ -1,5 +1,4 @@
-import { type KeyboardEvent, useEffect, useState } from "react";
-import { getVersion } from "@tauri-apps/api/app";
+import { type KeyboardEvent, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useRustValue } from "@/hooks/useTauri";
 import type { Settings } from "@/lib/bindings";
@@ -10,12 +9,8 @@ import { shortcutFromKey } from "@/lib/shortcut";
 
 export function useAppSettings() {
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [version, setVersion] = useState("");
   const [isSettingShortcut, setIsSettingShortcut] = useState(false);
   useRustValue("get_settings", "settings-changed", setSettings);
-  useEffect(() => {
-    getVersion().then(setVersion).catch(console.error);
-  }, []);
 
   function change(part: Partial<Settings>) {
     if (!settings) return;
@@ -44,7 +39,6 @@ export function useAppSettings() {
       const folder = await invoke<string | null>("choose_save_folder");
       if (folder) change({ saveFolder: folder });
     },
-    version,
     openNotices: () => void invoke("open_notices").catch(console.error),
     openRepo: () => void invoke("open_repo").catch(console.error),
     exportSettings: readExport(settings?.export),

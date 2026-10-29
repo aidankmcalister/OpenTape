@@ -13,9 +13,10 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, Wry};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
-use crate::current_recording::{Window, commands::show_again};
+use crate::current_recording::{Window, commands};
 use crate::picker::Mode;
 use crate::recording::{self, Phase};
+use crate::update::{self, MenuChoice, UpdateStatus};
 use crate::util::lock;
 use crate::windows::bar;
 use crate::{PageEvent, settings};
@@ -24,6 +25,8 @@ pub(crate) struct Tray {
     new: IconMenuItem<Wry>,
     modes: [IconMenuItem<Wry>; 3],
     stop: MenuItem<Wry>,
+    update: MenuItem<Wry>,
+    restore: MenuItem<Wry>,
     shortcut: Mutex<Option<Shortcut>>,
 }
 
@@ -39,6 +42,21 @@ pub(crate) fn setup(app: &AppHandle) -> tauri::Result<()> {
         item("area", "Record area", NativeIcon::ColumnView)?,
     ];
     let stop = MenuItem::with_id(app, "stop", "Stop recording", false, None::<&str>)?;
+    let restore = MenuItem::with_id(
+        app,
+        "restore",
+        "Restore previous recording",
+        false,
+        None::<&str>,
+    )?;
+    let update_choice = MenuChoice::from(&UpdateStatus::default());
+    let update = MenuItem::with_id(
+        app,
+        "update",
+        update_choice.text,
+        update_choice.enabled,
+        None::<&str>,
+    )?;
     let menu = Menu::with_items(
         app,
         &[
@@ -49,8 +67,10 @@ pub(crate) fn setup(app: &AppHandle) -> tauri::Result<()> {
             &modes[2],
             &PredefinedMenuItem::separator(app)?,
             &stop,
+            &restore,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?,
+            &update,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "quit", "Quit OpenTape", true, None::<&str>)?,
         ],
@@ -71,6 +91,12 @@ pub(crate) fn setup(app: &AppHandle) -> tauri::Result<()> {
                     log::error!("could not open Settings: {err:#}");
                 }
             }
+            "update" => update::choose_from_menu(app),
+            "restore" => {
+                if let Err(err) = commands::restore(app) {
+                    log::error!("could not restore the previous recording: {err:#}");
+                }
+            }
             "quit" => app.exit(0),
             _ => {}
         })
@@ -79,6 +105,8 @@ pub(crate) fn setup(app: &AppHandle) -> tauri::Result<()> {
         new,
         modes,
         stop,
+        update,
+        restore,
         shortcut: Mutex::new(None),
     });
     Ok(())
@@ -94,6 +122,20 @@ pub(crate) fn show_phase(app: &AppHandle, phase: Phase) {
     let _ = tray
         .stop
         .set_enabled(matches!(phase, Phase::Recording | Phase::Paused));
+}
+
+pub(crate) fn offer_restore(app: &AppHandle, is_offered: bool) {
+    if let Some(tray) = app.try_state::<Tray>() {
+        let _ = tray.restore.set_enabled(is_offered);
+    }
+}
+
+pub(crate) fn show_update(app: &AppHandle, choice: &MenuChoice) {
+    let Some(tray) = app.try_state::<Tray>() else {
+        return;
+    };
+    let _ = tray.update.set_text(&choice.text);
+    let _ = tray.update.set_enabled(choice.enabled);
 }
 
 pub(crate) fn set_record_shortcut(app: &AppHandle, text: &str) -> Result<()> {
@@ -118,11 +160,11 @@ pub(crate) fn set_record_shortcut(app: &AppHandle, text: &str) -> Result<()> {
 }
 
 pub(crate) fn new_recording(app: &AppHandle, mode: Option<Mode>) {
-    match show_again(app) {
-        Ok(Window::Bar) => {
+    match commands::show_again(app) {
+        Ok(Some(Window::Bar)) => {
             let _ = PageEvent::NewRecording(mode).send_to(app, bar::LABEL);
         }
-        Ok(Window::Preview | Window::Editor) => {}
+        Ok(_) => {}
         Err(err) => log::error!("could not show the app again: {err:#}"),
     }
 }

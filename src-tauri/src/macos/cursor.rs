@@ -1,8 +1,11 @@
 use anyhow::{Context, Result};
 use base64::Engine;
-use objc2::rc::Retained;
-use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSCursor};
-use objc2_foundation::NSDictionary;
+use objc2::{AllocAnyThread, Message, rc::Retained};
+use objc2_app_kit::{
+    NSBitmapImageFileType, NSBitmapImageRep, NSColor, NSCursor, NSDeviceRGBColorSpace,
+    NSGraphicsContext, NSImage, NSShadow,
+};
+use objc2_foundation::{NSData, NSDictionary, NSPoint, NSRect, NSSize, NSString};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -13,6 +16,9 @@ pub(crate) const KINDS: [(&str, Cursor); 3] = [
     ("pointer", NSCursor::pointingHandCursor),
     ("text", NSCursor::IBeamCursor),
 ];
+
+const SHARPNESS: f64 = 8.0;
+const SYSTEM_CURSORS: &str = "/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/HIServices.framework/Versions/A/Resources/cursors";
 
 pub(crate) struct KindReader {
     known: Vec<(&'static str, Vec<u8>)>,
@@ -61,27 +67,59 @@ pub(crate) struct CursorImage {
     pub(crate) hot_y: f64,
 }
 
+fn sharp_png(image: &NSImage, kind: &str) -> Result<Retained<NSData>> {
+    let size = image.size();
+    let vector = (kind == "pointer").then(|| {
+        let path = NSString::from_str(&format!("{SYSTEM_CURSORS}/pointinghand/cursor.pdf"));
+        NSImage::initWithContentsOfFile(NSImage::alloc(), &path)
+    });
+    let rep = unsafe {
+        NSBitmapImageRep::initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel(
+            NSBitmapImageRep::alloc(),
+            std::ptr::null_mut(),
+            (size.width * SHARPNESS) as isize,
+            (size.height * SHARPNESS) as isize,
+            8,
+            4,
+            true,
+            false,
+            NSDeviceRGBColorSpace,
+            0,
+            0,
+        )
+    }
+    .context("could not make a cursor bitmap")?;
+    rep.setSize(size);
+    let context = NSGraphicsContext::graphicsContextWithBitmapImageRep(&rep)
+        .context("could not draw a cursor")?;
+    NSGraphicsContext::saveGraphicsState_class();
+    NSGraphicsContext::setCurrentContext(Some(&context));
+    let source = match vector.flatten() {
+        Some(pdf) => {
+            let shadow = NSShadow::new();
+            shadow.setShadowBlurRadius(2.0);
+            shadow.setShadowOffset(NSSize::new(0.0, -1.0));
+            shadow.setShadowColor(Some(&NSColor::colorWithWhite_alpha(0.0, 0.45)));
+            shadow.set();
+            pdf
+        }
+        None => image.retain(),
+    };
+    source.drawInRect(NSRect::new(NSPoint::ZERO, size));
+    NSGraphicsContext::restoreGraphicsState_class();
+    unsafe {
+        rep.representationUsingType_properties(NSBitmapImageFileType::PNG, &NSDictionary::new())
+    }
+    .context("could not turn a cursor into a PNG")
+}
+
 pub(crate) fn cursor_images() -> Result<Vec<CursorImage>> {
     KINDS
         .iter()
         .map(|(kind, cursor)| {
             let cursor = cursor();
             let image = cursor.image();
-            let tiff = image
-                .TIFFRepresentation()
-                .context("a cursor has no picture")?;
-            let sharpest = NSBitmapImageRep::imageRepsWithData(&tiff)
-                .iter()
-                .filter_map(|rep| rep.downcast::<NSBitmapImageRep>().ok())
-                .max_by_key(|rep| rep.pixelsWide())
-                .context("a cursor has no bitmap")?;
-            let png = unsafe {
-                sharpest.representationUsingType_properties(
-                    NSBitmapImageFileType::PNG,
-                    &NSDictionary::new(),
-                )
-            }
-            .context("could not turn a cursor into a PNG")?;
+            let png = sharp_png(&image, kind)?;
             let (size, spot) = (image.size(), cursor.hotSpot());
             Ok(CursorImage {
                 kind: kind.to_string(),

@@ -45,13 +45,13 @@ The TypeScript types in `src/lib/bindings.ts` are generated from the Rust types 
 
 ## Permissions
 
-- Screen Recording. While it's off, the record bar says so and opens System Settings, Privacy & Security, Screen & System Audio Recording for you. macOS applies it only after the app restarts, so the bar then offers Quit and Reopen.
-- Microphone and Camera. macOS asks the first time you record with one chosen in the record bar. If you say no, the recording goes ahead without it, and for the microphone the bar says Microphone access is off. System audio needs nothing more than Screen Recording.
+- Screen Recording. On first launch a permissions window opens with a button for each permission. macOS applies Screen Recording only to a new process, so once it's on the window offers Restart OpenTape. Under `bun tauri dev`, macOS asks on behalf of your terminal app instead of OpenTape.
+- Microphone. The permissions window asks for it, or macOS asks the first time you record with one chosen in the record bar. If you say no, the recording goes ahead without it, and the bar says Microphone access is off. System audio needs nothing more than Screen Recording.
 - Nothing else. The cursor log polls the cursor position and shape. It also reads macOS's count of key presses to note when a key was pressed (only the time, never which key), so the editor can suggest zooms and speed-ups where you typed. None of it needs Accessibility or Input Monitoring permission, and it stays with the recording on your Mac.
 
 ## Where things go
 
-A recording waits in a hidden folder (`~/Library/Application Support/com.aidankmcalister.opentape/recordings/`) only while the preview or editor shows it. Save in the preview, or Export in the editor, puts a file in `~/Downloads` (or the folder chosen in Settings). Closing either window deletes the hidden copy, and asks first if nothing was saved. If the app crashes, the next launch opens the last recording in the preview so it can still be saved. Quitting while recording stops the recording the way Stop does.
+A recording waits in a hidden folder (`~/Library/Application Support/com.aidankmcalister.opentape/recordings/`) only while the preview or editor shows it. Save in the preview, or Export in the editor, puts a file in `~/Downloads` (or the folder chosen in Settings). Closing either window deletes the hidden copy, and asks first if nothing was saved. If the app crashes, the next launch keeps the last recording quietly. Restore previous recording, in the record bar's gear menu or the menu bar menu, opens it in the preview so it can still be saved, and a new recording replaces it. Quitting while recording stops the recording the way Stop does.
 
 Warnings, errors and crashes go to a small log, `~/Library/Logs/com.aidankmcalister.opentape/OpenTape.log`, that stays on your Mac.
 
@@ -60,7 +60,7 @@ Warnings, errors and crashes go to a small log, `~/Library/Logs/com.aidankmcalis
 ```
 src/                     the frontend (React, TypeScript, Tailwind)
   main.tsx               one entry for every window; picks a page by window label
-  pages/                 one page per window: RecordBar, Picker, RecordingPreview, Editor, Settings
+  pages/                 one page per window: RecordBar, Picker, RecordingPreview, Editor, Settings, Permissions
   components/            looks: shared ones at the top (Pill, MorphPill)
     ui/                  shadcn components on Base UI
     picker/ editor/ …    pieces that belong to one window
@@ -80,6 +80,8 @@ src-tauri/src/           the Rust side
   macos/                 AppKit wrappers: main thread, panels, alerts, and the glass
   geometry.rs            points and rectangles, top-left and bottom-left
   settings.rs            app settings (settings.json) and the Settings window
+  permissions.rs         Screen Recording and microphone access, and the permissions window
+  update.rs              checks for, downloads and installs updates
   tray.rs                the menu-bar icon and its menu
   util.rs                small shared helpers and the error type commands return
 ```

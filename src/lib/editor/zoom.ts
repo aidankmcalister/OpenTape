@@ -165,8 +165,7 @@ function aims(
     ms: outputAt(regions, zoom.startMs + afterMs) - PAN_MS,
     center: { x, y },
   }));
-  const follows =
-    moves.length > 0 && settingValue(zoom, "focus") === "Follow cursor";
+  const follows = moves.length > 0 && followsCursor(zoom);
   const typing = typingStretches(keys);
   const isTyping = (sourceMs: number) =>
     typing.some(
@@ -252,6 +251,10 @@ export function centeredOn(spot: Point, amount: number, crop = WHOLE) {
 
 function edgeOf(crop: number, scale: number) {
   return crop > 1 ? (crop - 1) / (2 * (scale - 1)) : 0;
+}
+
+export function followsCursor(zoom: Region) {
+  return settingValue(zoom, "focus") === "Follow cursor";
 }
 
 export function focusCenter(zoom: Region): Point {

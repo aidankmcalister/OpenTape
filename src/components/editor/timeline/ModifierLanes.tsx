@@ -332,7 +332,7 @@ function Block({
     "data-selected": isSelected,
     "aria-label": `${label} ${value}, ${span}`,
     onDoubleClick: onOpen,
-    ...drag(region.id, "move"),
+    ...drag(region.id, "move", region.isSuggested),
   };
 
   if (suggestion && !lane.isCollapsed) {
@@ -340,6 +340,7 @@ function Block({
     const choice = (
       <span
         className="flex shrink-0 gap-1"
+        style={hueOf(region.kind)}
         onPointerDown={(event) => event.stopPropagation()}
         onDoubleClick={(event) => event.stopPropagation()}
       >
@@ -367,7 +368,7 @@ function Block({
         tabIndex={isFocusStop ? 0 : -1}
         onKeyDown={onKeyDown}
         className={cn(
-          "group wipe-in absolute flex cursor-grab items-center gap-1.5 overflow-hidden rounded-md border border-dashed border-hue/70 bg-hue-fill/15 pr-1 pl-2.5 text-label font-semibold whitespace-nowrap text-hue-foreground outline-none active:cursor-grabbing data-[selected=true]:border-solid",
+          "group wipe-in absolute flex cursor-default items-center gap-1.5 overflow-hidden rounded-md border border-dashed border-hue/70 bg-hue-fill/15 pr-1 pl-2.5 text-label font-semibold whitespace-nowrap text-hue-foreground outline-none data-[selected=true]:border-solid",
           "focus-visible:ring-2 focus-visible:ring-highlight focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           fit === "icon" && "justify-center px-0",
           isDimmed && "opacity-35",

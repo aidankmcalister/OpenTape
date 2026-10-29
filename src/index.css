@@ -50,6 +50,8 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-success-tint: var(--success-tint);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -114,6 +116,7 @@
   --orange: #ff7a1a;
   --orange-soft: #ff9a4d;
   --red: #e5484d;
+  --green: #46a758;
   --white: #ffffff;
   --cursor: #000000;
   --cursor-edge: #ffffff;
@@ -153,6 +156,8 @@
   --accent-foreground: var(--gray-12);
 
   --destructive: var(--red);
+  --success: var(--green);
+  --success-tint: rgb(70 167 88 / 0.16);
   --record: var(--red);
 
   --glass: rgb(30 30 33 / 0.6);
@@ -278,6 +283,19 @@
   animation: wipe-in 300ms var(--ease-morph);
   @media (prefers-reduced-motion: reduce) {
     animation: fade-in 150ms ease-out;
+  }
+}
+
+@utility ring-sweep {
+  animation: ring-sweep 1s linear forwards;
+}
+
+@keyframes ring-sweep {
+  from {
+    stroke-dashoffset: var(--ring-from);
+  }
+  to {
+    stroke-dashoffset: var(--ring-to);
   }
 }
 

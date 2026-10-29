@@ -1,4 +1,9 @@
-import { type ComponentProps, type ReactNode, useState } from "react";
+import {
+  type ComponentProps,
+  type CSSProperties,
+  type ReactNode,
+  useState,
+} from "react";
 import { Separator } from "@/components/ui/separator";
 import { useMorph } from "@/hooks/useMorph";
 import type { Animation } from "@/lib/bindings";
@@ -41,12 +46,64 @@ export function PillMessage({
   );
 }
 
+export function ProgressRing({
+  fraction,
+  sweepsFrom,
+  className,
+  children,
+}: {
+  fraction: number;
+  sweepsFrom?: number;
+  className?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <span
+      className={cn(
+        "relative grid shrink-0 place-items-center tabular-nums",
+        className,
+      )}
+    >
+      <svg
+        viewBox="0 0 36 36"
+        fill="none"
+        strokeWidth={3}
+        className="absolute inset-0 -rotate-90"
+      >
+        <circle cx={18} cy={18} r={16} className="stroke-glass-border" />
+        <circle
+          key={sweepsFrom}
+          cx={18}
+          cy={18}
+          r={16}
+          pathLength={1}
+          strokeDasharray={1}
+          strokeLinecap="round"
+          className={cn(
+            "stroke-primary transition-[stroke-dashoffset] duration-300",
+            sweepsFrom !== undefined && "ring-sweep",
+          )}
+          style={
+            {
+              strokeDashoffset: 1 - fraction,
+              "--ring-from": 1 - (sweepsFrom ?? fraction),
+              "--ring-to": 1 - fraction,
+            } as CSSProperties
+          }
+        />
+      </svg>
+      {children}
+    </span>
+  );
+}
+
 export function MorphPill<Key extends string>({
   active,
   layers,
   onShape,
   layerClassName,
   isDragRegion = false,
+  isInstant = false,
   className,
   ...props
 }: {
@@ -55,13 +112,18 @@ export function MorphPill<Key extends string>({
   onShape?: (size: Size, animation: Animation | null) => void;
   layerClassName?: string;
   isDragRegion?: boolean;
+  isInstant?: boolean;
 } & ComponentProps<typeof Pill>) {
-  const morph = useMorph(active, onShape);
+  const morph = useMorph(active, onShape, 2, isInstant);
   const dragRegion = isDragRegion ? { "data-tauri-drag-region": true } : {};
   return (
     <Pill
       {...dragRegion}
-      className={cn("relative block shrink-0 overflow-x-clip p-0", className)}
+      className={cn(
+        "relative block shrink-0 overflow-x-clip p-0",
+        isInstant && "[&>*]:transition-none",
+        className,
+      )}
       style={morph.pillStyle}
       {...props}
     >

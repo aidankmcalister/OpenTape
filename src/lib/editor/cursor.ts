@@ -100,12 +100,12 @@ const PRESS_DIP = 0.15;
 const SWING = { stiffness: 140, damping: 9 };
 const TILT_PER_SPEED = 18;
 const MAX_TILT = 30;
-const CURSOR_SCALE = 3.375;
 export const DOT_POINTS = 14;
+const CURSOR_SCALE = 3.5;
 
 export const CURSOR_MODES: Record<CursorMode, string> = {
   Hidden: "Draws no cursor over the recording.",
-  Native: "Shows the cursor exactly as macOS drew it.",
+  Native: "Shows the macOS cursor as it was, with no motion or click effects.",
   Styled: "Applies size, motion, tilt and click effects.",
 };
 
@@ -338,8 +338,8 @@ export function nativeOr(settings: CursorSettings): CursorSettings {
 }
 
 export function cursorUnit(track: CursorTrack, settings: CursorSettings) {
-  if (settings.mode !== "Styled") return track.pointShare;
-  return (track.pointShare * settings.size * CURSOR_SCALE) / 100;
+  const size = settings.mode === "Styled" ? settings.size : 100;
+  return (track.pointShare * size * CURSOR_SCALE) / 100;
 }
 
 type CursorSpot = {

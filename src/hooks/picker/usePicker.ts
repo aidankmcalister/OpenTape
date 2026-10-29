@@ -22,7 +22,6 @@ export function usePicker(displayId: number) {
   const session = useRef<Session | null>(null);
   const cursor = useRef<Point | null>(null);
   const [view, setView] = useState<PickerView | null>(null);
-  const [countdown, setCountdown] = useState<number | null>(null);
   const [framing, setFraming] = useState<{
     isFraming: boolean;
     windowRect: Rect | null;
@@ -61,8 +60,6 @@ export function usePicker(displayId: number) {
     "window",
   );
 
-  useTauriEvent("picker-countdown", setCountdown, "window");
-
   const recordOnce = (target: Target) =>
     void oneAtATime(() => record(target)).catch(console.error);
 
@@ -87,7 +84,7 @@ export function usePicker(displayId: number) {
     "window",
   );
 
-  return { view, framing, countdown, record: recordOnce };
+  return { view, framing, record: recordOnce };
 }
 
 export function useGlass<T extends HTMLElement>() {

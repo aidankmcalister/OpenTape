@@ -42,6 +42,7 @@ pub(crate) trait Shell {
     fn ask(&self, alert: Alert) -> Choice;
     fn export_and_close(&self) -> Result<()>;
     fn switch(&self, from: Window, to: Window, recording: Option<&ShownRecording>) -> Result<()>;
+    fn offer_restore(&self, is_offered: bool);
 }
 
 pub(crate) struct Folders {
@@ -54,6 +55,7 @@ pub(crate) struct CurrentRecording {
     folders: Folders,
     save_folder: Mutex<Option<PathBuf>>,
     kept: Mutex<Option<Kept>>,
+    left_behind: Mutex<Option<PathBuf>>,
 }
 
 struct Kept {
@@ -78,6 +80,7 @@ impl CurrentRecording {
             folders,
             save_folder: Mutex::new(None),
             kept: Mutex::new(None),
+            left_behind: Mutex::new(None),
         }
     }
 
@@ -109,18 +112,37 @@ impl CurrentRecording {
             .parent()
             .context("a recording always sits in its own folder")?;
         let name = folder_name(folder);
+        let replaced = lock(&self.left_behind).take();
         let shown = {
             let mut kept = lock(&self.kept);
             ensure!(kept.is_none(), "another recording is still open");
             kept.insert(Kept {
-                video_path,
+                video_path: video_path.clone(),
                 name,
                 saved_to: None,
                 window: Window::Preview,
             })
             .shown()
         };
+        shell.offer_restore(false);
+        let replaced_folder = replaced
+            .filter(|old| *old != video_path)
+            .and_then(|old| old.parent().map(Path::to_path_buf));
+        if let Some(folder) = replaced_folder {
+            let _ = std::fs::remove_dir_all(folder);
+        }
         shell.switch(Window::Bar, Window::Preview, Some(&shown))
+    }
+
+    pub(crate) fn restore(&self, shell: &impl Shell) -> Result<()> {
+        let video = lock(&self.left_behind)
+            .clone()
+            .context("there's no recording to restore")?;
+        self.keep(shell, video)
+    }
+
+    pub(crate) fn can_restore(&self) -> bool {
+        lock(&self.left_behind).is_some()
     }
 
     pub(crate) fn recover(&self, shell: &impl Shell) -> Result<()> {
@@ -143,11 +165,13 @@ impl CurrentRecording {
         };
         let video = Some(folder.join(VIDEO_FILE))
             .filter(|video| video.metadata().is_ok_and(|it| it.len() > 0));
-        match video {
-            Some(video) => self.keep(shell, video),
-            None => std::fs::remove_dir_all(&folder)
-                .with_context(|| format!("could not delete {}", folder.display())),
-        }
+        let Some(video) = video else {
+            return std::fs::remove_dir_all(&folder)
+                .with_context(|| format!("could not delete {}", folder.display()));
+        };
+        *lock(&self.left_behind) = Some(video);
+        shell.offer_restore(true);
+        Ok(())
     }
 
     pub(crate) fn edit(&self, shell: &impl Shell) -> Result<()> {
@@ -303,13 +327,6 @@ const EDITOR_ALERT: Alert = Alert {
     first: "Export and close",
     second: Some("Discard"),
 };
-
-pub(crate) fn is_video(path: &Path) -> bool {
-    matches!(
-        path.extension().and_then(|ext| ext.to_str()),
-        Some("mov" | "mp4")
-    )
-}
 
 fn folder_name(folder: &Path) -> String {
     folder

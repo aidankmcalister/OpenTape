@@ -12,6 +12,7 @@ import {
 import { useKeymap } from "@/hooks/editor/useKeymap";
 import Timeline from "@/components/editor/timeline/Timeline";
 import ExportButton from "@/components/editor/header/ExportButton";
+import UpdateChip from "@/components/editor/header/UpdateChip";
 import Sidebar, {
   type EditorDialog,
   type SidebarPanel,
@@ -137,6 +138,7 @@ function Workspace({
     <>
       <Header name={name}>
         <div className="flex items-center gap-1">
+          <UpdateChip />
           <Button
             variant="ghost"
             size="icon"

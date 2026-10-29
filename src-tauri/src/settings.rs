@@ -3,19 +3,15 @@ use std::process::Command;
 use std::sync::Mutex;
 
 use anyhow::{Context, Result, ensure};
-use cidre::cg;
 use serde::{Deserialize, Serialize};
-use tauri::window::Color;
-use tauri::{
-    AppHandle, Manager, State, Theme, WebviewUrl, WebviewWindowBuilder, path::BaseDirectory,
-};
+use tauri::{AppHandle, Manager, State, path::BaseDirectory};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_global_shortcut::Shortcut;
 use ts_rs::TS;
 
 use crate::current_recording::CurrentRecording;
 use crate::util::{CmdResult, lock, run_blocking};
-use crate::{PageEvent, tray};
+use crate::{PageEvent, tray, windows};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
@@ -29,6 +25,7 @@ pub(crate) struct Settings {
     pub suggests_edits: bool,
     pub record_shortcut: String,
     pub counts_down: bool,
+    pub has_finished_setup: bool,
 }
 
 impl Default for Settings {
@@ -40,6 +37,7 @@ impl Default for Settings {
             suggests_edits: true,
             record_shortcut: "Alt+Shift+KeyR".into(),
             counts_down: true,
+            has_finished_setup: false,
         }
     }
 }
@@ -114,23 +112,10 @@ pub(crate) async fn open_settings(app: AppHandle) -> CmdResult {
     Ok(())
 }
 
-pub(crate) fn show_window(app: &AppHandle) -> Result<()> {
-    let window = match app.get_webview_window(WINDOW) {
-        Some(window) => window,
-        None => WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::default())
-            .title("Settings")
-            .inner_size(520.0, 640.0)
-            .resizable(false)
-            .maximizable(false)
-            .minimizable(false)
-            .theme(Some(Theme::Dark))
-            .background_color(Color(14, 14, 16, 255))
-            .center()
-            .build()?,
-    };
-    window.show()?;
-    window.set_focus()?;
-    Ok(())
+pub(crate) fn show_window(app: &AppHandle) -> tauri::Result<()> {
+    windows::show_dialog(app, WINDOW, |window| {
+        window.title("Settings").inner_size(520.0, 640.0)
+    })
 }
 
 #[tauri::command]
@@ -167,29 +152,17 @@ pub(crate) async fn open_notices(app: AppHandle) -> CmdResult {
     Ok(())
 }
 
-const REPO_URL: &str = "https://github.com/aidankmcalister/OpenTape";
-const SCREEN_RECORDING_SETTINGS: &str =
-    "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
+pub(crate) const REPO_URL: &str = "https://github.com/aidankmcalister/OpenTape";
 
 #[tauri::command]
 pub(crate) async fn open_repo() -> CmdResult {
     Ok(open_url(REPO_URL).await?)
 }
 
-#[tauri::command]
-pub(crate) fn has_screen_access() -> bool {
-    cg::screen_capture_access::preflight()
-}
-
-#[tauri::command]
-pub(crate) async fn open_screen_settings() -> CmdResult {
-    cg::screen_capture_access::request();
-    Ok(open_url(SCREEN_RECORDING_SETTINGS).await?)
-}
-
-async fn open_url(url: &'static str) -> Result<()> {
+pub(crate) async fn open_url(url: impl Into<String>) -> Result<()> {
+    let url = url.into();
     run_blocking(move || {
-        let status = Command::new("/usr/bin/open").arg(url).status()?;
+        let status = Command::new("/usr/bin/open").arg(&url).status()?;
         ensure!(status.success(), "could not open {url}");
         Ok(())
     })

@@ -10,13 +10,16 @@ export function useMorph<Key extends string>(
   active: Key,
   onShape?: (size: Size, animation: Animation | null) => void,
   edge = 2,
+  isInstant = false,
 ) {
   const layers = useRef(new Map<Key, HTMLElement>());
   const shaped = useRef<Size | null>(null);
   const shapeListener = useRef(onShape);
+  const instant = useRef(isInstant);
   const [pillSize, setPillSize] = useState<Size | null>(null);
   useLayoutEffect(() => {
     shapeListener.current = onShape;
+    instant.current = isInstant;
   });
 
   useLayoutEffect(
@@ -46,7 +49,8 @@ export function useMorph<Key extends string>(
       if (last?.width === next.width && last.height === next.height) return;
       shaped.current = next;
       setPillSize(next);
-      shapeListener.current?.(next, last ? morphAnimation() : null);
+      const animates = last && !instant.current;
+      shapeListener.current?.(next, animates ? morphAnimation() : null);
     };
     reshape();
     const observer = new ResizeObserver(reshape);
@@ -67,7 +71,9 @@ export function useMorph<Key extends string>(
     pillStyle: pillSize
       ? {
           ...pillSize,
-          transition: `width ${durationMs}ms cubic-bezier(${ease.join(",")}), opacity 200ms ease-out`,
+          transition: isInstant
+            ? "opacity 200ms ease-out"
+            : `width ${durationMs}ms cubic-bezier(${ease.join(",")}), opacity 200ms ease-out`,
         }
       : undefined,
     layerProps: (key: Key) => ({

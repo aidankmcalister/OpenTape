@@ -6,12 +6,13 @@ use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 use super::{CurrentRecording, CursorLog, PICTURE_TYPES, Shell, ShownRecording, Window};
-use crate::PageEvent;
 use crate::export::typing::{TypingSpot, TypingStretch};
 use crate::export::{ExportLayout, ExportOptions};
 use crate::macos::{self, Alert, Choice};
+use crate::recording::{self, Phase};
 use crate::util::{CmdResult, run_blocking};
 use crate::windows::{bar, editor, preview};
+use crate::{PageEvent, permissions, tray};
 
 impl Shell for AppHandle {
     fn ask(&self, alert: Alert) -> Choice {
@@ -33,13 +34,37 @@ impl Shell for AppHandle {
         let _ = PageEvent::CurrentRecording(recording.cloned()).send_to(self, label(to));
         show(self, to)
     }
+
+    fn offer_restore(&self, is_offered: bool) {
+        tray::offer_restore(self, is_offered);
+    }
 }
 
-pub(crate) fn show_again(app: &AppHandle) -> Result<Window> {
+pub(crate) fn restore(app: &AppHandle) -> Result<()> {
+    let phase = recording::recording_status(app.state()).phase;
+    ensure!(phase == Phase::Idle, "finish the recording first");
+    app.state::<CurrentRecording>().restore(app)
+}
+
+#[tauri::command]
+pub(crate) fn restore_recording(app: AppHandle) -> CmdResult {
+    restore(&app)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) fn can_restore_recording(state: State<'_, CurrentRecording>) -> bool {
+    state.can_restore()
+}
+
+pub(crate) fn show_again(app: &AppHandle) -> Result<Option<Window>> {
+    if permissions::focus_if_open(app) {
+        return Ok(None);
+    }
     let shown = app.state::<CurrentRecording>().shown();
     let window = shown.map_or(Window::Bar, |(window, _)| window);
     show(app, window)?;
-    Ok(window)
+    Ok(Some(window))
 }
 
 fn show(app: &AppHandle, window: Window) -> Result<()> {

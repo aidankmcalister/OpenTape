@@ -12,7 +12,7 @@ import type { DisplayInfo } from "@/lib/bindings";
 import { rectStyle } from "@/lib/geometry";
 import { cn } from "@/lib/utils";
 import { RATIOS, type Handle, type Ratio } from "@/lib/picker/area";
-import CaptureBar, { CaptureTile, Countdown, DimOutside } from "./CaptureBar";
+import CaptureBar, { CaptureTile, DimOutside } from "./CaptureBar";
 import { useAreaBox } from "@/hooks/picker/useAreaBox";
 
 const BAR_SIZE = { width: 440, height: 58 };
@@ -33,12 +33,10 @@ export default function AreaBox({
   display,
   hasBox,
   isFraming,
-  countdown,
 }: {
   display: DisplayInfo;
   hasBox: boolean;
   isFraming: boolean;
-  countdown: number | null;
 }) {
   const box = useAreaBox(display, hasBox, BAR_SIZE);
   if (!hasBox)
@@ -56,7 +54,6 @@ export default function AreaBox({
         style={rectStyle(area)}
         {...(isFraming ? {} : box.boxProps)}
       >
-        <Countdown value={countdown} />
         {!isFraming &&
           HANDLES.map(({ handle, left, top, cursor }) => (
             <div
