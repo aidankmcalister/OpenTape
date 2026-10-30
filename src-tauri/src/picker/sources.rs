@@ -10,6 +10,7 @@ use objc2::AllocAnyThread;
 use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSRunningApplication};
 use objc2_foundation::{NSDictionary, NSPoint, NSRect, NSSize};
 use serde::{Deserialize, Serialize};
+use tauri::AppHandle;
 use ts_rs::TS;
 
 use crate::capture::{self, CaptureSize, NORMAL_WINDOW_LAYER, Target};
@@ -98,7 +99,7 @@ pub(super) struct Framing {
 
 static ICONS: LazyLock<Mutex<HashMap<u32, String>>> = LazyLock::new(Mutex::default);
 
-pub(super) fn list() -> Result<Sources> {
+pub(super) fn list(app: &AppHandle) -> Result<Sources> {
     let content = capture::shareable_content()?;
     let mut displays = Vec::new();
     for (index, display) in content.displays().iter().enumerate() {
@@ -123,7 +124,7 @@ pub(super) fn list() -> Result<Sources> {
     let known = lock(&ICONS).clone();
     let mut icons = HashMap::new();
     for pid in pids {
-        let icon = known.get(&pid).cloned().or_else(|| icon_data_url(pid));
+        let icon = known.get(&pid).cloned().or_else(|| icon_data_url(app, pid));
         if let Some(icon) = icon {
             icons.insert(pid, icon);
         }
@@ -257,8 +258,8 @@ fn sort_front_to_back(windows: &mut [WindowInfo], order: &[u32]) {
     });
 }
 
-fn icon_data_url(pid: u32) -> Option<String> {
-    let png = macos::catch(|| -> Option<Vec<u8>> {
+fn icon_data_url(app: &AppHandle, pid: u32) -> Option<String> {
+    let png = macos::run_on_main_thread(app, move |_| -> Option<Vec<u8>> {
         let pid = pid.try_into().ok()?;
         let icon = NSRunningApplication::runningApplicationWithProcessIdentifier(pid)?.icon()?;
         let mut rect = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(64.0, 64.0));

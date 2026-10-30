@@ -177,6 +177,17 @@ mod tests {
     }
 
     #[test]
+    fn catch_should_turn_a_macos_exception_into_an_error() {
+        let empty = NSArray::<NSString>::new();
+        assert!(catch(|| empty.objectAtIndex(0)).is_err());
+    }
+
+    #[test]
+    fn release_builds_should_unwind_so_catch_still_works() {
+        assert!(!include_str!("../../Cargo.toml").contains("panic = \"abort\""));
+    }
+
+    #[test]
     fn choice_of_should_match_the_pressed_label() {
         let second = Some("Delete and close");
         for (pressed, choice) in [

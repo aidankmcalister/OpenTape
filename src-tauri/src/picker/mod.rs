@@ -34,7 +34,8 @@ pub(crate) async fn open_picker(
     state: State<'_, PickerState>,
     mode: Mode,
 ) -> CmdResult {
-    let mut sources = run_blocking(sources::list).await?;
+    let lister = app.clone();
+    let mut sources = run_blocking(move || sources::list(&lister)).await?;
     let safe_tops = macos::run_on_main_thread(&app, safe_tops)?;
     apply_safe_tops(&mut sources.displays, &safe_tops);
     let displays = sources.displays.clone();
@@ -60,7 +61,8 @@ pub(crate) fn prepare(app: AppHandle) {
         return;
     }
     tauri::async_runtime::spawn(async move {
-        let Ok(sources) = run_blocking(sources::list).await else {
+        let lister = app.clone();
+        let Ok(sources) = run_blocking(move || sources::list(&lister)).await else {
             return;
         };
         if let Err(err) = prepare_overlays(&app, &sources.displays) {
@@ -233,7 +235,7 @@ fn watch_screen(app: AppHandle) {
 }
 
 fn refresh_sources(app: &AppHandle) {
-    let Ok(mut sources) = sources::list() else {
+    let Ok(mut sources) = sources::list(app) else {
         return;
     };
     update_session(app, |session| {
