@@ -50,5 +50,3 @@ Bug reports and small fixes are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md)
 ## License
 
 [MIT](LICENSE). The bundled fonts, Space Grotesk and IBM Plex Mono, are under the SIL Open Font License 1.1.
-
-Recording and editing are free and will stay that way. Some optional extras may cost money one day, but nothing free will move behind a paywall.

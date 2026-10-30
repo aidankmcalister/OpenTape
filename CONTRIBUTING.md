@@ -96,8 +96,19 @@ src-tauri/src/           the Rust side
 
 ## Pull requests
 
-- Keep each one to a single change, with a title that says what it does.
+- Keep each one to a single change, with a title that says what it does, in the [Conventional Commits](https://www.conventionalcommits.org) style: `feat:`, `fix:`, `refactor:`, `perf:`, `docs:`, `test:`, `ci:` or `chore:`, then a short lowercase summary.
 - Say how you tested it. Most changes need you to run the app, since screen capture can't run in CI.
 - Don't commit recordings or anything from `temp/`.
+
+## Releasing
+
+For maintainers. Set the new version in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`, commit, then push a matching tag:
+
+```sh
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The release workflow builds a signed, notarized `OpenTape.dmg` for Apple silicon, plus the signed updater archive and `latest.json` that installed copies check, and attaches them to a draft release. Read the notes, then publish it. It needs the `APPLE_*` and `TAURI_SIGNING_PRIVATE_KEY*` repository secrets.
 
 By contributing, you agree that your contribution is licensed under the [MIT License](LICENSE), the same as the project. There's no CLA.
