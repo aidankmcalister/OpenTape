@@ -76,7 +76,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERBQUQzQTkwNjNFRUNGRUIKUldUcnorNWprRHF0MnBJbmo1Q0hueGsycCtxWGJlQ1pwYytzZ3FZSXRCUndZb2gxYlhqUktiZTEK",
       "endpoints": [
         "https://github.com/aidankmcalister/OpenTape/releases/latest/download/latest.json"
       ],

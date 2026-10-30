@@ -1,5 +1,6 @@
 # Pushing a version tag (v0.1.0) builds a signed, notarized OpenTape.dmg
-# for Apple silicon and attaches it to a draft release. Publish it by hand.
+# for Apple silicon, plus the signed updater archive and latest.json, and
+# attaches them to a draft release. Publish it by hand.
 name: release
 
 on:
@@ -21,6 +22,9 @@ jobs:
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      # Signs the updater archive that installed copies download and verify.
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -42,7 +46,8 @@ jobs:
       - run: cargo fetch --locked # `bun run notices` runs cargo about with --frozen
         working-directory: src-tauri
 
-      - run: bun tauri build --bundles app,dmg
+      # Updater archives need the private key, so only release builds make them.
+      - run: bun tauri build --bundles app,dmg --config '{"bundle":{"createUpdaterArtifacts":true}}'
 
       # Tauri signs the .dmg but doesn't notarize it, and Apple wants the
       # outermost container notarized.
@@ -57,10 +62,23 @@ jobs:
           spctl -a -vv -t open --context context:primary-signature "$DMG"
           mv "$DMG" OpenTape.dmg
 
+      # Installed copies check releases/latest/download/latest.json.
+      - name: Write latest.json for the updater
+        run: |
+          TAR=src-tauri/target/release/bundle/macos/OpenTape.app.tar.gz
+          cp "$TAR" OpenTape.app.tar.gz
+          jq -n \
+            --arg version "$(jq -r .version src-tauri/tauri.conf.json)" \
+            --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg signature "$(cat "$TAR.sig")" \
+            --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/OpenTape.app.tar.gz" \
+            '{version: $version, pub_date: $date, platforms: {"darwin-aarch64": {signature: $signature, url: $url}}}' \
+            > latest.json
+
       # The website links to releases/latest/download/OpenTape.dmg.
       - name: Create the draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" OpenTape.dmg --draft \
+          gh release create "$GITHUB_REF_NAME" OpenTape.dmg OpenTape.app.tar.gz latest.json --draft \
             --verify-tag --title "OpenTape $GITHUB_REF_NAME" --generate-notes

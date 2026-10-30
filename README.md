@@ -31,15 +31,17 @@ You record from a floating bar, and the app does the polishing. It zooms in wher
 
 ## Status
 
-Early and unreleased. Camera, captions and per-track volume are coming soon.
+Early: version 0.1.0. Camera, captions and per-track volume are coming soon. The app updates itself; to hear about new versions, star the repo and choose **Watch → Custom → Releases**.
 
 ## Install
 
-There's no download yet. To build it yourself, follow [Set up](CONTRIBUTING.md#set-up) in the contributing guide.
+Download [OpenTape.dmg](https://github.com/aidankmcalister/OpenTape/releases/latest/download/OpenTape.dmg) for Apple silicon Macs on macOS 15 or later. Open it and drag OpenTape to Applications.
+
+To build it yourself, follow [Set up](CONTRIBUTING.md#set-up) in the contributing guide.
 
 ## Privacy
 
-Everything stays on your Mac. There's no account and no cloud, and the app sends nothing anywhere. It needs Screen Recording permission, plus the microphone or camera only if you choose one. Recordings wait in a hidden folder until you save or export them, and closing them deletes that copy.
+Everything stays on your Mac. There's no account and no cloud. The only thing the app sends is a check for a new version on GitHub, at launch and when you click Check now. It needs Screen Recording permission, plus the microphone or camera only if you choose one. Recordings wait in a hidden folder until you save or export them, and closing them deletes that copy.
 
 ## Contributing
 
