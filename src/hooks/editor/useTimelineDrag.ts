@@ -7,6 +7,7 @@ type Stretching = {
   track: "region" | "clip";
   id: number;
   edge: RegionDrag;
+  lengthMs: number;
 };
 
 export function useTimelineDrag(edits: Edits) {
@@ -19,7 +20,7 @@ export function useTimelineDrag(edits: Edits) {
   const dragProps = (
     select: (event: PointerEvent<HTMLElement>) => void,
     onDrag: ((deltaMs: number) => void) | null,
-    stretch?: Stretching,
+    stretch?: Omit<Stretching, "lengthMs">,
     onClick?: () => void,
   ) => ({
     onPointerDown: (event: PointerEvent<HTMLElement>) => {
@@ -40,7 +41,7 @@ export function useTimelineDrag(edits: Edits) {
           if (!hasMoved && travel < 3) return;
           if (!hasMoved) {
             latest.current.closeEditor();
-            setStretching(stretch ?? null);
+            setStretching(stretch ? { ...stretch, lengthMs } : null);
             hasMoved = true;
           }
           const deltaMs = ((moved.clientX - fromX) / width) * lengthMs;

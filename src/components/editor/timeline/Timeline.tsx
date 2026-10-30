@@ -45,11 +45,16 @@ export default function Timeline({
   trackWidth: number;
 }) {
   const { time, shown } = edits;
-  const { lengthMs, at } = time;
+  const { at } = time;
+  const drag = useTimelineDrag(edits);
+  const lengthMs = Math.max(drag.stretch?.lengthMs ?? 0, time.lengthMs);
+  const trimmedMs =
+    drag.stretch?.track === "clip" && drag.stretch.edge === "start"
+      ? lengthMs - time.lengthMs
+      : 0;
   const scrubProps = useScrub(lengthMs, (ms) => onSeek(time.source(ms)));
   const { regions } = edits.project;
   const { lanes, heightPx } = laneLayout(laneKinds(shown), laneState.collapsed);
-  const drag = useTimelineDrag(edits);
   const isReflowing = useReflow(
     [
       lengthMs,
@@ -103,7 +108,11 @@ export default function Timeline({
           }}
         >
           {durationMs > 0 ? (
-            <>
+            <div
+              data-flow
+              className="absolute inset-y-0 w-full"
+              style={{ left: `${percentAt(trimmedMs, lengthMs)}%` }}
+            >
               <Ruler timelineMs={lengthMs} width={trackWidth} />
               <RecordingTrack
                 edits={edits}
@@ -144,7 +153,7 @@ export default function Timeline({
                   ) : null}
                 </Marker>
               ) : null}
-            </>
+            </div>
           ) : null}
         </div>
       </div>
