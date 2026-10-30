@@ -10,7 +10,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { MorphPill, PillDivider, PillMessage } from "@/components/Pill";
-import { useClockValue } from "@/hooks/useVideoClock";
+import { useClockValue } from "@/hooks/editor/usePlayback";
 import { formatClock, type Clock } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { loopProgress } from "@/lib/preview/preview";
@@ -61,8 +61,8 @@ function Preview({
         cursor={preview.cursor}
         durationMs={playback.durationMs}
         margin={0}
-        {...playback.videoProps}
-        muted
+        frames={playback.frames}
+        videoSize={playback.videoSize}
       />
       <div className="absolute inset-x-2 top-2 flex items-center justify-between">
         {playback.durationMs === 0 ? (

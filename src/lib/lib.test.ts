@@ -9,15 +9,7 @@ import {
   roundedRectPath,
 } from "./geometry";
 import { shortcutFromKey, shortcutLabel } from "./shortcut";
-import {
-  createClock,
-  formatClock,
-  formatTime,
-  playingTime,
-  seekTarget,
-  seekVideo,
-  twoDigits,
-} from "./time";
+import { createClock, formatClock, formatTime, twoDigits } from "./time";
 
 describe("geometry", () => {
   const rect = (x: number, y: number, width: number, height: number) => ({
@@ -125,14 +117,6 @@ describe("clock", () => {
   });
 });
 
-test.each([
-  ["follows the video forward", 2, 2.1, 2.1],
-  ["holds through a small step back", 2.1, 2.0, 2.1],
-  ["follows a big jump back, like a loop", 9.8, 0.1, 0.1],
-])("the playing time %s", (_, shown, current, expected) => {
-  expect(playingTime(shown, current)).toBe(expected);
-});
-
 describe("oneAtATime", () => {
   function deferred() {
     let resolve!: () => void;
@@ -204,42 +188,6 @@ describe("latestWins", () => {
       ["event", "recording"],
     ]);
     expect(shown).toEqual(["idle", "recording"]);
-  });
-});
-
-describe("seekVideo", () => {
-  class FakeVideo extends EventTarget {
-    seeking = false;
-    started: number[] = [];
-    #seconds = 0;
-    get currentTime() {
-      return this.#seconds;
-    }
-    set currentTime(seconds: number) {
-      this.#seconds = seconds;
-      this.seeking = true;
-      this.started.push(seconds);
-    }
-    land() {
-      this.seeking = false;
-      this.dispatchEvent(new Event("seeked"));
-    }
-  }
-
-  test("seeks while nothing else is seeking, and keeps only the latest while one is", () => {
-    const fake = new FakeVideo();
-    const video = fake as unknown as HTMLVideoElement;
-    seekVideo(video, 1);
-    seekVideo(video, 2);
-    seekVideo(video, 3);
-    expect(fake.started).toEqual([1]);
-    expect(seekTarget(video)).toBe(3);
-
-    fake.land();
-    expect(fake.started).toEqual([1, 3]);
-    fake.land();
-    expect(fake.started).toEqual([1, 3]);
-    expect(seekTarget(video)).toBe(3);
   });
 });
 

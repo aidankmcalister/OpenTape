@@ -11,7 +11,7 @@ import type { Lanes } from "@/hooks/editor/useProject";
 import type { Edits } from "@/hooks/editor/useProject";
 import { useMarquee } from "@/hooks/editor/useScrub";
 import type { TimelineDrag } from "@/hooks/editor/useTimelineDrag";
-import { useClockValue } from "@/hooks/useVideoClock";
+import { useClockValue } from "@/hooks/editor/usePlayback";
 import {
   KINDS,
   blockValue,

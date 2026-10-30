@@ -1,8 +1,8 @@
-import { type ComponentProps, type ReactNode, useMemo } from "react";
+import { type ReactNode, useEffect, useMemo, useRef } from "react";
 import { Move, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useElementSize } from "@/hooks/useElementSize";
-import { useClockValue } from "@/hooks/useVideoClock";
+import { useClockValue } from "@/hooks/editor/usePlayback";
 import {
   type Appearance,
   type CursorSettings,
@@ -44,6 +44,7 @@ import {
   type RegionKind,
 } from "@/lib/editor/regions";
 import { type Clip, keptClips } from "@/lib/editor/clips";
+import type { Frames } from "@/lib/editor/playback";
 import type { Clock } from "@/lib/time";
 import Island from "./Island";
 import { hueOf, REGION_ICONS } from "./timeline/kinds";
@@ -78,7 +79,9 @@ export default function Stage({
   );
 }
 
-type FrameProps = ComponentProps<"video"> & {
+type FrameProps = {
+  frames: Frames<VideoFrame> | null;
+  videoSize: Size | null;
   fileSrc: (name: string) => string;
   appearance: Appearance;
   ratio: number;
@@ -93,6 +96,8 @@ type FrameProps = ComponentProps<"video"> & {
 };
 
 export function Frame({
+  frames,
+  videoSize,
   fileSrc,
   appearance,
   ratio,
@@ -104,7 +109,6 @@ export function Frame({
   durationMs,
   editing,
   margin,
-  ...props
 }: FrameProps) {
   const { ref, size } = useElementSize<HTMLDivElement>();
   const { frame, recording, picture, radius, shadow, border, video, scale } =
@@ -135,10 +139,11 @@ export function Frame({
             }}
           >
             <Zoom clock={clock} zoomAt={zoomAt}>
-              <video
-                className="absolute max-w-none object-cover"
-                style={rectStyle(video)}
-                {...props}
+              <Picture
+                frames={frames}
+                size={videoSize}
+                clock={clock}
+                video={video}
               />
               <Blurs
                 clock={clock}
@@ -187,6 +192,49 @@ export function Frame({
         </div>
       </div>
     </div>
+  );
+}
+
+function Picture({
+  frames,
+  size,
+  clock,
+  video,
+}: {
+  frames: Frames<VideoFrame> | null;
+  size: Size | null;
+  clock: Clock;
+  video: Rect;
+}) {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const context = canvas.current?.getContext("2d");
+    if (!frames || !context) return;
+    let drawn: VideoFrame | null = null;
+    const draw = () => {
+      const frame = frames.frameAt(clock.seconds() * 1000);
+      if (!frame || frame === drawn) return;
+      drawn = frame;
+      context.drawImage(
+        frame,
+        0,
+        0,
+        context.canvas.width,
+        context.canvas.height,
+      );
+    };
+    draw();
+    const stops = [clock.subscribe(draw), frames.subscribe(draw)];
+    return () => stops.forEach((stop) => stop());
+  }, [frames, clock, size]);
+  return (
+    <canvas
+      ref={canvas}
+      width={size?.width}
+      height={size?.height}
+      className="absolute max-w-none"
+      style={rectStyle(video)}
+    />
   );
 }
 

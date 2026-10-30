@@ -72,7 +72,7 @@ function Workspace({
     ? timeMap(clips, soloed, playback.durationMs)
     : edits.time;
   const moves = useTimeMap(playback, time);
-  useStageSound(playback, edits.project.sound);
+  useStageSound(playback, time, edits.project.sound);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [panel, setPanel] = useState<SidebarPanel>("background");
   const [dialog, setDialog] = useState<EditorDialog | null>(null);
@@ -159,7 +159,6 @@ function Workspace({
         />
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <Stage
-            src={videoSrc}
             fileSrc={fileSrc}
             appearance={appearance}
             ratio={playback.ratio}
@@ -181,7 +180,8 @@ function Workspace({
             }
             solo={lanes.solo}
             onSolo={lanes.toggleSolo}
-            {...playback.videoProps}
+            frames={playback.frames}
+            videoSize={playback.videoSize}
           />
           <Island className="shrink-0">
             <Transport

@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode, type RefObject } from "react";
 import { Film, Scissors } from "lucide-react";
-import { useClockValue } from "@/hooks/useVideoClock";
+import { useClockValue } from "@/hooks/editor/usePlayback";
 import { useReflow } from "@/hooks/useMorph";
 import type { Lanes } from "@/hooks/editor/useProject";
 import { useTimelineDrag } from "@/hooks/editor/useTimelineDrag";

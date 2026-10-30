@@ -25,9 +25,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { Playback, useTimeMap } from "@/hooks/editor/usePlayback";
+import {
+  type Playback,
+  useClockValue,
+  type useTimeMap,
+} from "@/hooks/editor/usePlayback";
 import type { Edits, Lanes } from "@/hooks/editor/useProject";
-import { useClockValue } from "@/hooks/useVideoClock";
 import { formatTime, type Clock } from "@/lib/time";
 import AddMenu from "./AddMenu";
 

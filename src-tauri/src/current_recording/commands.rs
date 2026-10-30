@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, ensure};
+use tauri::ipc::Response;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
@@ -154,6 +155,27 @@ pub(crate) async fn typing_spots(
 pub(crate) async fn sound_tracks(app: AppHandle) -> CmdResult<Vec<crate::export::SoundTrack>> {
     let (video, _) = app.state::<CurrentRecording>().video(None)?;
     Ok(run_blocking(move || crate::export::sound_tracks(&video)).await?)
+}
+
+#[tauri::command]
+pub(crate) async fn video_track(app: AppHandle) -> CmdResult<crate::stage::VideoTrack> {
+    let (video, _) = app.state::<CurrentRecording>().video(None)?;
+    Ok(run_blocking(move || crate::stage::video_track(&video)).await?)
+}
+
+#[tauri::command]
+pub(crate) async fn video_samples(app: AppHandle, from: usize, to: usize) -> CmdResult<Response> {
+    let (video, _) = app.state::<CurrentRecording>().video(None)?;
+    let bytes = run_blocking(move || crate::stage::video_samples(&video, from, to)).await?;
+    Ok(Response::new(bytes))
+}
+
+#[tauri::command]
+pub(crate) async fn stage_sound(app: AppHandle) -> CmdResult<Response> {
+    let (video, _) = app.state::<CurrentRecording>().video(None)?;
+    Ok(Response::new(
+        run_blocking(move || crate::stage::stage_sound(&video)).await?,
+    ))
 }
 
 #[tauri::command]

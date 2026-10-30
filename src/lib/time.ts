@@ -38,34 +38,3 @@ export function createClock(): Clock & { set: (seconds: number) => void } {
     },
   };
 }
-
-const JITTER_S = 0.25;
-
-export function playingTime(shown: number, current: number): number {
-  return current < shown && shown - current < JITTER_S ? shown : current;
-}
-
-const waitingSeeks = new WeakMap<HTMLVideoElement, number>();
-
-export function seekTarget(video: HTMLVideoElement): number {
-  return waitingSeeks.get(video) ?? video.currentTime;
-}
-
-export function seekVideo(video: HTMLVideoElement, seconds: number) {
-  if (!video.seeking) {
-    video.currentTime = seconds;
-    return;
-  }
-  if (!waitingSeeks.has(video)) {
-    video.addEventListener(
-      "seeked",
-      () => {
-        const next = waitingSeeks.get(video);
-        waitingSeeks.delete(video);
-        if (next !== undefined) seekVideo(video, next);
-      },
-      { once: true },
-    );
-  }
-  waitingSeeks.set(video, seconds);
-}

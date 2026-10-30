@@ -61,7 +61,6 @@
         "script-src": "'self'",
         "style-src": "'self' 'unsafe-inline'",
         "img-src": "'self' asset: http://asset.localhost data:",
-        "media-src": "asset: http://asset.localhost",
         "font-src": "'self'",
         "connect-src": "ipc: http://ipc.localhost",
         "object-src": "'none'",

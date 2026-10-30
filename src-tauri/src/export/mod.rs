@@ -305,7 +305,7 @@ fn open(asset: &AVAsset) -> Result<(Retained<AVAssetTrack>, Retained<AVAssetRead
     Ok((track, reader))
 }
 
-fn read_all(reader: &AVAssetReader, write: impl FnOnce() -> Result<()>) -> Result<()> {
+pub(crate) fn read_all(reader: &AVAssetReader, write: impl FnOnce() -> Result<()>) -> Result<()> {
     ensure!(
         unsafe { reader.startReading() },
         "could not read the recording: {}",
@@ -328,7 +328,7 @@ pub(crate) fn sound_tracks(video: &Path) -> Result<Vec<SoundTrack>> {
         .collect())
 }
 
-fn audio_tracks(asset: &AVAsset) -> Result<Retained<NSArray<AVAssetTrack>>> {
+pub(crate) fn audio_tracks(asset: &AVAsset) -> Result<Retained<NSArray<AVAssetTrack>>> {
     let audio_type = unsafe { AVMediaTypeAudio }.context("AVFoundation has no audio type")?;
     #[allow(deprecated)]
     Ok(unsafe { asset.tracksWithMediaType(audio_type) })
@@ -411,11 +411,11 @@ fn uncut(earliest_first: &[ExportCut], seconds: f64) -> f64 {
     })
 }
 
-fn seconds(value: f64) -> CMTime {
+pub(crate) fn seconds(value: f64) -> CMTime {
     unsafe { CMTime::with_seconds(value, 600) }
 }
 
-fn reason(error: Option<Retained<NSError>>) -> String {
+pub(crate) fn reason(error: Option<Retained<NSError>>) -> String {
     error.map_or_else(
         || "macOS didn't say why".into(),
         |error| error.localizedDescription().to_string(),
@@ -449,7 +449,7 @@ fn zoom_at(zoom: &[ExportZoom], rate: f64, seconds: f64) -> ExportZoom {
     zoom.get(step).or(zoom.last()).copied().unwrap_or(NO_ZOOM)
 }
 
-fn file_url(path: &Path) -> Retained<NSURL> {
+pub(crate) fn file_url(path: &Path) -> Retained<NSURL> {
     NSURL::fileURLWithPath(&NSString::from_str(&path.to_string_lossy()))
 }
 

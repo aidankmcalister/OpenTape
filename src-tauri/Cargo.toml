@@ -42,7 +42,7 @@ objc2-core-foundation = { version = "=0.3.2", default-features = false, features
 objc2-image-io = { version = "=0.3.2", default-features = false, features = ["std", "CGImageDestination", "CGImageProperties", "objc2-core-graphics"] }
 block2 = "=0.6.2"
 objc2-core-video = { version = "=0.3.2", default-features = false, features = ["std", "CVBase", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVReturn"] }
-objc2-core-media = { version = "=0.3.2", default-features = false, features = ["std", "CMFormatDescription", "CMTime", "CMTimeRange", "CMSampleBuffer", "objc2-core-audio-types", "objc2-core-video"] }
+objc2-core-media = { version = "=0.3.2", default-features = false, features = ["std", "CMBlockBuffer", "CMFormatDescription", "CMTime", "CMTimeRange", "CMSampleBuffer", "objc2-core-audio-types", "objc2-core-video"] }
 tauri-plugin-single-instance = "=2.5.4"
 tauri-plugin-log = "=2.10.1"
 tauri-plugin-updater = "=2.14.0"

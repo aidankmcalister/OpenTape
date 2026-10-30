@@ -11,7 +11,7 @@ import { dockLayer } from "@/lib/preview/preview";
 export function useRecordingPreview(videoSrc: string) {
   const recording = useFinishedRecording(videoSrc, 0, true);
   const { playback, edits, exporting, isLoaded, isReady } = recording;
-  const video = playback.videoProps.ref;
+  const { play, pause } = playback;
   useTimeMap(playback, edits.time);
   const [isHovered, setIsHovered] = useState(false);
   const [isShaped, setIsShaped] = useState(false);
@@ -32,16 +32,12 @@ export function useRecordingPreview(videoSrc: string) {
 
   useEffect(() => {
     if (!isReady) return;
-    const followVisibility = () => {
-      const element = video.current;
-      if (document.hidden) element?.pause();
-      else element?.play().catch(console.error);
-    };
+    const followVisibility = () => (document.hidden ? pause() : play());
     followVisibility();
     document.addEventListener("visibilitychange", followVisibility);
     return () =>
       document.removeEventListener("visibilitychange", followVisibility);
-  }, [isReady, video]);
+  }, [isReady, play, pause]);
 
   const whenIdle = (command: string) => () => {
     if (!isBusy) oneAtATime(() => invoke(command)).catch(console.error);

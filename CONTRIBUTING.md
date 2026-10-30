@@ -64,10 +64,10 @@ src/                     the frontend (React, TypeScript, Tailwind)
   components/            looks: shared ones at the top (Pill, MorphPill)
     ui/                  shadcn components on Base UI
     picker/ editor/ …    pieces that belong to one window
-  hooks/                 state: shared hooks at the top (Tauri events, pointer hover, morph, video clock)
+  hooks/                 state: shared hooks at the top (Tauri events, pointer hover, morph)
     bar/ picker/ …       hooks that belong to one window
   lib/                   logic: shared at the top (geometry, time) and bindings.ts, generated from Rust
-    bar/ picker/ …       logic that belongs to one window, with its tests; editor/ splits the editor by concept: appearance, cursor, clips, regions, zoom, sound, export, project
+    bar/ picker/ …       logic that belongs to one window, with its tests; editor/ splits the editor by concept: appearance, cursor, clips, regions, zoom, sound, playback, export, project
 
 src-tauri/src/           the Rust side
   lib.rs                 entry point: state, window setup, page events, system-wide keys, the command list
@@ -75,6 +75,7 @@ src-tauri/src/           the Rust side
   current_recording.rs   the recording you just made: save, copy, edit, close, and which window shows
   capture/               ScreenCaptureKit capture to a crash-safe .mov, the pause timeline, the cursor log
   export/                the editor's export: framing, zoom, cursor, click rings, sound mix, and typing spots
+  stage.rs               the stage's frames and sound, read from the recording
   picker/                the picker session, its sources and the overlay windows
   windows/               the record bar, preview and editor windows; floating.rs shows, hides and places them
   macos/                 AppKit wrappers: main thread, panels, alerts, and the glass

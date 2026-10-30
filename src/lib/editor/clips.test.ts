@@ -55,22 +55,6 @@ describe("clips", () => {
     ]);
     expect(cutSpans(SPLIT, 10000)).toEqual([]);
   });
-
-  test("playback skips each cut, and the last kept frame is the end", () => {
-    const clips = [
-      { id: 2, startMs: 1000, endMs: 4000 },
-      { id: 3, startMs: 6000, endMs: 9000 },
-    ];
-    const playOn = (ms: number, isLooping = false) =>
-      timeMap(clips, [], 10000).playOn(ms, isLooping);
-    expect(playOn(0)).toEqual({ ms: 1000, isEnd: false });
-    expect(playOn(5000)).toEqual({ ms: 6000, isEnd: false });
-    expect(playOn(2000)).toBeNull();
-    expect(playOn(9100)).toEqual({ ms: 9000, isEnd: true });
-    expect(playOn(9100, true)).toEqual({ ms: 1000, isEnd: false });
-    expect(playOn(9000)).toBeNull();
-    expect(timeMap(SPLIT, [], 10000).playOn(10000, false)).toBeNull();
-  });
 });
 
 describe("time map", () => {
@@ -184,12 +168,26 @@ describe("fitToClips", () => {
   });
 });
 
-test("the time map speeds playback inside a speed region", () => {
+test("output time skips cuts and runs faster inside a speed region", () => {
   const time = timeMap(
-    [],
-    [{ id: 1, kind: "speed", startMs: 2000, endMs: 6000, amount: 2 }],
+    [
+      { id: 1, startMs: 1000, endMs: 4000 },
+      { id: 2, startMs: 6000, endMs: 9000 },
+    ],
+    [{ id: 1, kind: "speed", startMs: 2000, endMs: 7000, amount: 4 }],
     10000,
   );
-  expect(time.speedAt(1000)).toBe(1);
-  expect(time.speedAt(3000)).toBe(2);
+  expect(time.pieces).toEqual([
+    { startMs: 1000, endMs: 2000, rate: 1, at: 0 },
+    { startMs: 2000, endMs: 4000, rate: 4, at: 1000 },
+    { startMs: 6000, endMs: 7000, rate: 4, at: 1500 },
+    { startMs: 7000, endMs: 9000, rate: 1, at: 1750 },
+  ]);
+  expect(time.outputMs).toBe(3750);
+  expect([0, 1500, 3000, 5000, 9000].map(time.outputAt)).toEqual([
+    0, 500, 1250, 1500, 3750,
+  ]);
+  expect([0, 1250, 1500, 3750, 4000].map(time.sourceAt)).toEqual([
+    1000, 3000, 6000, 9000, 9000,
+  ]);
 });

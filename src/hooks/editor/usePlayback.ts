@@ -3,24 +3,57 @@ import {
   useEffectEvent,
   useRef,
   useState,
-  type SyntheticEvent,
+  useSyncExternalStore,
 } from "react";
-import { useClockValue, useVideoClock } from "@/hooks/useVideoClock";
+import { invoke } from "@tauri-apps/api/core";
+import type { VideoTrack } from "@/lib/bindings";
 import type { TimeMap } from "@/lib/editor/clips";
+import {
+  createFrames,
+  type Frames,
+  fillChannels,
+  SOUND_RATE,
+  soundParts,
+} from "@/lib/editor/playback";
 import type { SoundSettings } from "@/lib/editor/sound";
 import type { Size } from "@/lib/geometry";
+import { type Clock, createClock } from "@/lib/time";
+
+type Loaded = { frames: Frames<VideoFrame>; size: Size; durationMs: number };
 
 export function usePlayback(src: string, loops = false) {
-  const video = useRef<HTMLVideoElement>(null);
+  const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLooping, setIsLooping] = useState(loops);
   const [isMuted, setIsMuted] = useState(false);
-  const [durationMs, setDurationMs] = useState(0);
-  const [videoSize, setVideoSize] = useState<Size | null>(null);
   const [heldMs, setHeldMs] = useState<number | null>(null);
   const [speed, setSpeed] = useState(1);
+  const [clock] = useState(createClock);
   const held = useRef<number | null>(null);
-  const clock = useVideoClock(video, isPlaying, src);
+
+  useEffect(() => {
+    let isLive = true;
+    let frames: Loaded["frames"] | null = null;
+    invoke<VideoTrack>("video_track")
+      .then((track) => {
+        if (!isLive) return;
+        frames = createFrames<VideoFrame>(
+          track.samples,
+          (from, to) => invoke<ArrayBuffer>("video_samples", { from, to }),
+          (output, ready) => videoDecoder(track, output, ready),
+        );
+        setLoaded({
+          frames,
+          size: { width: track.width, height: track.height },
+          durationMs: track.durationMs,
+        });
+      })
+      .catch(console.error);
+    return () => {
+      isLive = false;
+      frames?.close();
+    };
+  }, [src]);
 
   function hold(ms: number | null) {
     held.current = ms;
@@ -29,83 +62,71 @@ export function usePlayback(src: string, loops = false) {
 
   function seek(ms: number) {
     hold(null);
-    clock.seek(ms / 1000);
+    clock.set(ms / 1000);
   }
 
   function skim(ms: number | null) {
     if (ms === null) {
       if (held.current !== null) seek(held.current);
-    } else if (video.current?.paused) {
+    } else if (!isPlaying) {
       if (held.current === null) hold(clock.seconds() * 1000);
-      clock.seek(ms / 1000);
+      clock.set(ms / 1000);
     }
   }
 
+  const videoSize = loaded?.size ?? null;
   return {
     isPlaying,
     isLooping,
     isMuted,
-    durationMs,
+    durationMs: loaded?.durationMs ?? 0,
     ratio: videoSize?.height ? videoSize.width / videoSize.height : 16 / 9,
     videoSize,
+    frames: loaded?.frames ?? null,
     clock,
-    pause: () => video.current?.pause(),
+    play: () => setIsPlaying(true),
+    pause: () => setIsPlaying(false),
     seek,
     skim,
     heldMs,
     toggleLoop: () => setIsLooping((isOn) => !isOn),
     toggleSound: () => setIsMuted((isOn) => !isOn),
-    setRate: (rate: number) => {
-      const current = video.current;
-      if (!current || current.playbackRate === rate * speed) return;
-      current.preservesPitch = false;
-      current.playbackRate = rate * speed;
-    },
     speed,
     setSpeed,
-    videoProps: {
-      ref: video,
-      preload: "auto",
-      loop: isLooping,
-      muted: isMuted,
-      onPlay: () => setIsPlaying(true),
-      onPause: () => setIsPlaying(false),
-      onEnded: () => setIsPlaying(false),
-      onLoadedMetadata: (event: SyntheticEvent<HTMLVideoElement>) => {
-        setDurationMs(lengthMs(event.currentTarget));
-        setVideoSize(sizeOf(event.currentTarget));
-        showFirstFrame(event);
-      },
-    },
   };
 }
 
 export type Playback = ReturnType<typeof usePlayback>;
 
 export function useTimeMap(playback: Playback, time: TimeMap) {
-  const { isPlaying, isLooping, clock, seek, pause } = playback;
-  const video = playback.videoProps.ref;
-  const rate = useClockValue(clock, (seconds) => time.speedAt(seconds * 1000));
-  const playOn = useClockValue(clock, (seconds) =>
-    time.playOn(seconds * 1000, isLooping && isPlaying),
-  );
-  useEffect(() => playback.setRate(rate), [playback, rate]);
-  const skipCut = useEffectEvent((ms: number, isEnd: boolean) => {
-    if (playback.heldMs !== null) return;
-    if (isEnd) playback.pause();
-    playback.seek(ms);
+  const { isPlaying, clock, seek, play, pause } = playback;
+  const advance = useEffectEvent((elapsedMs: number) => {
+    if (time.outputMs <= 0) return;
+    const ms =
+      time.outputAt(clock.seconds() * 1000) + elapsedMs * playback.speed;
+    if (ms < time.outputMs) return clock.set(time.sourceAt(ms) / 1000);
+    if (playback.isLooping)
+      return clock.set(time.sourceAt(ms % time.outputMs) / 1000);
+    pause();
+    clock.set(time.sourceAt(time.outputMs) / 1000);
   });
   useEffect(() => {
-    if (playOn) skipCut(playOn.ms, playOn.isEnd);
-  }, [playOn]);
+    if (!isPlaying) return;
+    let last = performance.now();
+    let frame = requestAnimationFrame(function tick(now) {
+      frame = requestAnimationFrame(tick);
+      advance(Math.max(0, now - last));
+      last = now;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isPlaying]);
   return {
     togglePlay: () => {
       playback.skim(null);
-      const current = video.current;
-      if (!current?.paused) return current?.pause();
-      if (time.at(clock.seconds() * 1000) >= time.lengthMs)
+      if (isPlaying) return pause();
+      if (time.outputAt(clock.seconds() * 1000) >= time.outputMs)
         seek(time.source(0));
-      void current.play();
+      play();
     },
     toStart: () => seek(time.source(0)),
     toEnd: () => seek(time.source(time.lengthMs)),
@@ -117,22 +138,123 @@ export function useTimeMap(playback: Playback, time: TimeMap) {
   };
 }
 
-export function useStageSound(playback: Playback, sound: SoundSettings) {
-  const { ref } = playback.videoProps;
+const DRIFT_MS = 150;
+
+export function useStageSound(
+  { clock, isPlaying, isMuted, speed }: Playback,
+  time: TimeMap,
+  sound: SoundSettings,
+) {
+  const [loaded, setLoaded] = useState<{
+    context: AudioContext;
+    buffer: AudioBuffer;
+  } | null>(null);
   useEffect(() => {
-    if (ref.current) ref.current.volume = sound.isMuted ? 0 : 1;
-  }, [ref, sound, playback.durationMs]);
+    const context = new AudioContext();
+    invoke<ArrayBuffer>("stage_sound")
+      .then((pcm) => {
+        const length = pcm.byteLength / 4;
+        if (length === 0 || context.state === "closed") return;
+        const buffer = context.createBuffer(2, length, SOUND_RATE);
+        fillChannels(pcm, [buffer.getChannelData(0), buffer.getChannelData(1)]);
+        setLoaded({ context, buffer });
+      })
+      .catch(console.error);
+    return () => void context.close();
+  }, []);
+
+  const start = useEffectEvent((context: AudioContext, buffer: AudioBuffer) => {
+    const fromMs = time.outputAt(clock.seconds() * 1000);
+    const startedAt = context.currentTime;
+    const nodes = soundParts(time.pieces, fromMs, speed).map((part) => {
+      const node = new AudioBufferSourceNode(context, {
+        buffer,
+        playbackRate: part.rate,
+      });
+      node.connect(context.destination);
+      node.start(
+        startedAt + part.waitMs / 1000,
+        part.offsetMs / 1000,
+        part.lengthMs / 1000,
+      );
+      return node;
+    });
+    return {
+      stop: () => nodes.forEach((node) => node.stop()),
+      hasDrifted: () => {
+        const heardMs =
+          fromMs + (context.currentTime - startedAt) * 1000 * speed;
+        const shownMs = time.outputAt(clock.seconds() * 1000);
+        return (
+          context.state === "running" && Math.abs(heardMs - shownMs) > DRIFT_MS
+        );
+      },
+    };
+  });
+  const pieces = JSON.stringify(time.pieces);
+  const isHeard = isPlaying && !isMuted && !sound.isMuted;
+  useEffect(() => {
+    if (!isHeard || !loaded) return;
+    const { context, buffer } = loaded;
+    void context.resume();
+    let playing = start(context, buffer);
+    const unsubscribe = clock.subscribe(() => {
+      if (!playing.hasDrifted()) return;
+      playing.stop();
+      playing = start(context, buffer);
+    });
+    return () => {
+      unsubscribe();
+      playing.stop();
+    };
+  }, [isHeard, loaded, clock, speed, pieces]);
 }
 
-function lengthMs(video: HTMLVideoElement): number {
-  return Number.isFinite(video.duration) ? video.duration * 1000 : 0;
+export function useClockValue<T>(
+  clock: Clock,
+  select: (seconds: number) => T,
+): T {
+  const last = useRef<{ value: T; json: string } | null>(null);
+  return useSyncExternalStore(clock.subscribe, () => {
+    const value = select(clock.seconds());
+    const json = JSON.stringify(value);
+    if (last.current && last.current.json === json) return last.current.value;
+    last.current = { value, json };
+    return value;
+  });
 }
 
-function sizeOf(video: HTMLVideoElement): Size {
-  return { width: video.videoWidth, height: video.videoHeight };
-}
-
-function showFirstFrame(event: SyntheticEvent<HTMLVideoElement>) {
-  const video = event.currentTarget;
-  if (video.currentTime === 0) video.currentTime = 0.001;
+function videoDecoder(
+  track: VideoTrack,
+  output: (frame: VideoFrame) => void,
+  ready: () => void,
+) {
+  const config = {
+    codec: track.codec,
+    description: new Uint8Array(track.description),
+  };
+  const open = () => {
+    const decoder = new VideoDecoder({ output, error: console.error });
+    decoder.addEventListener("dequeue", ready);
+    decoder.configure(config);
+    return decoder;
+  };
+  let decoder = open();
+  return {
+    decode: (chunk: EncodedVideoChunkInit) => {
+      if (decoder.state === "configured")
+        decoder.decode(new EncodedVideoChunk(chunk));
+    },
+    flush: () => decoder.flush(),
+    reset: () => {
+      if (decoder.state === "closed") decoder = open();
+      else {
+        decoder.reset();
+        decoder.configure(config);
+      }
+    },
+    close: () => {
+      if (decoder.state !== "closed") decoder.close();
+    },
+  };
 }

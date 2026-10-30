@@ -9,6 +9,7 @@ mod permissions;
 mod picker;
 mod recording;
 mod settings;
+mod stage;
 mod tray;
 mod update;
 mod util;
@@ -205,6 +206,9 @@ pub fn run() -> tauri::Result<()> {
             current_recording::commands::cursor_images,
             current_recording::commands::typing_spots,
             current_recording::commands::sound_tracks,
+            current_recording::commands::video_track,
+            current_recording::commands::video_samples,
+            current_recording::commands::stage_sound,
             settings::get_settings,
             settings::set_settings,
             settings::choose_save_folder,

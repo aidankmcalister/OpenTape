@@ -5,6 +5,7 @@ import {
   gapsBetween,
   MIN_REGION_MS,
   type Region,
+  sameKind,
   type Span,
   stretched,
 } from "./regions";
@@ -80,6 +81,24 @@ export type TimeMap = ReturnType<typeof timeMap>;
 export function timeMap(clips: Clip[], regions: Region[], durationMs: number) {
   const kept = keptClips(clips, durationMs);
   const lastEndMs = kept[kept.length - 1].endMs;
+  const edges = sameKind(regions, "speed").flatMap(({ startMs, endMs }) => [
+    startMs,
+    endMs,
+  ]);
+  let outputMs = 0;
+  const pieces = kept.flatMap(({ startMs, endMs }) => {
+    const cuts = [startMs, endMs, ...edges]
+      .filter((ms) => ms >= startMs && ms <= endMs)
+      .sort((a, b) => a - b);
+    return cuts.slice(1).flatMap((end, index) => {
+      const start = cuts[index];
+      if (end <= start) return [];
+      const rate = amountAt(regions, "speed", start);
+      const at = outputMs;
+      outputMs += (end - start) / rate;
+      return [{ startMs: start, endMs: end, rate, at }];
+    });
+  });
   let lengthMs = 0;
   const placed = kept.map((clip) => {
     const at = lengthMs;
@@ -120,15 +139,23 @@ export function timeMap(clips: Clip[], regions: Region[], durationMs: number) {
     at,
     source,
     shown,
-    speedAt: (sourceMs: number) => amountAt(regions, "speed", sourceMs),
-    playOn(sourceMs: number, isLooping: boolean) {
-      const cut = cutSpans(clips, durationMs).find((span) =>
-        covers(span, sourceMs),
+    outputMs,
+    pieces,
+    outputAt(sourceMs: number) {
+      const piece = pieces.find(({ endMs }) => endMs > sourceMs);
+      if (!piece) return outputMs;
+      return piece.at + Math.max(0, sourceMs - piece.startMs) / piece.rate;
+    },
+    sourceAt(ms: number) {
+      const piece =
+        pieces.find(
+          ({ startMs, endMs, rate, at }) => ms < at + (endMs - startMs) / rate,
+        ) ?? pieces[pieces.length - 1];
+      if (!piece) return 0;
+      return Math.min(
+        piece.startMs + (ms - piece.at) * piece.rate,
+        piece.endMs,
       );
-      if (!cut || sourceMs === lastEndMs) return null;
-      if (cut.startMs < lastEndMs) return { ms: cut.endMs, isEnd: false };
-      if (isLooping) return { ms: kept[0].startMs, isEnd: false };
-      return { ms: lastEndMs, isEnd: true };
     },
     leap: (sourceMs: number, deltaMs: number) =>
       source(clamp(at(sourceMs) + deltaMs, 0, lengthMs)),
