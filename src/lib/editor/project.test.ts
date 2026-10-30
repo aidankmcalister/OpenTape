@@ -28,7 +28,10 @@ describe("project", () => {
   });
 
   test("a saved project reads back the same", () => {
-    const project = changeProject(NEW_PROJECT, "appearance", { padding: 80 });
+    const project = {
+      ...changeProject(NEW_PROJECT, "appearance", { padding: 80 }),
+      title: "Launch demo",
+    };
     expect(readProject(JSON.stringify(project))).toEqual(project);
   });
 
@@ -43,6 +46,7 @@ describe("project", () => {
       clips: [],
       sound: DEFAULT_SOUND,
       suggestionsMade: false,
+      title: null,
     });
   });
 

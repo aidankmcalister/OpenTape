@@ -13,6 +13,7 @@ use crate::macos::{Alert, Choice};
 use crate::util::lock;
 
 const NAME_FORMAT: &str = "%Y-%m-%d %H.%M.%S";
+const MAX_NAME_BYTES: usize = 200;
 pub(crate) const PROJECT_FILE: &str = "project.json";
 pub(crate) const PICTURE_TYPES: [&str; 5] = ["png", "jpg", "jpeg", "heic", "webp"];
 
@@ -40,7 +41,7 @@ pub(crate) struct CursorLog {
 
 pub(crate) trait Shell {
     fn ask(&self, alert: Alert) -> Choice;
-    fn export_and_close(&self) -> Result<()>;
+    fn export_and_close(&self, window: Window) -> Result<()>;
     fn switch(&self, from: Window, to: Window, recording: Option<&ShownRecording>) -> Result<()>;
     fn offer_restore(&self, is_offered: bool);
 }
@@ -179,6 +180,7 @@ impl CurrentRecording {
             let mut kept = lock(&self.kept);
             let kept = kept.as_mut().context("there's no recording to edit")?;
             kept.window = Window::Editor;
+            kept.saved_to = None;
             kept.shown()
         };
         shell.switch(Window::Preview, Window::Editor, Some(&shown))
@@ -195,10 +197,17 @@ impl CurrentRecording {
         saved_to.exists().then_some(saved_to)
     }
 
-    fn video(&self) -> Result<(PathBuf, String)> {
+    fn video(&self, name: Option<&str>) -> Result<(PathBuf, String)> {
         let kept = lock(&self.kept);
         let kept = kept.as_ref().context("there's no recording")?;
-        let export_name = format!("Screen Recording {}", kept.name.replacen(' ', " at ", 1));
+        let export_name = name
+            .map(|name| name.trim_start_matches(|c: char| c == '.' || c.is_whitespace()))
+            .map(|name| name[..name.floor_char_boundary(MAX_NAME_BYTES)].trim())
+            .filter(|name| !name.is_empty())
+            .map_or_else(
+                || format!("Screen Recording {}", kept.name.replacen(' ', " at ", 1)),
+                str::to_owned,
+            );
         Ok((kept.video_path.clone(), export_name))
     }
 
@@ -245,41 +254,22 @@ impl CurrentRecording {
         Ok(folder_name(&copy))
     }
 
-    fn save(&self, to_clipboard: bool) -> Result<PathBuf> {
-        match self.saved_to().filter(|_| !to_clipboard) {
-            Some(saved_to) => Ok(saved_to),
-            None => self.output(to_clipboard, "mp4", export::to_mp4),
-        }
-    }
-
     fn export(
         &self,
         layout: &ExportLayout,
         options: &ExportOptions,
         progress: impl Fn(f32),
     ) -> Result<PathBuf> {
-        self.output(
-            options.to_clipboard,
-            options.extension(),
-            |video, output| export::export(video, output, layout, options, progress),
-        )
-    }
-
-    fn output(
-        &self,
-        to_clipboard: bool,
-        extension: &str,
-        write: impl FnOnce(&Path, &Path) -> Result<()>,
-    ) -> Result<PathBuf> {
-        let (video, export_name) = self.video()?;
-        let output = if to_clipboard {
+        let (video, export_name) = self.video(options.name.as_deref())?;
+        let extension = options.extension();
+        let output = if options.to_clipboard {
             std::fs::create_dir_all(&self.folders.copies)?;
             self.folders.copies.join(file_name(&export_name, extension))
         } else {
             free_path(&self.output_folder(), &export_name, extension, Path::exists)
         };
-        write(&video, &output)?;
-        if let Some(kept) = lock(&self.kept).as_mut().filter(|_| !to_clipboard) {
+        export::export(&video, &output, layout, options, progress)?;
+        if let Some(kept) = lock(&self.kept).as_mut().filter(|_| !options.to_clipboard) {
             kept.saved_to = Some(output.clone());
         }
         Ok(output)
@@ -290,17 +280,13 @@ impl CurrentRecording {
             return Ok(());
         };
         if self.saved_to().is_none() {
-            let is_editor = window == Window::Editor;
-            match shell.ask(if is_editor {
+            match shell.ask(if window == Window::Editor {
                 EDITOR_ALERT
             } else {
                 PREVIEW_ALERT
             }) {
                 Choice::Cancel => return Ok(()),
-                Choice::First if is_editor => return shell.export_and_close(),
-                Choice::First => {
-                    self.save(false)?;
-                }
+                Choice::First => return shell.export_and_close(window),
                 Choice::Second => {}
             }
         }
@@ -316,7 +302,7 @@ impl CurrentRecording {
 
 const PREVIEW_ALERT: Alert = Alert {
     title: "Save this recording before closing?",
-    message: "The recording isn't kept anywhere else. Saving puts an .mp4 in your save folder.",
+    message: "The recording isn't kept anywhere else. Saving puts it in your save folder.",
     first: "Save and close",
     second: Some("Discard"),
 };

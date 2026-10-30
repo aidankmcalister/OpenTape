@@ -1,84 +1,58 @@
-import {
-  useEffect,
-  useReducer,
-  useRef,
-  useState,
-  type SyntheticEvent,
-} from "react";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { useFinishedRecording } from "@/hooks/editor/useProject";
+import { useTimeMap } from "@/hooks/editor/usePlayback";
 import { usePointerHover } from "@/hooks/usePointerHover";
-import { useOneAtATime, useRustValue, useTauriEvent } from "@/hooks/useTauri";
-import { useVideoClock } from "@/hooks/useVideoClock";
+import { useOneAtATime, useTauriEvent } from "@/hooks/useTauri";
 import type { PreviewKey } from "@/lib/bindings";
-import {
-  IDLE_ACTIVITY,
-  nextActivity,
-  SHOWS_FOR_MS,
-} from "@/lib/preview/preview";
+import { frameShape } from "@/lib/editor/appearance";
+import { dockLayer } from "@/lib/preview/preview";
 
-export function useRecordingPreview() {
-  const video = useRef<HTMLVideoElement>(null);
-  const [videoPath, setVideoPath] = useState<string | null>(null);
-  const [durationMs, setDurationMs] = useState<number | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+export function useRecordingPreview(videoSrc: string) {
+  const recording = useFinishedRecording(videoSrc, 0, true);
+  const { playback, edits, exporting, isLoaded, isReady } = recording;
+  const video = playback.videoProps.ref;
+  useTimeMap(playback, edits.time);
   const [isHovered, setIsHovered] = useState(false);
-  const [{ activity, failure }, dispatch] = useReducer(
-    nextActivity,
-    IDLE_ACTIVITY,
-  );
+  const [isShaped, setIsShaped] = useState(false);
   const { hoveredName, setPointer } = usePointerHover();
   const oneAtATime = useOneAtATime();
-  const videoSrc = videoPath && convertFileSrc(videoPath);
-  const clock = useVideoClock(video, isPlaying, videoSrc);
+  const isBusy = exporting.state.stage === "exporting";
+  const shape =
+    isLoaded && playback.videoSize
+      ? frameShape(edits.project.appearance, playback.ratio)
+      : null;
 
   useEffect(() => {
-    const showsFor = SHOWS_FOR_MS[activity];
-    if (showsFor === undefined) return;
-    const timeout = setTimeout(() => dispatch({ type: "expire" }), showsFor);
-    return () => clearTimeout(timeout);
-  }, [activity]);
+    if (shape === null) return;
+    void invoke("shape_preview", { ratio: shape })
+      .catch(console.error)
+      .finally(() => setIsShaped(true));
+  }, [shape]);
 
   useEffect(() => {
+    if (!isReady) return;
     const followVisibility = () => {
       const element = video.current;
-      if (!element) return;
-      if (document.hidden) element.pause();
-      else element.play().catch(console.error);
+      if (document.hidden) element?.pause();
+      else element?.play().catch(console.error);
     };
+    followVisibility();
     document.addEventListener("visibilitychange", followVisibility);
     return () =>
       document.removeEventListener("visibilitychange", followVisibility);
-  }, []);
+  }, [isReady, video]);
 
-  function show(path: string | null) {
-    setDurationMs(null);
-    setIsPlaying(false);
-    dispatch({ type: "reset" });
-    setVideoPath(path);
-  }
-
-  async function track(job: "save" | "copy", command: string) {
-    dispatch({ type: "start", job });
-    try {
-      await invoke(command);
-      dispatch({ type: "succeed", job });
-    } catch (err) {
-      dispatch({ type: "fail", error: String(err) });
-    }
-  }
-
+  const whenIdle = (command: string) => () => {
+    if (!isBusy) oneAtATime(() => invoke(command)).catch(console.error);
+  };
   const actions = {
-    save: () => oneAtATime(() => track("save", "save_recording")),
-    copy: () => oneAtATime(() => track("copy", "copy_recording")),
-    edit: () => oneAtATime(() => invoke("edit_recording")).catch(console.error),
-  } satisfies Record<PreviewKey, () => Promise<unknown>>;
+    save: () =>
+      exporting.showSaved ? exporting.showSaved() : exporting.start?.("file"),
+    copy: () => exporting.start?.("clipboard"),
+    edit: whenIdle("edit_recording"),
+  } satisfies Record<PreviewKey, () => void>;
 
-  useRustValue(
-    "shown_recording",
-    "current-recording",
-    (recording) => show(recording?.videoPath ?? null),
-    "window",
-  );
   useTauriEvent(
     "preview-pointer",
     (pointer) => {
@@ -87,26 +61,15 @@ export function useRecordingPreview() {
     },
     "window",
   );
-  useTauriEvent("preview-key", (key) => void actions[key](), "window");
+  useTauriEvent("preview-key", (key) => actions[key](), "window");
 
   return {
-    videoSrc,
-    durationMs,
-    clock,
+    ...recording,
+    isShown: isShaped,
     isHovered,
     hoveredName,
-    activity,
-    failure,
-    videoProps: {
-      ref: video,
-      onLoadedMetadata: ({ currentTarget }: SyntheticEvent<HTMLVideoElement>) =>
-        setDurationMs(currentTarget.duration * 1000),
-      onPlay: () => setIsPlaying(true),
-      onPause: () => setIsPlaying(false),
-    },
+    layer: dockLayer(exporting.state),
     ...actions,
-    close: () =>
-      oneAtATime(() => invoke("close_recording")).catch(console.error),
-    showInFinder: () => invoke("show_saved_in_finder").catch(console.error),
+    close: whenIdle("close_recording"),
   };
 }

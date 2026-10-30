@@ -76,7 +76,7 @@ function LaneGutter({
 }) {
   const { kind, isCollapsed } = lane;
   const { label } = REGIONS[kind];
-  const Icon = isCollapsed ? ChevronRight : REGION_ICONS[kind];
+  const Icon = REGION_ICONS[kind];
   const valueAtPlayhead = useClockValue(clock, (seconds) => {
     const region = regionAt(regions, kind, seconds * 1000);
     return region ? blockValue(region) : "";
@@ -91,14 +91,15 @@ function LaneGutter({
     >
       <Icon className="size-4 shrink-0 text-hue-foreground" />
       <span className="truncate">{label}</span>
-      <span className="ml-auto truncate font-mono text-hue-foreground group-focus-within/lane:hidden group-hover/lane:hidden group-data-[solo=true]/lane:hidden">
+      <span className="ml-auto truncate font-mono text-hue-foreground group-has-focus-visible/lane:hidden group-hover/lane:hidden group-data-[solo=true]/lane:hidden">
         {isCollapsed ? count : valueAtPlayhead}
       </span>
-      <div className="ml-auto hidden items-center gap-0.5 group-focus-within/lane:flex group-hover/lane:flex group-data-[solo=true]/lane:flex">
+      <div className="ml-auto hidden items-center gap-0.5 group-has-focus-visible/lane:flex group-hover/lane:flex group-data-[solo=true]/lane:flex">
         <LaneToggle
-          label={`Solo ${label.toLowerCase()}`}
+          label={`Solo: preview only ${label}`}
           pressed={laneState.solo === kind}
           onPressedChange={() => laneState.toggleSolo(kind)}
+          isSmall={isCollapsed}
         >
           <Eye />
         </LaneToggle>
@@ -106,6 +107,7 @@ function LaneGutter({
           label={`${isCollapsed ? "Expand" : "Collapse"} ${label.toLowerCase()}`}
           pressed={false}
           onPressedChange={() => laneState.toggleCollapsed(kind)}
+          isSmall={isCollapsed}
         >
           {isCollapsed ? <ChevronRight /> : <ChevronDown />}
         </LaneToggle>
@@ -118,11 +120,13 @@ function LaneToggle({
   label,
   pressed,
   onPressedChange,
+  isSmall,
   children,
 }: {
   label: string;
   pressed: boolean;
   onPressedChange: () => void;
+  isSmall: boolean;
   children: ReactNode;
 }) {
   return (
@@ -134,6 +138,10 @@ function LaneToggle({
             aria-label={label}
             pressed={pressed}
             onPressedChange={onPressedChange}
+            className={cn(
+              "aria-pressed:bg-hue-fill aria-pressed:text-hue-foreground",
+              isSmall && "size-5 min-w-5",
+            )}
           />
         }
       >

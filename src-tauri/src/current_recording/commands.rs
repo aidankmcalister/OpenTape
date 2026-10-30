@@ -19,8 +19,8 @@ impl Shell for AppHandle {
         macos::ask(self, alert)
     }
 
-    fn export_and_close(&self) -> Result<()> {
-        PageEvent::ExportAndClose.send_to(self, editor::LABEL)?;
+    fn export_and_close(&self, window: Window) -> Result<()> {
+        PageEvent::ExportAndClose.send_to(self, label(window))?;
         Ok(())
     }
 
@@ -85,14 +85,9 @@ fn label(window: Window) -> &'static str {
 }
 
 #[tauri::command]
-pub(crate) async fn save_recording(app: AppHandle) -> CmdResult<String> {
-    let path = run_blocking(move || app.state::<CurrentRecording>().save(false)).await?;
-    Ok(path.display().to_string())
-}
-
-#[tauri::command]
 pub(crate) async fn export_recording(
     app: AppHandle,
+    window: tauri::WebviewWindow,
     layout: ExportLayout,
     options: ExportOptions,
 ) -> CmdResult<String> {
@@ -102,7 +97,7 @@ pub(crate) async fn export_recording(
         handle
             .state::<CurrentRecording>()
             .export(&layout, &options, |progress| {
-                let _ = PageEvent::ExportProgress(progress).send_to(&handle, editor::LABEL);
+                let _ = PageEvent::ExportProgress(progress).send_to(&handle, window.label());
             })
     })
     .await?;
@@ -110,21 +105,6 @@ pub(crate) async fn export_recording(
         macos::put_file_on_clipboard(&app, path.clone())?;
     }
     Ok(path.display().to_string())
-}
-
-#[tauri::command]
-pub(crate) async fn copy_recording(app: AppHandle) -> CmdResult {
-    let handle = app.clone();
-    let copy = run_blocking(move || handle.state::<CurrentRecording>().save(true)).await?;
-    macos::put_file_on_clipboard(&app, copy)?;
-    Ok(())
-}
-
-#[tauri::command]
-pub(crate) async fn show_saved_in_finder(current: State<'_, CurrentRecording>) -> CmdResult {
-    let saved_to = current.saved_to().context("the recording isn't saved")?;
-    run_blocking(move || reveal(&saved_to)).await?;
-    Ok(())
 }
 
 #[tauri::command]
@@ -166,13 +146,13 @@ pub(crate) async fn typing_spots(
     app: AppHandle,
     stretches: Vec<TypingStretch>,
 ) -> CmdResult<Vec<TypingSpot>> {
-    let (video, _) = app.state::<CurrentRecording>().video()?;
+    let (video, _) = app.state::<CurrentRecording>().video(None)?;
     Ok(run_blocking(move || crate::export::typing::typing_spots(&video, &stretches)).await?)
 }
 
 #[tauri::command]
 pub(crate) async fn sound_tracks(app: AppHandle) -> CmdResult<Vec<crate::export::SoundTrack>> {
-    let (video, _) = app.state::<CurrentRecording>().video()?;
+    let (video, _) = app.state::<CurrentRecording>().video(None)?;
     Ok(run_blocking(move || crate::export::sound_tracks(&video)).await?)
 }
 

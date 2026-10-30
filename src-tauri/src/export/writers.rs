@@ -17,7 +17,7 @@ use objc2_av_foundation::{
 use objc2_avf_audio::{AVFormatIDKey, AVNumberOfChannelsKey, AVSampleRateKey};
 use objc2_core_foundation::{CFDictionary, CFNumber, CFString, CFURL};
 use objc2_core_image::{CIContext, CIImage};
-use objc2_core_media::{CMFormatDescription, CMTime, kCMTimeZero};
+use objc2_core_media::{CMTime, kCMTimeZero};
 use objc2_foundation::{NSDictionary, NSNumber, NSString};
 use objc2_image_io::{
     CGImageDestination, kCGImagePropertyGIFDelayTime, kCGImagePropertyGIFDictionary,
@@ -55,8 +55,7 @@ pub(super) fn write_mp4(
     frames: &AVAssetReaderOutput,
     samples: Option<&AVAssetReaderAudioMixOutput>,
     output: &Path,
-    settings: Option<&NSDictionary<NSString, AnyObject>>,
-    hint: Option<&CMFormatDescription>,
+    settings: &NSDictionary<NSString, AnyObject>,
     progress_at: impl Fn(CMTime),
 ) -> Result<()> {
     let video_type = unsafe { AVMediaTypeVideo }.context("AVFoundation has no video type")?;
@@ -68,9 +67,7 @@ pub(super) fn write_mp4(
                 anyhow::anyhow!("could not start the file: {}", reason(Some(error)))
             })?;
     let input = unsafe {
-        AVAssetWriterInput::assetWriterInputWithMediaType_outputSettings_sourceFormatHint(
-            video_type, settings, hint,
-        )
+        AVAssetWriterInput::assetWriterInputWithMediaType_outputSettings(video_type, Some(settings))
     };
     unsafe {
         input.setExpectsMediaDataInRealTime(false);

@@ -6,9 +6,9 @@ use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2_av_foundation::{
     AVAsset, AVAssetReader, AVAssetReaderAudioMixOutput, AVAssetReaderStatus,
-    AVAssetReaderTrackOutput, AVAssetReaderVideoCompositionOutput, AVAssetTrack,
-    AVAsynchronousCIImageFilteringRequest, AVAudioTimePitchAlgorithmVarispeed, AVMediaTypeAudio,
-    AVMediaTypeVideo, AVMutableComposition, AVMutableVideoComposition, AVURLAsset,
+    AVAssetReaderVideoCompositionOutput, AVAssetTrack, AVAsynchronousCIImageFilteringRequest,
+    AVAudioTimePitchAlgorithmVarispeed, AVMediaTypeAudio, AVMediaTypeVideo, AVMutableComposition,
+    AVMutableVideoComposition, AVURLAsset,
 };
 use objc2_core_foundation::{CGAffineTransform, CGPoint, CGRect, CGSize};
 use objc2_core_media::{
@@ -131,6 +131,7 @@ pub(crate) struct ExportOptions {
     frame_rate: u32,
     bits_per_pixel: f64,
     pub(crate) to_clipboard: bool,
+    pub(crate) name: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, TS)]
@@ -286,32 +287,9 @@ pub(crate) fn export(
     read_all(&reader, || match options.format {
         ExportFormat::Mp4 => {
             let settings = compression(layout.width, layout.height, options.bits_per_pixel)?;
-            write_mp4(
-                &frames,
-                sound.as_deref(),
-                output,
-                Some(&settings),
-                None,
-                progress_at,
-            )
+            write_mp4(&frames, sound.as_deref(), output, &settings, progress_at)
         }
         ExportFormat::Gif => write_gif(&frames, output, options.frame_rate, duration, progress_at),
-    })
-}
-
-pub(crate) fn to_mp4(video: &Path, output: &Path) -> Result<()> {
-    let asset = unsafe { AVURLAsset::URLAssetWithURL_options(&file_url(video), None) };
-    let (track, reader) = open(&asset)?;
-    let frames = unsafe {
-        AVAssetReaderTrackOutput::assetReaderTrackOutputWithTrack_outputSettings(&track, None)
-    };
-    unsafe { reader.addOutput(&frames) };
-    let sound = mixed_sound(&asset, &reader)?;
-    let format = unsafe { track.formatDescriptions() }.firstObject();
-    let hint =
-        format.map(|format| unsafe { &*Retained::as_ptr(&format).cast::<CMFormatDescription>() });
-    read_all(&reader, || {
-        write_mp4(&frames, sound.as_deref(), output, None, hint, |_| {})
     })
 }
 

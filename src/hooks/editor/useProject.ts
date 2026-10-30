@@ -9,6 +9,9 @@ import {
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useInvokeOnMount, useRustValue } from "@/hooks/useTauri";
+import { useAppSettings } from "@/hooks/useAppSettings";
+import { useExport } from "./useExport";
+import { usePlayback } from "./usePlayback";
 import type {
   CursorImage,
   CursorLog,
@@ -20,6 +23,7 @@ import {
   type CursorTrack,
   NO_CURSOR,
   readCursor,
+  ringEvents,
   typingStretches,
   visibleBox,
 } from "@/lib/editor/cursor";
@@ -179,6 +183,7 @@ export function useProject(
         (project) => changeProject(project, "appearance", change),
         isPreview,
       ),
+    rename: (title: string) => change((project) => ({ ...project, title })),
     setSound: (change: Partial<SoundSettings>, isPreview = false) =>
       apply((project) => changeProject(project, "sound", change), isPreview),
     setRegion: (
@@ -246,6 +251,36 @@ export function useSavedProject(edits: Edits, fresh: Project | null) {
       .then(() => invoke("save_project", { json }))
       .catch(console.error);
   }, [json]);
+  return isLoaded;
+}
+
+export function useFinishedRecording(
+  videoSrc: string,
+  trackWidthPx: number,
+  loops: boolean,
+) {
+  const playback = usePlayback(videoSrc, loops);
+  const read = useCursor();
+  const cursor = read ?? NO_CURSOR;
+  const edits = useProject(
+    playback.clock,
+    playback.durationMs,
+    trackWidthPx,
+    cursor,
+  );
+  const app = useAppSettings();
+  const isLoaded = useSavedProject(edits, app.newProject);
+  const isReady = isLoaded && read !== null && playback.videoSize !== null;
+  const rings = ringEvents(cursor.clicks, edits.project.appearance.cursor);
+  const exporting = useExport(
+    edits.project,
+    playback,
+    rings,
+    cursor,
+    app,
+    isReady,
+  );
+  return { playback, cursor, edits, app, rings, exporting, isLoaded, isReady };
 }
 
 export function useOpenedRecording() {
@@ -288,11 +323,11 @@ export function useBackgroundImage(onAdded: (name: string) => void) {
   return { isOver, error, browse: () => add(null) };
 }
 
-export function useCursor(): CursorTrack {
-  const [track, setTrack] = useState(NO_CURSOR);
+export function useCursor(): CursorTrack | null {
+  const [track, setTrack] = useState<CursorTrack | null>(null);
   const [images, setImages] = useState<CursorImage[]>([]);
   useInvokeOnMount<CursorLog | null>("cursor_log", (log) => {
-    if (!log) return;
+    if (!log) return setTrack(NO_CURSOR);
     const read = readCursor(log.meta, log.events);
     const stretches = typingStretches(read.keys).map(({ startMs, endMs }) => ({
       start: startMs / 1000,
@@ -313,7 +348,7 @@ export function useCursor(): CursorTrack {
     );
   });
   useInvokeOnMount<CursorImage[]>("cursor_images", setImages);
-  return useMemo(() => ({ ...track, images }), [track, images]);
+  return useMemo(() => track && { ...track, images }, [track, images]);
 }
 
 export function useSoundTracks() {

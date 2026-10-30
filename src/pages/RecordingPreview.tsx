@@ -15,48 +15,79 @@ import { formatClock, type Clock } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { loopProgress } from "@/lib/preview/preview";
 import { useRecordingPreview } from "@/hooks/preview/useRecordingPreview";
+import { useOpenedRecording } from "@/hooks/editor/useProject";
+import { Frame } from "@/components/editor/Stage";
 
 export default function RecordingPreview() {
-  const preview = useRecordingPreview();
-  if (!preview.videoSrc) return null;
-  const { durationMs, isHovered, activity, hoveredName } = preview;
-  const isDockShown = isHovered || activity !== "idle";
+  const recording = useOpenedRecording();
+  return recording ? (
+    <Preview
+      key={recording.videoSrc}
+      videoSrc={recording.videoSrc}
+      fileSrc={recording.fileSrc}
+    />
+  ) : null;
+}
+
+function Preview({
+  videoSrc,
+  fileSrc,
+}: {
+  videoSrc: string;
+  fileSrc: (name: string) => string;
+}) {
+  const preview = useRecordingPreview(videoSrc);
+  const { playback, edits, exporting, isHovered, layer, hoveredName } = preview;
+  const { state } = exporting;
+  const progress = state.stage === "exporting" ? state.progress : 1;
+  const reason = state.stage === "failed" ? state.reason : undefined;
+  const isDockShown = isHovered || layer !== "actions";
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden rounded-xl border border-glass-border bg-card">
-      <video
-        src={preview.videoSrc}
-        autoPlay
+    <div
+      className={cn(
+        "relative h-screen w-screen overflow-hidden rounded-xl border border-glass-border bg-card",
+        !preview.isShown && "invisible",
+      )}
+    >
+      <Frame
+        fileSrc={fileSrc}
+        appearance={edits.project.appearance}
+        ratio={playback.ratio}
+        clock={playback.clock}
+        regions={edits.project.regions}
+        clips={edits.project.clips}
+        rings={preview.rings}
+        cursor={preview.cursor}
+        durationMs={playback.durationMs}
+        margin={0}
+        {...playback.videoProps}
         muted
-        loop
-        playsInline
-        className="size-full object-cover"
-        {...preview.videoProps}
       />
       <div className="absolute inset-x-2 top-2 flex items-center justify-between">
-        {durationMs === null ? (
+        {playback.durationMs === 0 ? (
           <span />
         ) : (
-          <Badge variant="overlay">{formatClock(durationMs)}</Badge>
+          <Badge variant="overlay">{formatClock(playback.durationMs)}</Badge>
         )}
         <Button
           variant="overlay"
           size="icon-round"
           aria-label="Close"
-          onClick={() => void preview.close()}
+          onClick={preview.close}
         >
           <X />
         </Button>
       </div>
-      <LoopProgress clock={preview.clock} durationMs={durationMs} />
+      <LoopProgress clock={playback.clock} durationMs={playback.durationMs} />
       <div
         className={cn(
-          "absolute inset-x-0 bottom-5 flex justify-center",
+          "absolute inset-x-0 bottom-5 flex justify-center max-[240px]:[&_*]:text-caption",
           !isDockShown && "pointer-events-none",
         )}
       >
         <MorphPill
-          active={activity === "idle" ? "actions" : activity}
+          active={layer}
           className={cn(
             "backdrop-blur-xl backdrop-saturate-150",
             !isDockShown && "opacity-0",
@@ -71,7 +102,7 @@ export default function RecordingPreview() {
                   shortcut="⌘S"
                   variant="ghost"
                   hoveredName={hoveredName}
-                  onClick={() => void preview.save()}
+                  onClick={preview.save}
                 >
                   <Download />
                 </Action>
@@ -81,7 +112,7 @@ export default function RecordingPreview() {
                   shortcut="⌘C"
                   variant="ghost"
                   hoveredName={hoveredName}
-                  onClick={() => void preview.copy()}
+                  onClick={preview.copy}
                 >
                   <Copy />
                 </Action>
@@ -92,14 +123,14 @@ export default function RecordingPreview() {
                   shortcut="E"
                   variant="default"
                   hoveredName={hoveredName}
-                  onClick={() => void preview.edit()}
+                  onClick={preview.edit}
                 >
                   <Pencil />
                 </Action>
               </>
             ),
-            saving: <PillMessage icon={<Spinner />}>Saving…</PillMessage>,
-            copying: <PillMessage icon={<Spinner />}>Copying…</PillMessage>,
+            saving: <Progress label="Saving…" progress={progress} />,
+            copying: <Progress label="Copying…" progress={progress} />,
             copied: (
               <PillMessage icon={<Check className="text-highlight" />}>
                 Copied to clipboard
@@ -113,7 +144,7 @@ export default function RecordingPreview() {
                 <Button
                   variant="secondary"
                   size="pill-sm"
-                  onClick={() => void preview.showInFinder()}
+                  onClick={exporting.showInFinder}
                 >
                   Show in Finder
                 </Button>
@@ -121,8 +152,11 @@ export default function RecordingPreview() {
             ),
             failed: (
               <PillMessage icon={<CircleAlert className="text-destructive" />}>
-                <span className="max-w-64 truncate" title={preview.failure}>
-                  {preview.failure}
+                <span
+                  className="max-w-[min(16rem,calc(100vw-5rem))] truncate"
+                  title={reason}
+                >
+                  {reason}
                 </span>
               </PillMessage>
             ),
@@ -133,12 +167,23 @@ export default function RecordingPreview() {
   );
 }
 
+function Progress({ label, progress }: { label: string; progress: number }) {
+  return (
+    <div className="flex w-41.5 items-center justify-between pr-3">
+      <PillMessage icon={<Spinner />}>{label}</PillMessage>
+      <span className="text-ui font-medium tabular-nums">
+        {Math.round(progress * 100)}%
+      </span>
+    </div>
+  );
+}
+
 function LoopProgress({
   clock,
   durationMs,
 }: {
   clock: Clock;
-  durationMs: number | null;
+  durationMs: number;
 }) {
   const progress = useClockValue(clock, (seconds) =>
     loopProgress(seconds, durationMs),

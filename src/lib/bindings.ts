@@ -34,7 +34,7 @@ export type ExportGradient = { angle: number, stops: Array<ExportStop>, };
 
 export type ExportLayout = { width: number, height: number, recording: PixelRect, video: PixelRect, radius: number, shadow: ExportShadow, border: ExportBorder | null, background: ExportGradient, backgroundImage: string | null, zoom: Array<ExportZoom>, zoomRate: number, speed: Array<ExportSpeed>, cuts: Array<ExportCut>, blurs: Array<ExportBlur>, rings: Array<ExportRing>, cursor: ExportCursor | null, muted: boolean, };
 
-export type ExportOptions = { format: ExportFormat, frameRate: number, bitsPerPixel: number, toClipboard: boolean, };
+export type ExportOptions = { format: ExportFormat, frameRate: number, bitsPerPixel: number, toClipboard: boolean, name: string | null, };
 
 export type ExportRing = { t: number, x: number, y: number, color: string, size: number, style: RingStyle, };
 

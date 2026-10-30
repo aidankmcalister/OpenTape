@@ -71,6 +71,7 @@ export type CursorTrack = {
   kinds: Moment<{ kind: string }>[];
   keys: number[];
   typed: CursorMove[];
+  pauses: number[];
   pointShare: number;
   aspect: number;
   images: CursorImage[];
@@ -83,6 +84,7 @@ export const NO_CURSOR: CursorTrack = {
   kinds: [],
   keys: [],
   typed: [],
+  pauses: [],
   pointShare: 0,
   aspect: 1,
   images: [],
@@ -205,6 +207,7 @@ export function readCursor(meta: string, events: string): CursorTrack {
       .map(({ ms, kind }) => ({ ms, kind })),
     keys: logged.filter(({ type }) => type === "key").map(({ ms }) => ms),
     typed: [],
+    pauses: pauses.map(([start]) => videoMs(start)),
     pointShare: 1 / screen_rect.width,
     aspect: screen_rect.height / screen_rect.width,
     images: [],
@@ -395,6 +398,10 @@ export function cursorPath(
       index > 0 &&
       (move.x !== moves[index - 1].x || move.y !== moves[index - 1].y),
   );
+  const wakes = movedAt.filter(
+    (move, index) =>
+      index === 0 || move.ms - movedAt[index - 1].ms >= IDLE_MS + FADE_MS,
+  );
   const blend = (from: Pose, to: Pose, share: number) => ({
     x: from.x + (to.x - from.x) * share,
     y: from.y + (to.y - from.y) * share,
@@ -406,9 +413,13 @@ export function cursorPath(
     return blend(from, to, index - Math.floor(index));
   };
   return (ms) => {
-    const lastMovedMs = movedAt[firstAfter(movedAt, ms) - 1]?.ms ?? 0;
+    const lastMovedMs = movedAt[firstAfter(movedAt, ms) - 1]?.ms ?? -Infinity;
+    const wokeMs = wakes[firstAfter(wakes, ms) - 1]?.ms ?? Infinity;
     const alpha = settings.hidesWhenStill
-      ? clamp(1 - (ms - lastMovedMs - IDLE_MS) / FADE_MS, 0, 1)
+      ? Math.min(
+          clamp((ms - wokeMs) / FADE_MS, 0, 1),
+          clamp(1 - (ms - lastMovedMs - IDLE_MS) / FADE_MS, 0, 1),
+        )
       : 1;
     const kind = kinds[firstAfter(kinds, ms) - 1]?.kind ?? "arrow";
     const scale = isStyled ? 1 - PRESS_DIP * pressAt(track.presses, ms) : 1;
@@ -563,12 +574,17 @@ export type RingEvent = {
 const ZOOM_GROUP_MS = 3000;
 const ZOOM_LEAD_MS = 600;
 const ZOOM_HOLD_MS = 1500;
+const STOP_CLICK_MS = 1000;
 const TYPING_GAP_MS = 1500;
 const TYPING_MIN_MS = 3000;
+const TYPING_LEAD_MS = 300;
 const MIN_PAN_SHARE = 0.08;
 const STRAY_SHARE = 0.2;
 
-type SuggestionTrack = Pick<CursorTrack, "clicks" | "keys" | "moves" | "typed">;
+type SuggestionTrack = Pick<
+  CursorTrack,
+  "clicks" | "keys" | "moves" | "typed" | "pauses"
+>;
 
 export function withSuggestions(
   track: SuggestionTrack,
@@ -641,11 +657,16 @@ export function steadySpots(spots: CursorMove[]): CursorMove[] {
 }
 
 export function suggestedZooms(
-  { clicks, keys, moves, typed }: SuggestionTrack,
+  { clicks, keys, moves, typed, pauses }: SuggestionTrack,
   regions: Region[],
   durationMs: number,
 ): Region[] {
-  const lefts = clicks.filter(({ button }) => button === "left");
+  const lefts = clicks.filter(
+    ({ button, ms }) =>
+      button === "left" &&
+      ms <= durationMs - STOP_CLICK_MS &&
+      !pauses.some((pauseMs) => ms > pauseMs - STOP_CLICK_MS && ms <= pauseMs),
+  );
   const typingAt = (ms: number) =>
     lefts.filter((click) => click.ms <= ms).pop() ?? positionAt(moves, ms);
   const moments = [
@@ -657,7 +678,12 @@ export function suggestedZooms(
         ),
       );
       return [
-        { ...stretch, x: first.x, y: first.y },
+        {
+          startMs: stretch.startMs - TYPING_LEAD_MS,
+          endMs: stretch.endMs,
+          x: first.x,
+          y: first.y,
+        },
         ...rest.map(({ ms, x, y }) => ({ startMs: ms, endMs: ms, x, y })),
       ];
     }),

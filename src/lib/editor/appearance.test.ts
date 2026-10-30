@@ -56,6 +56,16 @@ describe("appearance", () => {
     expect(recording.height).toBeLessThan(frame.height / 2);
   });
 
+  test("frameLayout with no margin fills a canvas of the frame's shape, as the preview does", () => {
+    const { frame } = frameLayout(
+      DEFAULT_APPEARANCE,
+      { width: 360, height: 202.5 },
+      16 / 9,
+      0,
+    );
+    expect(frame).toEqual({ width: 360, height: 202.5 });
+  });
+
   test("frameLayout collapses to nothing on a canvas smaller than its margin", () => {
     const { frame, recording } = frameLayout(
       DEFAULT_APPEARANCE,

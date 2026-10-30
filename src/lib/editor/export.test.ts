@@ -82,12 +82,16 @@ describe("export", () => {
 
   test("exportOptions turns the settings into what Rust needs", () => {
     expect(
-      exportOptions({ ...DEFAULT_EXPORT, format: "gif", to: "clipboard" }),
+      exportOptions(
+        { ...DEFAULT_EXPORT, format: "gif", to: "clipboard" },
+        "Launch demo",
+      ),
     ).toEqual({
       format: "gif",
       frameRate: 60,
       bitsPerPixel: 8,
       toClipboard: true,
+      name: "Launch demo",
     });
   });
 

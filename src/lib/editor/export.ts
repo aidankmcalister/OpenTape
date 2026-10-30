@@ -155,6 +155,12 @@ export type ExportSettings = {
   to: "file" | "clipboard";
 };
 
+export type ExportState =
+  | { stage: "idle" }
+  | { stage: "exporting"; progress: number; toClipboard: boolean }
+  | { stage: "done"; path: string; toClipboard: boolean }
+  | { stage: "failed"; reason: string };
+
 export const DEFAULT_EXPORT: ExportSettings = {
   format: "mp4",
   frameRate: 60,
@@ -178,8 +184,12 @@ export function readExport(saved: unknown): ExportSettings {
   };
 }
 
-export function exportOptions(settings: ExportSettings): ExportOptions {
+export function exportOptions(
+  settings: ExportSettings,
+  name: string | null,
+): ExportOptions {
   return {
+    name,
     format: settings.format,
     frameRate: settings.frameRate,
     bitsPerPixel: QUALITIES[settings.quality].bitsPerPixel,

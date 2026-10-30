@@ -1,5 +1,6 @@
 import { type ComponentProps, type ReactNode, useMemo } from "react";
-import { Move } from "lucide-react";
+import { Move, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useElementSize } from "@/hooks/useElementSize";
 import { useClockValue } from "@/hooks/useVideoClock";
 import {
@@ -40,6 +41,7 @@ import {
   regionAt,
   regionsAt,
   type Region,
+  type RegionKind,
 } from "@/lib/editor/regions";
 import { type Clip, keptClips } from "@/lib/editor/clips";
 import type { Clock } from "@/lib/time";
@@ -49,6 +51,48 @@ import { followPointer } from "@/hooks/usePointerHover";
 import { cn } from "@/lib/utils";
 
 export default function Stage({
+  solo,
+  onSolo,
+  ...props
+}: FrameProps & {
+  solo: RegionKind | null;
+  onSolo: (kind: RegionKind) => void;
+}) {
+  return (
+    <Island className="relative min-h-0 flex-1 bg-canvas dot-grid">
+      <Frame {...props} />
+      <InEffect clock={props.clock} regions={props.regions} />
+      {solo ? (
+        <Button
+          variant="overlay"
+          size="sm"
+          className="absolute top-3 left-3"
+          aria-label="Turn off solo"
+          onClick={() => onSolo(solo)}
+        >
+          Solo: {REGIONS[solo].label}
+          <X />
+        </Button>
+      ) : null}
+    </Island>
+  );
+}
+
+type FrameProps = ComponentProps<"video"> & {
+  fileSrc: (name: string) => string;
+  appearance: Appearance;
+  ratio: number;
+  clock: Clock;
+  regions: Region[];
+  clips: Clip[];
+  rings: RingEvent[];
+  cursor: CursorTrack;
+  durationMs: number;
+  editing?: Editing | null;
+  margin?: number;
+};
+
+export function Frame({
   fileSrc,
   appearance,
   ratio,
@@ -59,22 +103,12 @@ export default function Stage({
   cursor,
   durationMs,
   editing,
+  margin,
   ...props
-}: ComponentProps<"video"> & {
-  fileSrc: (name: string) => string;
-  appearance: Appearance;
-  ratio: number;
-  clock: Clock;
-  regions: Region[];
-  clips: Clip[];
-  rings: RingEvent[];
-  cursor: CursorTrack;
-  durationMs: number;
-  editing: Editing | null;
-}) {
+}: FrameProps) {
   const { ref, size } = useElementSize<HTMLDivElement>();
   const { frame, recording, picture, radius, shadow, border, video, scale } =
-    frameLayout(appearance, size, ratio);
+    frameLayout(appearance, size, ratio, margin);
   const isFocusing = editing?.region.kind === "zoom";
   const { x: cropX, y: cropY } = frameCrop(appearance, ratio);
   const kept = keptClips(clips, durationMs);
@@ -87,75 +121,72 @@ export default function Stage({
   }, [isFocusing, regions, cursor, cropX, cropY, durationMs]);
 
   return (
-    <Island className="relative min-h-0 flex-1 bg-canvas dot-grid">
-      <div ref={ref} className="grid size-full place-items-center">
-        <div
-          className="grid place-items-center rounded-lg shadow-stage"
-          style={{ ...frame, background: fillCss(appearance.fill, fileSrc) }}
-        >
-          <div className="relative" style={recording}>
-            <div
-              className="relative size-full overflow-hidden"
-              style={{
-                borderRadius: radius,
-                boxShadow: `0 ${shadow.offsetY}px ${shadow.blur}px ${shadow.color}`,
-              }}
-            >
-              <Zoom clock={clock} zoomAt={zoomAt}>
-                <video
-                  className="absolute max-w-none object-cover"
-                  style={rectStyle(video)}
-                  {...props}
-                />
-                <Blurs
-                  clock={clock}
-                  regions={regions}
-                  video={video}
-                  scale={scale}
-                  editing={editing?.region.kind === "blur" ? editing : null}
-                />
-                <ClickRings
-                  clock={clock}
-                  rings={rings}
-                  regions={regions}
-                  video={video}
-                  scale={scale}
-                />
-              </Zoom>
-              {editing?.region.kind === "zoom" &&
-              !followsCursor(editing.region) ? (
-                <div className="absolute" style={rectStyle(picture)}>
-                  <FocusBox {...editing} crop={{ x: cropX, y: cropY }} />
-                </div>
-              ) : null}
-              {border.color ? (
-                <div
-                  className="pointer-events-none absolute inset-0"
-                  style={{
-                    borderRadius: radius,
-                    boxShadow: `inset 0 0 0 ${border.width}px ${border.color}`,
-                  }}
-                />
-              ) : null}
-            </div>
-            <div className="pointer-events-none absolute inset-0">
-              <Cursor
-                clock={clock}
-                track={cursor}
-                settings={appearance.cursor}
-                durationMs={durationMs}
-                startMs={kept[0].startMs}
-                endMs={kept[kept.length - 1].endMs}
-                video={video}
-                size={recording}
-                zoomAt={zoomAt}
+    <div ref={ref} className="grid size-full place-items-center">
+      <div
+        className="grid place-items-center rounded-lg shadow-stage"
+        style={{ ...frame, background: fillCss(appearance.fill, fileSrc) }}
+      >
+        <div className="relative" style={recording}>
+          <div
+            className="relative size-full overflow-hidden"
+            style={{
+              borderRadius: radius,
+              boxShadow: `0 ${shadow.offsetY}px ${shadow.blur}px ${shadow.color}`,
+            }}
+          >
+            <Zoom clock={clock} zoomAt={zoomAt}>
+              <video
+                className="absolute max-w-none object-cover"
+                style={rectStyle(video)}
+                {...props}
               />
-            </div>
+              <Blurs
+                clock={clock}
+                regions={regions}
+                video={video}
+                scale={scale}
+                editing={editing?.region.kind === "blur" ? editing : null}
+              />
+              <ClickRings
+                clock={clock}
+                rings={rings}
+                regions={regions}
+                video={video}
+                scale={scale}
+              />
+            </Zoom>
+            {editing?.region.kind === "zoom" &&
+            !followsCursor(editing.region) ? (
+              <div className="absolute" style={rectStyle(picture)}>
+                <FocusBox {...editing} crop={{ x: cropX, y: cropY }} />
+              </div>
+            ) : null}
+            {border.color ? (
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{
+                  borderRadius: radius,
+                  boxShadow: `inset 0 0 0 ${border.width}px ${border.color}`,
+                }}
+              />
+            ) : null}
+          </div>
+          <div className="pointer-events-none absolute inset-0">
+            <Cursor
+              clock={clock}
+              track={cursor}
+              settings={appearance.cursor}
+              durationMs={durationMs}
+              startMs={kept[0].startMs}
+              endMs={kept[kept.length - 1].endMs}
+              video={video}
+              size={recording}
+              zoomAt={zoomAt}
+            />
           </div>
         </div>
       </div>
-      <InEffect clock={clock} regions={regions} />
-    </Island>
+    </div>
   );
 }
 

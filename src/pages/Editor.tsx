@@ -4,11 +4,7 @@ import { Button } from "@/components/ui/button";
 import Island from "@/components/editor/Island";
 import Stage from "@/components/editor/Stage";
 import Transport from "@/components/editor/timeline/Transport";
-import {
-  usePlayback,
-  useStageSound,
-  useTimeMap,
-} from "@/hooks/editor/usePlayback";
+import { useStageSound, useTimeMap } from "@/hooks/editor/usePlayback";
 import { useKeymap } from "@/hooks/editor/useKeymap";
 import Timeline from "@/components/editor/timeline/Timeline";
 import ExportButton from "@/components/editor/header/ExportButton";
@@ -18,20 +14,15 @@ import Sidebar, {
   type SidebarPanel,
 } from "@/components/editor/sidebar/Sidebar";
 import CommandPalette from "@/components/editor/CommandPalette";
-import { useExport } from "@/hooks/editor/useExport";
-import { useAppSettings } from "@/hooks/useAppSettings";
 import { useElementSize } from "@/hooks/useElementSize";
 import {
-  useCursor,
+  useFinishedRecording,
   useLanes,
   useOpenedRecording,
-  useProject,
-  useSavedProject,
   useSoundTracks,
 } from "@/hooks/editor/useProject";
 import { frameCrop } from "@/lib/editor/appearance";
 import { timeMap } from "@/lib/editor/clips";
-import { ringEvents } from "@/lib/editor/cursor";
 import ModifierEditor from "@/components/editor/timeline/ModifierEditor";
 import { laneKinds, regionKindForKey } from "@/lib/editor/regions";
 import type { EditorAction } from "@/lib/editor/keymap";
@@ -63,19 +54,11 @@ function Workspace({
   videoSrc: string;
   fileSrc: (name: string) => string;
 }) {
-  const playback = usePlayback(videoSrc);
   const { ref: trackRef, size: track } = useElementSize<HTMLDivElement>();
-  const cursor = useCursor();
+  const { playback, cursor, edits, app, rings, exporting } =
+    useFinishedRecording(videoSrc, track.width, false);
   const soundTracks = useSoundTracks();
   const hasSound = soundTracks === null || soundTracks.length > 0;
-  const edits = useProject(
-    playback.clock,
-    playback.durationMs,
-    track.width,
-    cursor,
-  );
-  const app = useAppSettings();
-  useSavedProject(edits, app.newProject);
   const lanes = useLanes(laneKinds(edits.shown));
   const editing =
     edits.selectedIds.length === 1
@@ -90,8 +73,6 @@ function Workspace({
     : edits.time;
   const moves = useTimeMap(playback, time);
   useStageSound(playback, edits.project.sound);
-  const rings = ringEvents(cursor.clicks, appearance.cursor);
-  const exporting = useExport(edits.project, playback, rings, cursor, app);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [panel, setPanel] = useState<SidebarPanel>("background");
   const [dialog, setDialog] = useState<EditorDialog | null>(null);
@@ -136,7 +117,11 @@ function Workspace({
   });
   return (
     <>
-      <Header name={name}>
+      <Header
+        name={
+          <Title name={edits.project.title ?? name} onRename={edits.rename} />
+        }
+      >
         <div className="flex items-center gap-1">
           <UpdateChip />
           <Button
@@ -194,6 +179,8 @@ function Workspace({
                   }
                 : null
             }
+            solo={lanes.solo}
+            onSolo={lanes.toggleSolo}
             {...playback.videoProps}
           />
           <Island className="shrink-0">
@@ -237,13 +224,7 @@ function Workspace({
   );
 }
 
-function Header({
-  name,
-  children,
-}: {
-  name: string | null;
-  children?: ReactNode;
-}) {
+function Header({ name, children }: { name: ReactNode; children?: ReactNode }) {
   return (
     <header
       data-tauri-drag-region
@@ -252,5 +233,39 @@ function Header({
       {name}
       {children}
     </header>
+  );
+}
+
+function Title({
+  name,
+  onRename,
+}: {
+  name: string;
+  onRename: (name: string) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <label className="-ml-1.5 inline-grid h-6 cursor-text items-center rounded-sm px-1.5 transition-colors hover:bg-accent focus-within:bg-background focus-within:text-foreground focus-within:ring-1 focus-within:ring-primary">
+      <span className="invisible col-start-1 row-start-1 whitespace-pre">
+        {(draft ?? name) || "\u00a0"}
+      </span>
+      <input
+        aria-label="Recording name"
+        value={draft ?? name}
+        className="col-start-1 row-start-1 w-full min-w-0 bg-transparent outline-none"
+        onFocus={(event) => event.currentTarget.select()}
+        onChange={(event) => setDraft(event.currentTarget.value)}
+        onBlur={(event) => {
+          const next = event.currentTarget.value.trim();
+          if (next && next !== name) onRename(next);
+          setDraft(null);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") event.currentTarget.value = name;
+          if (event.key === "Enter" || event.key === "Escape")
+            event.currentTarget.blur();
+        }}
+      />
+    </label>
   );
 }

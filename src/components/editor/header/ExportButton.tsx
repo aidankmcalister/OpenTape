@@ -39,7 +39,7 @@ export default function ExportButton({ exporting }: { exporting: Exporting }) {
               variant="primary"
               size="pill-sm"
               disabled={!onExport}
-              onClick={onExport ?? undefined}
+              onClick={() => onExport?.()}
             >
               Export
               <Kbd>⌘E</Kbd>
@@ -60,7 +60,7 @@ export default function ExportButton({ exporting }: { exporting: Exporting }) {
           </div>
         ),
         done:
-          state.stage === "done" && state.copied ? (
+          state.stage === "done" && state.toClipboard ? (
             <PillMessage icon={<Check />}>Copied to clipboard</PillMessage>
           ) : (
             <>

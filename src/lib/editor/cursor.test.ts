@@ -169,6 +169,40 @@ test("the cursor fades out once still for two seconds, and can be turned off", (
   ).toBeNull();
 });
 
+test("with Hide when still, a cursor stays hidden until it moves, then fades in", () => {
+  const hides = { ...STYLED, hidesWhenStill: true };
+  const spotAt = cursorPath(TRACK, hides, DURATION);
+  expect(spotAt(0)?.alpha).toBe(0);
+  expect(spotAt(900)?.alpha).toBe(0);
+  expect(spotAt(1000)?.alpha).toBe(0);
+  expect(spotAt(1150)?.alpha).toBeCloseTo(0.5);
+  expect(spotAt(1300)?.alpha).toBe(1);
+  const wakes = cursorPath(
+    {
+      ...TRACK,
+      moves: [
+        { ms: 0, x: 0.1, y: 0.1 },
+        { ms: 100, x: 0.2, y: 0.2 },
+        { ms: 5000, x: 0.2, y: 0.2 },
+        { ms: 5100, x: 0.3, y: 0.3 },
+      ],
+    },
+    hides,
+    DURATION,
+  );
+  expect(wakes(4000)?.alpha).toBe(0);
+  expect(wakes(5100)?.alpha).toBe(0);
+  expect(wakes(5250)?.alpha).toBeCloseTo(0.5);
+  expect(wakes(5400)?.alpha).toBe(1);
+  const never = cursorPath(
+    { ...TRACK, moves: [{ ms: 0, x: 0.5, y: 0.5 }] },
+    hides,
+    DURATION,
+  );
+  expect(never(0)?.alpha).toBe(0);
+  expect(never(5000)?.alpha).toBe(0);
+});
+
 test("a shake, out and back within a moment, is removed", () => {
   const shaky = readCursor(
     META,
@@ -378,7 +412,7 @@ test("each style draws its own arrow, hand and text beam, and macOS keeps the re
   );
 });
 
-test("suggestedZooms puts one zoom on each burst of left clicks, aimed at the first and panning to the rest, around existing zooms", () => {
+test("suggestedZooms puts one zoom on each burst of left clicks, aimed at the first and panning to the rest, around existing zooms, and skips the click that stops the recording", () => {
   const click = (ms: number, x: number, button: "left" | "right" = "left") => ({
     ms,
     x,
@@ -390,6 +424,7 @@ test("suggestedZooms puts one zoom on each burst of left clicks, aimed at the fi
     click(2500, 0.3),
     click(4000, 0.1, "right"),
     click(9000, 0.5),
+    click(9600, 0.9),
     click(20_000, 0.2),
   ];
   const existing = {
@@ -400,7 +435,7 @@ test("suggestedZooms puts one zoom on each burst of left clicks, aimed at the fi
     amount: 2,
   };
   const zooms = suggestedZooms(
-    { clicks, keys: [], moves: [], typed: [] },
+    { clicks, keys: [], moves: [], typed: [], pauses: [] },
     [existing],
     10_000,
   ).slice(1);
@@ -416,11 +451,29 @@ test("suggestedZooms puts one zoom on each burst of left clicks, aimed at the fi
   expect(zooms[1]).toMatchObject({ center: { x: 0.5, y: 0.5 }, path: [] });
   expect(
     suggestedZooms(
-      { clicks: [], keys: [], moves: [], typed: [] },
+      { clicks: [], keys: [], moves: [], typed: [], pauses: [] },
       [existing],
       10_000,
     ),
   ).toEqual([existing]);
+});
+
+test("suggestedZooms skips the record bar's Pause click before a pause and its Resume click during it, but not clicks after", () => {
+  const track = readCursor(
+    META,
+    [
+      '{"type":"down","t":101,"x":500,"y":540,"button":"left"}',
+      '{"type":"down","t":102.7,"x":1900,"y":60,"button":"left"}',
+      '{"type":"down","t":104.9,"x":1900,"y":60,"button":"left"}',
+      '{"type":"down","t":109,"x":500,"y":540,"button":"left"}',
+    ].join("\n"),
+  );
+  expect(track.pauses).toEqual([3000]);
+  const zooms = suggestedZooms(track, [], 10_000);
+  expect(zooms.map(({ startMs, endMs }) => [startMs, endMs])).toEqual([
+    [400, 2500],
+    [6400, 8500],
+  ]);
 });
 
 test("suggestedSpeeds speeds up each stretch of typing that lasts three seconds, skipping short bursts and existing speeds", () => {
@@ -458,16 +511,16 @@ test("typing gets an auto zoom aimed at the last click before it, joining a zoom
   const keys = Array.from({ length: 9 }, (_, i) => 6000 + i * 500);
   const moves = [{ ms: 0, x: 0.5, y: 0.5 }];
   const alone = suggestedZooms(
-    { clicks: [], keys, moves, typed: [] },
+    { clicks: [], keys, moves, typed: [], pauses: [] },
     [],
     20_000,
   );
   expect(alone).toMatchObject([
-    { startMs: 5400, endMs: 11_500, center: { x: 0.5, y: 0.5 }, path: [] },
+    { startMs: 5100, endMs: 11_500, center: { x: 0.5, y: 0.5 }, path: [] },
   ]);
   const clicks = [{ ms: 4000, x: 0.9, y: 0.5, button: "left" as const }];
   const [joined] = suggestedZooms(
-    { clicks, keys, moves, typed: [] },
+    { clicks, keys, moves, typed: [], pauses: [] },
     [],
     20_000,
   );
@@ -484,9 +537,13 @@ test("a typing zoom aims where the text appears and pans as it moves, not for ti
     { ms: 8500, x: 0.52, y: 0.15 },
   ];
   const moves = [{ ms: 0, x: 0.5, y: 0.5 }];
-  const [zoom] = suggestedZooms({ clicks: [], keys, moves, typed }, [], 20_000);
+  const [zoom] = suggestedZooms(
+    { clicks: [], keys, moves, typed, pauses: [] },
+    [],
+    20_000,
+  );
   expect(zoom.center).toEqual({ x: 1, y: 0 });
-  expect(zoom.path).toEqual([{ afterMs: 2600, x: 0.5, y: 0 }]);
+  expect(zoom.path).toEqual([{ afterMs: 2900, x: 0.5, y: 0 }]);
 });
 
 test("a zoom pans only when the aimed view moves enough, so edge repeats and tiny moves don't jitter", () => {
@@ -501,6 +558,7 @@ test("a zoom pans only when the aimed view moves enough, so edge repeats and tin
     keys: [],
     moves: [],
     typed: [],
+    pauses: [],
   });
   const [edge] = suggestedZooms(
     track([at(1000, 0.9), at(2000, 0.95)]),

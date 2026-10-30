@@ -190,6 +190,7 @@ fn exports_a_recording_in_the_default_appearance() {
         frame_rate: var("EXPORT_TEST_FPS", "60").parse().unwrap(),
         bits_per_pixel: var("EXPORT_TEST_BITS", "8").parse().unwrap(),
         to_clipboard: false,
+        name: None,
     };
     export(
         Path::new(&video),
@@ -199,15 +200,6 @@ fn exports_a_recording_in_the_default_appearance() {
         |_| {},
     )
     .unwrap();
-    assert!(Path::new(&output).exists());
-}
-
-#[test]
-#[ignore = "needs a real video"]
-fn saves_a_recording_as_mp4_with_one_mixed_sound_track() {
-    let video = std::env::var("EXPORT_TEST_VIDEO").expect("EXPORT_TEST_VIDEO");
-    let output = std::env::var("EXPORT_TEST_OUTPUT").expect("EXPORT_TEST_OUTPUT");
-    to_mp4(Path::new(&video), Path::new(&output)).unwrap();
     assert!(Path::new(&output).exists());
 }
 

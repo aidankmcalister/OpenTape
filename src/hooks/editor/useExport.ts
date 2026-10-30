@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import type { AppSettings } from "@/hooks/useAppSettings";
 import { invoke } from "@tauri-apps/api/core";
 import { useTauriEvent } from "@/hooks/useTauri";
@@ -8,6 +8,7 @@ import {
   exportOptions,
   RESOLUTIONS,
   type ExportSettings,
+  type ExportState,
   type ExportTimeline,
 } from "@/lib/editor/export";
 import type { CursorImage } from "@/lib/bindings";
@@ -23,22 +24,19 @@ import type { Project } from "@/lib/editor/project";
 import type { Size } from "@/lib/geometry";
 import type { Playback } from "./usePlayback";
 
-type ExportState =
-  | { stage: "idle" }
-  | { stage: "exporting"; progress: number }
-  | { stage: "done"; path: string; copied: boolean }
-  | { stage: "failed"; reason: string };
-
 const SHOWS_FOR_MS = { done: 4000, failed: 5000 };
 
 export function useExport(
-  { appearance, regions, clips, sound }: Project,
+  { appearance, regions, clips, sound, title }: Project,
   { videoSize, durationMs }: Pick<Playback, "videoSize" | "durationMs">,
   rings: RingEvent[],
   cursor: CursorTrack,
   app: AppSettings,
+  isReady: boolean,
 ) {
   const [state, setState] = useState<ExportState>({ stage: "idle" });
+  const [savedTo, setSavedTo] = useState<string | null>(null);
+  const [closesAfterExport, setClosesAfterExport] = useState(false);
   const settings = app.exportSettings;
   const layoutAt = (size: Size, timeline?: Partial<ExportTimeline>) =>
     exportLayout(appearance, size, timeline, RESOLUTIONS[settings.resolution]);
@@ -47,20 +45,12 @@ export function useExport(
     "export-progress",
     (progress) =>
       setState((current) =>
-        current.stage === "exporting"
-          ? { stage: "exporting", progress }
-          : current,
+        current.stage === "exporting" ? { ...current, progress } : current,
       ),
     "window",
   );
 
-  useTauriEvent(
-    "export-and-close",
-    () => {
-      if (videoSize) void start(videoSize, true);
-    },
-    "window",
-  );
+  useTauriEvent("export-and-close", () => setClosesAfterExport(true), "window");
 
   useEffect(() => {
     if (state.stage !== "done" && state.stage !== "failed") return;
@@ -71,8 +61,9 @@ export function useExport(
     return () => clearTimeout(timeout);
   }, [state.stage]);
 
-  async function start(size: Size, closes = false) {
-    setState({ stage: "exporting", progress: 0 });
+  async function start(size: Size, to: ExportSettings["to"], closes = false) {
+    const toClipboard = to === "clipboard";
+    setState({ stage: "exporting", progress: 0, toClipboard });
     try {
       const style = nativeOr(appearance.cursor).style;
       const images = await styledImages(cursor.images, style);
@@ -84,23 +75,36 @@ export function useExport(
         cursor: { ...cursor, images },
         sound,
       });
-      const chosen = closes ? { ...settings, to: "file" as const } : settings;
       const path = await invoke<string>("export_recording", {
         layout,
-        options: exportOptions(chosen),
+        options: exportOptions({ ...settings, to }, title),
       });
-      setState({ stage: "done", path, copied: chosen.to === "clipboard" });
+      setState({ stage: "done", path, toClipboard });
+      if (!toClipboard) setSavedTo(path);
       if (closes) await invoke("close_recording");
     } catch (error) {
       setState({ stage: "failed", reason: String(error) });
     }
   }
 
-  const canStart = videoSize !== null && state.stage !== "exporting";
+  const canStart = isReady && videoSize !== null && state.stage !== "exporting";
+  const exportAndClose = useEffectEvent((size: Size) => {
+    setClosesAfterExport(false);
+    void start(size, "file", true);
+  });
+  useEffect(() => {
+    if (closesAfterExport && canStart && videoSize)
+      queueMicrotask(() => exportAndClose(videoSize));
+  }, [closesAfterExport, canStart, videoSize]);
+
   const output = videoSize ? layoutAt(videoSize) : null;
   return {
     state,
-    start: canStart ? () => void start(videoSize) : null,
+    start: canStart ? (to = settings.to) => void start(videoSize, to) : null,
+    showSaved:
+      canStart && savedTo
+        ? () => setState({ stage: "done", path: savedTo, toClipboard: false })
+        : null,
     settings,
     change: (part: Partial<ExportSettings>) =>
       app.change({ export: { ...settings, ...part } }),

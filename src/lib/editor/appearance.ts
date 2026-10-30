@@ -255,8 +255,12 @@ export function frameLayout(
   appearance: Appearance,
   canvas: Size,
   ratio: number,
+  margin = 48,
 ) {
-  const frame = fitInside(shrink(canvas, 48), frameShape(appearance, ratio));
+  const frame = fitInside(
+    shrink(canvas, margin),
+    frameShape(appearance, ratio),
+  );
   const scale = frame.width / 1920;
   const recording = recordingIn(frame, appearance, ratio);
   const crop = frameCrop(appearance, ratio);

@@ -6,7 +6,7 @@ struct FakeShell {
     answer: Choice,
     asked: RefCell<Vec<&'static str>>,
     switches: RefCell<Vec<(Window, Window)>>,
-    exports: RefCell<usize>,
+    exports: RefCell<Vec<Window>>,
 }
 
 impl FakeShell {
@@ -30,8 +30,8 @@ impl Shell for FakeShell {
         self.answer
     }
 
-    fn export_and_close(&self) -> Result<()> {
-        *self.exports.borrow_mut() += 1;
+    fn export_and_close(&self, window: Window) -> Result<()> {
+        self.exports.borrow_mut().push(window);
         Ok(())
     }
 
@@ -89,6 +89,18 @@ fn closing_unsaved_should_ask_and_cancel_should_keep_it() {
 }
 
 #[test]
+fn save_and_close_should_hand_the_finished_export_to_the_preview_and_keep_it_until_saved() {
+    let shell = FakeShell::answering(Choice::First);
+    let (current, folder) = keeping_one("preview-save", &shell);
+    current.close(&shell).expect("asks");
+    assert_eq!(*shell.asked.borrow(), [SAVE_FIRST]);
+    assert_eq!(*shell.exports.borrow(), [Window::Preview]);
+    assert_eq!(shell.last_switch(), (Window::Bar, Window::Preview));
+    assert!(folder.exists());
+    assert!(current.shown().is_some());
+}
+
+#[test]
 fn closing_unsaved_with_discard_should_bring_the_bar_back_and_delete() {
     let shell = FakeShell::answering(Choice::Second);
     let (current, folder) = keeping_one("delete", &shell);
@@ -120,10 +132,23 @@ fn closing_the_editor_unexported_should_ask_and_hand_export_and_close_to_the_pag
     assert_eq!(shell.last_switch(), (Window::Preview, Window::Editor));
     current.close(&shell).expect("asks");
     assert_eq!(*shell.asked.borrow(), [EXPORT_FIRST]);
-    assert_eq!(*shell.exports.borrow(), 1);
+    assert_eq!(*shell.exports.borrow(), [Window::Editor]);
     assert_eq!(shell.last_switch(), (Window::Preview, Window::Editor));
     assert!(folder.exists());
     assert!(current.shown().is_some());
+}
+
+#[test]
+fn editing_after_a_save_should_ask_again_before_closing_the_editor() {
+    let shell = FakeShell::answering(Choice::Cancel);
+    let (current, folder) = keeping_one("saved-then-edited", &shell);
+    let saved_to = folder.with_file_name("saved-then-edited.mp4");
+    std::fs::write(&saved_to, b"").expect("the temp export can be written");
+    lock(&current.kept).as_mut().expect("kept").saved_to = Some(saved_to);
+    current.edit(&shell).expect("edits");
+    current.close(&shell).expect("asks");
+    assert_eq!(*shell.asked.borrow(), [EXPORT_FIRST]);
+    assert!(folder.exists());
 }
 
 #[test]
@@ -162,8 +187,19 @@ fn names_should_read_like_macos_screen_recordings() {
     let shell = FakeShell::answering(Choice::Cancel);
     let (current, _) = keeping_one("names", &shell);
     lock(&current.kept).as_mut().expect("kept").name = name;
-    let (_, export_name) = current.video().expect("kept");
+    let (_, export_name) = current.video(None).expect("kept");
     assert_eq!(export_name, "Screen Recording 2026-10-16 at 07.41.28");
+    let (_, export_name) = current.video(Some("  ")).expect("kept");
+    assert_eq!(export_name, "Screen Recording 2026-10-16 at 07.41.28");
+    let (_, export_name) = current.video(Some(" Launch demo ")).expect("kept");
+    assert_eq!(export_name, "Launch demo");
+    let (_, export_name) = current.video(Some(" .. .env")).expect("kept");
+    assert_eq!(export_name, "env");
+    let (_, export_name) = current.video(Some("...")).expect("kept");
+    assert_eq!(export_name, "Screen Recording 2026-10-16 at 07.41.28");
+    let long = format!("a{}", "é".repeat(150));
+    let (_, export_name) = current.video(Some(&long)).expect("kept");
+    assert_eq!(export_name, format!("a{}", "é".repeat(99)));
 }
 
 #[test]

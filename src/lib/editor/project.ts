@@ -14,6 +14,7 @@ export type Project = {
   clips: Clip[];
   sound: SoundSettings;
   suggestionsMade: boolean;
+  title: string | null;
 };
 
 export const NEW_PROJECT: Project = {
@@ -22,6 +23,7 @@ export const NEW_PROJECT: Project = {
   clips: [],
   sound: DEFAULT_SOUND,
   suggestionsMade: false,
+  title: null,
 };
 
 export function readProject(json: string | null, fresh = NEW_PROJECT): Project {
@@ -33,6 +35,7 @@ export function readProject(json: string | null, fresh = NEW_PROJECT): Project {
     clips: saved.clips ?? [],
     sound: { isMuted: saved.sound?.isMuted ?? false },
     suggestionsMade: saved.suggestionsMade ?? false,
+    title: saved.title ?? null,
   };
 }
 
@@ -46,7 +49,7 @@ export function editRegions(
 
 export function suggest(
   project: Project,
-  track: Pick<CursorTrack, "clicks" | "keys" | "moves" | "typed">,
+  track: Pick<CursorTrack, "clicks" | "keys" | "moves" | "typed" | "pauses">,
   durationMs: number,
 ): Project {
   if (project.suggestionsMade) return project;

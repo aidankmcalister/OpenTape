@@ -1,13 +1,19 @@
-import { useEffect, useRef, useState, type SyntheticEvent } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  type SyntheticEvent,
+} from "react";
 import { useClockValue, useVideoClock } from "@/hooks/useVideoClock";
 import type { TimeMap } from "@/lib/editor/clips";
 import type { SoundSettings } from "@/lib/editor/sound";
 import type { Size } from "@/lib/geometry";
 
-export function usePlayback(src: string) {
+export function usePlayback(src: string, loops = false) {
   const video = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isLooping, setIsLooping] = useState(false);
+  const [isLooping, setIsLooping] = useState(loops);
   const [isMuted, setIsMuted] = useState(false);
   const [durationMs, setDurationMs] = useState(0);
   const [videoSize, setVideoSize] = useState<Size | null>(null);
@@ -50,9 +56,10 @@ export function usePlayback(src: string) {
     toggleLoop: () => setIsLooping((isOn) => !isOn),
     toggleSound: () => setIsMuted((isOn) => !isOn),
     setRate: (rate: number) => {
-      if (!video.current) return;
-      video.current.preservesPitch = false;
-      video.current.playbackRate = rate * speed;
+      const current = video.current;
+      if (!current || current.playbackRate === rate * speed) return;
+      current.preservesPitch = false;
+      current.playbackRate = rate * speed;
     },
     speed,
     setSpeed,
@@ -83,11 +90,14 @@ export function useTimeMap(playback: Playback, time: TimeMap) {
     time.playOn(seconds * 1000, isLooping && isPlaying),
   );
   useEffect(() => playback.setRate(rate), [playback, rate]);
+  const skipCut = useEffectEvent((ms: number, isEnd: boolean) => {
+    if (playback.heldMs !== null) return;
+    if (isEnd) playback.pause();
+    playback.seek(ms);
+  });
   useEffect(() => {
-    if (!playOn || playback.heldMs !== null) return;
-    if (playOn.isEnd) playback.pause();
-    playback.seek(playOn.ms);
-  }, [playback, playOn]);
+    if (playOn) skipCut(playOn.ms, playOn.isEnd);
+  }, [playOn]);
   return {
     togglePlay: () => {
       playback.skim(null);

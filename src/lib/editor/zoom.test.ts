@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import type { Point } from "@/lib/geometry";
-import { positionAt } from "./cursor";
-import { type Region, sourceAt } from "./regions";
+import { positionAt, withSuggestions } from "./cursor";
+import { outputAt, type Region, REGIONS, sourceAt } from "./regions";
 import { FRAME_MS } from "./timeline";
-import { focusAt, focusBox, zoomPath, zoomTrack } from "./zoom";
+import { centeredOn, focusAt, focusBox, zoomPath, zoomTrack } from "./zoom";
 
 const MIDDLE = { x: 0.5, y: 0.5 };
 const CORNER = { x: 0.98, y: 0.98 };
@@ -69,6 +69,24 @@ test("a zoom with a click path pans to each click, arriving as it happens", () =
   expect(zoomAt(3000).center.x).toBeGreaterThan(0.9);
   expect(zoomAt(3600).center.x).toBeCloseTo(1, 1);
   expect(zoomAt(5300).center.x).toBeCloseTo(1, 4);
+});
+
+test("a suggested typing zoom is already on the text when the first letter appears, even sped up", () => {
+  const clicks = [{ ms: 3000, x: 0.1, y: 0.1, button: "left" as const }];
+  const moves = [{ ms: 0, x: 0.1, y: 0.1 }];
+  const keys = Array.from({ length: 30 }, (_, i) => 3700 + i * 120);
+  const typed = Array.from({ length: 8 }, (_, i) => ({
+    ms: 4200 + i * 500,
+    x: 0.4 + i * 0.02,
+    y: 0.6,
+  }));
+  const track = { clicks, keys, moves, typed, pauses: [] };
+  const regions = withSuggestions(track, [], 12_000);
+  expect(regions.map(({ kind }) => kind)).toEqual(["zoom", "speed"]);
+  const field = centeredOn(typed[0], REGIONS.zoom.amount);
+  const zoomAt = zoomPath(regions, track, undefined, 12_000);
+  const { center } = zoomAt(outputAt(regions, keys[0]));
+  expect(Math.hypot(center.x - field.x, center.y - field.y)).toBeLessThan(0.02);
 });
 
 test("a following zoom keeps a cursor gliding to a corner in view, but for a moment, and a fixed one loses it", () => {
