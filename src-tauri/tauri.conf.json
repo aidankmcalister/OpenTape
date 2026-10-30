@@ -100,8 +100,8 @@
       "dmg": {
         "background": "./icons/dmg-background.tiff",
         "windowSize": { "width": 660, "height": 400 },
-        "appPosition": { "x": 170, "y": 232 },
-        "applicationFolderPosition": { "x": 490, "y": 232 }
+        "appPosition": { "x": 170, "y": 208 },
+        "applicationFolderPosition": { "x": 490, "y": 208 }
       }
     },
     "copyright": "Copyright © 2026 Aidan McAlister. MIT License.",
