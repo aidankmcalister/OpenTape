@@ -12,6 +12,7 @@ use tauri::{
 };
 
 use crate::geometry;
+use crate::util::CmdResult;
 
 pub(crate) fn never_close(window: &WebviewWindow) {
     window.on_window_event(|event| {
@@ -28,10 +29,10 @@ pub(crate) fn show_dialog(
         WebviewWindowBuilder<'_, Wry, AppHandle>,
     ) -> WebviewWindowBuilder<'_, Wry, AppHandle>,
 ) -> tauri::Result<()> {
-    let window = match app.get_webview_window(label) {
-        Some(window) => window,
-        None => style(
+    let Some(window) = app.get_webview_window(label) else {
+        style(
             WebviewWindowBuilder::new(app, label, WebviewUrl::default())
+                .visible(false)
                 .resizable(false)
                 .maximizable(false)
                 .minimizable(false)
@@ -42,10 +43,18 @@ pub(crate) fn show_dialog(
                 .traffic_light_position(LogicalPosition::new(18.0, 27.0))
                 .center(),
         )
-        .build()?,
+        .build()?;
+        return Ok(());
     };
     window.show()?;
     window.set_focus()
+}
+
+#[tauri::command]
+pub(crate) fn dialog_ready(window: WebviewWindow) -> CmdResult {
+    window.show()?;
+    window.set_focus()?;
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

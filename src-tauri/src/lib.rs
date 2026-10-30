@@ -193,6 +193,7 @@ pub fn run() -> tauri::Result<()> {
             bar::shape_bar,
             bar::hide_bar,
             bar::bar_ready,
+            windows::dialog_ready,
             current_recording::commands::save_recording,
             current_recording::commands::restore_recording,
             current_recording::commands::can_restore_recording,

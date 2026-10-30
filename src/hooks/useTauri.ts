@@ -35,6 +35,12 @@ export function useTauriEvent<E extends EventName>(
   }, [event, scope]);
 }
 
+export function useShowWhenReady() {
+  useEffect(() => {
+    invoke("dialog_ready").catch(console.error);
+  }, []);
+}
+
 export function useInvokeOnMount<T>(
   command: string,
   onResult: (result: T) => void,

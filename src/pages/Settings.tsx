@@ -1,8 +1,10 @@
 import { SettingsBody } from "@/components/editor/sidebar/SettingsDialog";
 import { useAppSettings } from "@/hooks/useAppSettings";
+import { useShowWhenReady } from "@/hooks/useTauri";
 
 export default function Settings() {
   const app = useAppSettings();
+  useShowWhenReady();
   return (
     <main className="flex h-screen flex-col bg-background">
       <header

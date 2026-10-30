@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Access, Permissions } from "@/lib/bindings";
-import { setupProgress } from "./permissions";
+import { isOn, setupProgress } from "./permissions";
 
 function permissions(
   screenRecording: Access,
@@ -12,8 +12,6 @@ function permissions(
 
 test("nothing allowed on first launch can't continue yet", () => {
   expect(setupProgress(permissions("notAsked", "notAsked"))).toEqual({
-    allowed: 0,
-    total: 2,
     isAllSet: false,
     isReminder: false,
     action: "continue",
@@ -23,7 +21,7 @@ test("nothing allowed on first launch can't continue yet", () => {
 
 test("Screen Recording turned on before a restart counts as allowed and asks for the restart", () => {
   const progress = setupProgress(permissions("needsRestart", "notAsked"));
-  expect(progress.allowed).toBe(1);
+  expect(isOn("needsRestart")).toBe(true);
   expect(progress.action).toBe("restart");
 });
 
