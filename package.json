@@ -18,7 +18,8 @@
     "format": "prettier --write src",
     "check": "tsc --noEmit && eslint . && prettier --check src && bun test ./src && cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --quiet && git diff --exit-code --stat -- ../src/lib/bindings.ts",
     "bindings": "cd src-tauri && cargo test --quiet export_bindings",
-    "notices": "bun scripts/notices.ts"
+    "notices": "bun scripts/notices.ts",
+    "dmg:preview": "for n in 1 2; do \"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" --headless=new --hide-scrollbars --force-device-scale-factor=$n --window-size=660,400 --screenshot=$TMPDIR/dmg-bg$n.png \"file://$PWD/src-tauri/icons/dmg-background.html\" >/dev/null 2>&1; sips -s dpiWidth $((72*n)) -s dpiHeight $((72*n)) $TMPDIR/dmg-bg$n.png >/dev/null; done && tiffutil -cathidpicheck $TMPDIR/dmg-bg1.png $TMPDIR/dmg-bg2.png -out src-tauri/icons/dmg-background.tiff && tauri bundle --bundles app,dmg && open src-tauri/target/release/bundle/dmg/*.dmg"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+@font-face { font-family: "SG"; src: url("../../node_modules/@fontsource-variable/space-grotesk/files/space-grotesk-latin-wght-normal.woff2") format("woff2"); font-weight: 300 700; }
+html, body { margin: 0; width: 660px; height: 400px; overflow: hidden; }
+body {
+  position: relative;
+  background:
+    radial-gradient(380px 190px at 50% 100%, rgb(255 122 26 / 0.28), transparent 75%),
+    #0e0e10;
+  -webkit-font-smoothing: antialiased;
+}
+h1 { position: absolute; left: 0; right: 0; top: 60px; margin: 0; text-align: center; font: 600 22px/1 "SG"; letter-spacing: -0.01em; color: #ededf0; }
+.chip { position: absolute; top: 281px; height: 24px; border-radius: 12px; background: #FFFFFF; }
+svg { position: absolute; inset: 0; }
+</style>
+<h1>Drag OpenTape to Applications</h1>
+<div class="chip" style="left:116px;width:108px"></div>
+<div class="chip" style="left:426px;width:128px"></div>
+<svg width="660" height="400" viewBox="0 0 660 400">
+  <defs>
+    <linearGradient id="g" x1="0" x2="1">
+      <stop offset="0" stop-color="#d1440d" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#ff7a1a"/>
+    </linearGradient>
+  </defs>
+  <path d="M262 214 Q 330 160 401 212" fill="none" stroke="url(#g)" stroke-width="6" stroke-linecap="round"/>
+  <path d="M395 191 L 403 214 L 380 215" fill="none" stroke="#ff7a1a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
