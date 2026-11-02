@@ -3,7 +3,7 @@
 
   <h1>OpenTape</h1>
 
-  <p>A free, open-source screen recorder for macOS that turns a raw recording into a polished demo.</p>
+  <p>A free, open-source screen recorder for macOS. Pick what to record, hit stop, and share the clip.</p>
 
   [![License: MIT](https://img.shields.io/badge/license-MIT-D1440D?style=flat&colorA=18181C)](LICENSE)
   [![macOS 15+](https://img.shields.io/badge/macOS-15%2B-D1440D?style=flat&colorA=18181C)](#install)
@@ -20,7 +20,7 @@
 
 ## What it does
 
-You record from a floating bar, and the app does the polishing. It zooms in where you click and type, draws a smooth cursor, and frames the clip for any social size. Made for demos, READMEs, pull requests and posts.
+Pick a display, window or area from a floating bar and hit Record. When you stop, a preview opens: copy the clip straight into a post, save it, or open it in the editor. Along the way, OpenTape suggests zooms where you clicked and smooths the cursor. Made for demos, READMEs, pull requests and posts.
 
 - **Record** a display, a window or an area, with the microphone and system audio.
 - **Auto zoom** on clicks and typing, following the cursor while zoomed.
@@ -31,17 +31,23 @@ You record from a floating bar, and the app does the polishing. It zooms in wher
 
 ## Status
 
-Early: version 0.1.0. Camera, captions and per-track volume are coming soon. The app updates itself; to hear about new versions, star the repo and choose **Watch → Custom → Releases**.
+Early: version 0.1.0. The app updates itself; to hear about new versions, star the repo and choose **Watch → Custom → Releases**.
 
 ## Install
 
 Download [OpenTape.dmg](https://github.com/aidankmcalister/OpenTape/releases/latest/download/OpenTape.dmg) for Apple silicon Macs on macOS 15 or later. Open it and drag OpenTape to Applications.
 
+Or install it with Homebrew:
+
+```sh
+brew install --cask aidankmcalister/tap/opentape
+```
+
 To build it yourself, follow [Set up](CONTRIBUTING.md#set-up) in the contributing guide.
 
 ## Privacy
 
-Everything stays on your Mac. There's no account and no cloud. The only thing the app sends is a check for a new version on GitHub, at launch and when you click Check now. It needs Screen Recording permission, plus the microphone or camera only if you choose one. Recordings wait in a hidden folder until you save or export them, and closing them deletes that copy.
+Everything stays on your Mac. There's no account and no cloud. The only thing the app sends is a check for a new version on GitHub, at launch and when you click Check now. It needs Screen Recording permission, plus the microphone only if you choose one. Recordings wait in a hidden folder until you save or export them, and closing them deletes that copy.
 
 ## Contributing
 
