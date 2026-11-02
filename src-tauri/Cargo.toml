@@ -1,6 +1,6 @@
 [package]
 name = "opentape"
-version = "0.1.0"
+version = "0.1.1"
 description = "A small, free, open-source screen recorder for macOS."
 authors = ["Aidan McAlister"]
 license = "MIT"
