@@ -1,4 +1,4 @@
-import { KINDS, REGIONS, type RegionKind } from "./regions";
+import { ALL_KINDS, REGIONS, type RegionKind } from "./regions";
 
 export type EditorAction =
   | "togglePlay"
@@ -82,7 +82,7 @@ export const ACTION_NAMES: Record<EditorAction, string> = {
   openPalette: "Command palette",
 };
 
-const ADDS = KINDS.map((kind) => ({
+const ADDS = ALL_KINDS.map((kind) => ({
   label: `Add ${REGIONS[kind].label.toLowerCase()}`,
   keys: REGIONS[kind].key,
   kind,
@@ -92,17 +92,20 @@ export type PaletteCommand = { label: string; keys: string } & (
   { action: EditorAction } | { kind: RegionKind }
 );
 
-export function paletteCommands(): {
+export function paletteCommands(hasSound = true): {
   group: string;
   commands: PaletteCommand[];
 }[] {
+  const hidden: EditorAction[] = hasSound
+    ? ["openPalette", "openAdd"]
+    : ["openPalette", "openAdd", "toggleSound", "showSound"];
   const actions = Object.keys(ACTION_NAMES) as EditorAction[];
   return [
     { group: "Modifiers", commands: ADDS },
     {
       group: "Actions",
       commands: actions
-        .filter((action) => action !== "openPalette" && action !== "openAdd")
+        .filter((action) => !hidden.includes(action))
         .map((action) => ({
           label: ACTION_NAMES[action],
           keys: keyLabel(action),

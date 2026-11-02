@@ -13,7 +13,7 @@ import { useMarquee } from "@/hooks/editor/useScrub";
 import type { TimelineDrag } from "@/hooks/editor/useTimelineDrag";
 import { useClockValue } from "@/hooks/editor/usePlayback";
 import {
-  KINDS,
+  ALL_KINDS,
   blockValue,
   covers,
   REGIONS,
@@ -270,7 +270,7 @@ function EmptyLanes() {
   return (
     <div className="absolute inset-x-3 top-1 flex h-14 items-center justify-center gap-1.5 rounded-lg text-label text-muted-foreground inset-ring inset-ring-hairline">
       No modifiers yet. Press
-      {KINDS.map((kind) => (
+      {ALL_KINDS.map((kind) => (
         <Kbd key={kind}>{REGIONS[kind].key}</Kbd>
       ))}
       or + to place one at the playhead.

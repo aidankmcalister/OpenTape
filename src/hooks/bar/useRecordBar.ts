@@ -92,7 +92,7 @@ export function useRecordBar() {
     return () =>
       document.removeEventListener("visibilitychange", followVisibility);
   }, []);
-  const { hoveredName, setPointer } = usePointerHover();
+  const { setPointer } = usePointerHover();
   useTauriEvent("bar-pointer", setPointer, "window");
 
   async function attempt(job: () => Promise<unknown>) {
@@ -126,7 +126,6 @@ export function useRecordBar() {
     timer,
     error,
     update,
-    hoveredName,
     chooseMode,
     showPermissions,
     hideUpdate: () => setIsUpdateHidden(true),

@@ -1,6 +1,7 @@
 import { type ReactNode, useState } from "react";
-import { Redo, Undo } from "lucide-react";
+import { Command, Redo, Undo } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import Island from "@/components/editor/Island";
 import Stage from "@/components/editor/Stage";
 import Transport from "@/components/editor/timeline/Transport";
@@ -127,6 +128,18 @@ function Workspace({
           <Button
             variant="ghost"
             size="icon"
+            aria-label="Command palette"
+            onClick={actions.openPalette}
+          >
+            <Command />
+          </Button>
+          <Separator
+            orientation="vertical"
+            className="mx-1 h-4 data-vertical:self-center"
+          />
+          <Button
+            variant="ghost"
+            size="icon"
             aria-label="Undo"
             disabled={!edits.canUndo}
             onClick={edits.undo}
@@ -213,6 +226,7 @@ function Workspace({
       </main>
       <CommandPalette
         open={dialog === "palette"}
+        hasSound={hasSound}
         onOpenChange={(open) => setDialog(open ? "palette" : null)}
         onRun={(command) =>
           "kind" in command

@@ -8,7 +8,7 @@ import {
   SHORTCUTS,
   type Binding,
 } from "./keymap";
-import { ALL_KINDS, KINDS, REGIONS } from "./regions";
+import { ALL_KINDS, REGIONS } from "./regions";
 
 const PRESS = {
   key: "",
@@ -108,7 +108,7 @@ describe("command palette", () => {
     const adds = commands.flatMap((command) =>
       "kind" in command ? [[command.kind, command.keys]] : [],
     );
-    expect(adds).toEqual(KINDS.map((kind) => [kind, REGIONS[kind].key]));
+    expect(adds).toEqual(ALL_KINDS.map((kind) => [kind, REGIONS[kind].key]));
   });
 
   test("runs every other action once, named and with its shortcut", () => {
@@ -124,6 +124,15 @@ describe("command palette", () => {
       expect(label).toBe(ACTION_NAMES[action]);
       expect(keys).toBe(keyLabel(action));
     }
+  });
+
+  test("without sound, hides Mute and the Sound panel", () => {
+    const actions = paletteCommands(false)
+      .flatMap(({ commands }) => commands)
+      .flatMap((command) => ("action" in command ? [command.action] : []));
+    expect(actions).not.toContain("toggleSound");
+    expect(actions).not.toContain("showSound");
+    expect(actions).toContain("showCursor");
   });
 
   test("names are unique, so typing finds one of each", () => {

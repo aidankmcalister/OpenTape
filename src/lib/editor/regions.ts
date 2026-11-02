@@ -1,7 +1,7 @@
 import { type Point, type Rect, clamp } from "@/lib/geometry";
 import type { MarkColor } from "./appearance";
 
-export type RegionKind = "zoom" | "speed" | "blur" | "captions" | "audio";
+export type RegionKind = "zoom" | "speed" | "blur";
 
 export type Region = {
   id: number;
@@ -19,8 +19,6 @@ export type Region = {
 export type Span = { startMs: number; endMs: number };
 
 export type SettingValue = string | number | boolean;
-
-type TypeStatus = "ready" | "soon";
 
 export type Setting =
   | {
@@ -68,11 +66,9 @@ export const REGIONS: Record<
     lengthMs: number;
     settings: Setting[];
     shows: (value: Value) => string;
-    status: TypeStatus;
   }
 > = {
   zoom: {
-    status: "ready",
     label: "Zoom",
     key: "Z",
     hue: "255 122 26",
@@ -98,7 +94,6 @@ export const REGIONS: Record<
     shows: (value) => `${value("amount")}×`,
   },
   speed: {
-    status: "ready",
     label: "Speed",
     key: "S",
     hue: "61 155 255",
@@ -129,7 +124,6 @@ export const REGIONS: Record<
     shows: (value) => `${value("amount")}×`,
   },
   blur: {
-    status: "ready",
     label: "Blur",
     key: "B",
     hue: "34 211 238",
@@ -146,8 +140,6 @@ export const REGIONS: Record<
     ],
     shows: (value) => String(value("strength")),
   },
-  captions: comingSoon("Captions", "X", "167 139 250"),
-  audio: comingSoon("Audio", "A", "52 199 140"),
 };
 
 export function blurOf(region: Region) {
@@ -176,19 +168,6 @@ export function draggedBox(box: Rect, drag: BoxDrag, by: Point): Rect {
   const [x, width] = side(box.x, box.width, by.x, drag.includes("w"));
   const [y, height] = side(box.y, box.height, by.y, drag.includes("n"));
   return { x, y, width, height };
-}
-
-function comingSoon(label: string, key: string, hue: string) {
-  return {
-    status: "soon" as const,
-    label,
-    key,
-    hue,
-    amount: 0,
-    lengthMs: 2000,
-    settings: [],
-    shows: () => "",
-  };
 }
 
 export function settingValue(region: Region, key: string): SettingValue {
@@ -237,10 +216,6 @@ function seconds(ms: number): string {
 }
 
 export const ALL_KINDS = Object.keys(REGIONS) as RegionKind[];
-
-export const KINDS = ALL_KINDS.filter(
-  (kind) => REGIONS[kind].status !== "soon",
-);
 
 export const MIN_REGION_MS = 200;
 
@@ -461,7 +436,7 @@ export function amountAt(
 }
 
 export function regionKindForKey(key: string): RegionKind | undefined {
-  return KINDS.find(
+  return ALL_KINDS.find(
     (kind) => REGIONS[kind].key.toLowerCase() === key.toLowerCase(),
   );
 }

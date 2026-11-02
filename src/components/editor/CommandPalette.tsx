@@ -14,10 +14,12 @@ import { KindTile } from "./timeline/kinds";
 
 export default function CommandPalette({
   open,
+  hasSound,
   onOpenChange,
   onRun,
 }: {
   open: boolean;
+  hasSound: boolean;
   onOpenChange: (open: boolean) => void;
   onRun: (command: PaletteCommand) => void;
 }) {
@@ -32,7 +34,7 @@ export default function CommandPalette({
           <CommandInput placeholder="Search actions" />
           <CommandList className="scroll-fade-b">
             <CommandEmpty>No actions found.</CommandEmpty>
-            {paletteCommands().map(({ group, commands }) => (
+            {paletteCommands(hasSound).map(({ group, commands }) => (
               <CommandGroup key={group} heading={group}>
                 {commands.map((command) => (
                   <CommandItem

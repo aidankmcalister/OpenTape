@@ -19,7 +19,6 @@ import {
 import { Separator } from "@/components/ui/separator";
 import type { Lanes } from "@/hooks/editor/useProject";
 import { ALL_KINDS, REGIONS, type RegionKind } from "@/lib/editor/regions";
-import { cn } from "@/lib/utils";
 import { KindTile } from "./kinds";
 
 export default function AddMenu({
@@ -53,30 +52,23 @@ export default function AddMenu({
           <CommandList className="scroll-fade-b">
             <CommandEmpty>No modifiers found.</CommandEmpty>
             <CommandGroup heading="Modifiers">
-              {ALL_KINDS.map((kind) => {
-                const isSoon = REGIONS[kind].status === "soon";
-                return (
-                  <CommandItem
-                    key={kind}
-                    value={REGIONS[kind].label}
-                    keywords={[REGIONS[kind].key]}
-                    disabled={isSoon}
-                    onSelect={() => {
-                      onAdd(kind);
-                      onOpenChange(false);
-                    }}
-                  >
-                    <KindTile
-                      kind={kind}
-                      className={cn(isSoon && "bg-muted text-muted-foreground")}
-                    />
-                    {REGIONS[kind].label}
-                    <CommandShortcut>
-                      {isSoon ? "Coming soon" : <Kbd>{REGIONS[kind].key}</Kbd>}
-                    </CommandShortcut>
-                  </CommandItem>
-                );
-              })}
+              {ALL_KINDS.map((kind) => (
+                <CommandItem
+                  key={kind}
+                  value={REGIONS[kind].label}
+                  keywords={[REGIONS[kind].key]}
+                  onSelect={() => {
+                    onAdd(kind);
+                    onOpenChange(false);
+                  }}
+                >
+                  <KindTile kind={kind} />
+                  {REGIONS[kind].label}
+                  <CommandShortcut>
+                    <Kbd>{REGIONS[kind].key}</Kbd>
+                  </CommandShortcut>
+                </CommandItem>
+              ))}
             </CommandGroup>
           </CommandList>
         </Command>

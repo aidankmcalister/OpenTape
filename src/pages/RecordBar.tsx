@@ -14,17 +14,11 @@ import {
   Scan,
   Settings,
   Square,
-  Video,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import {
   MorphLabel,
   MorphPill,
@@ -167,20 +161,6 @@ function Setup({
         ))}
       </ToggleGroup>
       <PillDivider />
-      <Tooltip open={bar.hoveredName === "camera"}>
-        <TooltipTrigger
-          render={<span data-hover="camera" className="inline-flex" />}
-        >
-          <DeviceButton
-            isOn={false}
-            icon={<Video />}
-            label="Camera"
-            disabled
-            onClick={() => {}}
-          />
-        </TooltipTrigger>
-        <TooltipContent side="right">Coming soon</TooltipContent>
-      </Tooltip>
       <DeviceButton
         isOn={options.microphone !== null}
         icon={options.microphone ? <Mic /> : <MicOff />}

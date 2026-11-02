@@ -42,7 +42,9 @@ export default function ExportButton({ exporting }: { exporting: Exporting }) {
               onClick={() => onExport?.()}
             >
               Export
-              <Kbd>⌘E</Kbd>
+              <Kbd className="in-[[data-slot=button][data-variant=primary]]:bg-background/25">
+                ⌘E
+              </Kbd>
             </Button>
             <Separator
               orientation="vertical"

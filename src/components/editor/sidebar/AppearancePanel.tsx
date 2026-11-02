@@ -1,4 +1,4 @@
-import { Blend, Image, Palette, Wallpaper } from "lucide-react";
+import { Blend, Image, Palette } from "lucide-react";
 import { Tabs, TabsIconTrigger, TabsList } from "@/components/ui/tabs";
 import type { Edits } from "@/hooks/editor/useProject";
 import {
@@ -68,12 +68,6 @@ export default function AppearancePanel({ edits }: { edits: Edits }) {
                 label={label}
               />
             ))}
-            <TabsIconTrigger
-              value="wallpaper"
-              icon={<Wallpaper />}
-              label="Wallpapers"
-              disabled
-            />
           </TabsList>
         </Tabs>
         {appearance.fill.kind === "image" ? (
