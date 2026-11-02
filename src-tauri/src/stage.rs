@@ -10,7 +10,7 @@ use objc2_avf_audio::{
     AVFormatIDKey, AVLinearPCMBitDepthKey, AVLinearPCMIsBigEndianKey, AVLinearPCMIsFloatKey,
     AVLinearPCMIsNonInterleaved, AVNumberOfChannelsKey, AVSampleRateKey,
 };
-use objc2_core_media::{CMTimeRange, kCMTimeZero};
+use objc2_core_media::{CMTime, CMTimeRange, kCMTimeZero};
 use objc2_foundation::{NSDictionary, NSNumber, NSString};
 use serde::Serialize;
 use ts_rs::TS;
@@ -469,6 +469,12 @@ pub(crate) fn video_samples(video: &Path, from: usize, to: usize) -> Result<Vec<
 pub(crate) const SOUND_RATE: f64 = 48_000.0;
 const CUT_MARGIN_MS: f64 = 250.0;
 
+pub(crate) fn readable_end(video: &Path) -> Result<Option<CMTime>> {
+    Ok(cut_end_ms(video)?
+        .filter(|ms| *ms > CUT_MARGIN_MS)
+        .map(|ms| seconds((ms - CUT_MARGIN_MS) / 1000.0)))
+}
+
 fn cut_end_ms(video: &Path) -> Result<Option<f64>> {
     let movie = movie(&mut File::open(video)?)?;
     if !movie.is_cut {
@@ -521,8 +527,7 @@ pub(crate) fn stage_sound(video: &Path) -> Result<Vec<u8>> {
         )
     };
     unsafe { reader.addOutput(&output) };
-    if let Some(end_ms) = cut_end_ms(video)?.filter(|ms| *ms > CUT_MARGIN_MS) {
-        let end = seconds((end_ms - CUT_MARGIN_MS) / 1000.0);
+    if let Some(end) = readable_end(video)? {
         unsafe { reader.setTimeRange(CMTimeRange::new(kCMTimeZero, end)) };
     }
     let mut pcm = Vec::new();

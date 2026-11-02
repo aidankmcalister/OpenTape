@@ -195,7 +195,8 @@ pub(crate) fn export(
         .map(|name| video.with_file_name(name));
     let cutout = cutout(layout, background.as_deref())?;
     let recording_asset = unsafe { AVURLAsset::URLAssetWithURL_options(&file_url(video), None) };
-    let asset = retimed(&recording_asset, &layout.speed, &layout.cuts)?;
+    let end = crate::stage::readable_end(video)?;
+    let asset = retimed(&recording_asset, end, &layout.speed, &layout.cuts)?;
     let (track, reader) = open(&asset)?;
     let natural = unsafe { track.naturalSize() };
     let pictures = (layout.cursor.as_ref())
@@ -373,11 +374,12 @@ fn mixed_sound(
 
 fn retimed(
     asset: &AVURLAsset,
+    end: Option<CMTime>,
     speed: &[ExportSpeed],
     cuts: &[ExportCut],
 ) -> Result<Retained<AVMutableComposition>> {
     let composition = unsafe { AVMutableComposition::composition() };
-    let whole = unsafe { CMTimeRange::new(kCMTimeZero, asset.duration()) };
+    let whole = unsafe { CMTimeRange::new(kCMTimeZero, end.unwrap_or(asset.duration())) };
     #[allow(deprecated)]
     unsafe { composition.insertTimeRange_ofAsset_atTime_error(whole, asset, kCMTimeZero) }
         .map_err(|error| {
