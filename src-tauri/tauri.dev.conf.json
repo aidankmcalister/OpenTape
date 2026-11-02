@@ -1,0 +1,7 @@
+{
+  "productName": "OpenTape Dev",
+  "identifier": "com.aidankmcalister.opentape.dev",
+  "bundle": {
+    "icon": ["icons/dev/icon.icns"]
+  }
+}

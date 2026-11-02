@@ -20,8 +20,10 @@ Then run it:
 
 ```sh
 bun install
-bun tauri dev
+bun run dev:app
 ```
+
+`dev:app` runs `tauri dev` with its own identifier from `src-tauri/tauri.dev.conf.json`, so it runs beside an installed OpenTape and keeps its own recordings and settings.
 
 The app opens to the record bar at the bottom of your screen, with an icon in the menu bar. There's no main window; clicking the Dock icon or New recording in the menu brings the record bar back.
 
@@ -45,7 +47,7 @@ The TypeScript types in `src/lib/bindings.ts` are generated from the Rust types 
 
 ## Permissions
 
-- Screen Recording. On first launch a permissions window opens with a button for each permission. macOS applies Screen Recording only to a new process, so once it's on the window offers Restart OpenTape. Under `bun tauri dev`, macOS asks on behalf of your terminal app instead of OpenTape.
+- Screen Recording. On first launch a permissions window opens with a button for each permission. macOS applies Screen Recording only to a new process, so once it's on the window offers Restart OpenTape. Under `bun run dev:app`, macOS asks on behalf of your terminal app instead of OpenTape.
 - Microphone. The permissions window asks for it, or macOS asks the first time you record with one chosen in the record bar. If you say no, the recording goes ahead without it, and the bar says Microphone access is off. System audio needs nothing more than Screen Recording.
 - Nothing else. The cursor log polls the cursor position and shape. It also reads macOS's count of key presses to note when a key was pressed (only the time, never which key), so the editor can suggest zooms and speed-ups where you typed. None of it needs Accessibility or Input Monitoring permission, and it stays with the recording on your Mac.
 
