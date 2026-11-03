@@ -153,7 +153,9 @@ export function blockOrder(regions: Region[]): Region[] {
 }
 
 export function lengthLabel(ms: number): string {
-  return `${(ms / 1000).toFixed(1)}s`;
+  return Math.round(ms / 100) < 600
+    ? `${(ms / 1000).toFixed(1)}s`
+    : rulerLabel(ms);
 }
 
 export function timeLabel(ms: number): string {

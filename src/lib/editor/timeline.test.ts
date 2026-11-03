@@ -115,6 +115,9 @@ test.each([
 
 test("the stretch tip reads 4.0s, ends 0:09.0", () => {
   expect(lengthLabel(4000)).toBe("4.0s");
+  expect(lengthLabel(59_940)).toBe("59.9s");
+  expect(lengthLabel(59_960)).toBe("1:00");
+  expect(lengthLabel(867_400)).toBe("14:27");
   expect(timeLabel(9000)).toBe("0:09.0");
   expect(timeLabel(65_450)).toBe("1:05.5");
   expect(parseTimeLabel("1:05.5")).toBe(65_500);
