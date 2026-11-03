@@ -6,7 +6,6 @@ import {
   intersect,
   rectStyle,
   relativeTo,
-  roundedRectPath,
 } from "./geometry";
 import { shortcutFromKey, shortcutLabel } from "./shortcut";
 import { createClock, formatClock, formatTime, twoDigits } from "./time";
@@ -59,18 +58,6 @@ describe("geometry", () => {
     ["fills the height of a wide box", { width: 400, height: 90 }],
   ])("fitInside %s", (_, bounds) => {
     expect(fitInside(bounds, 16 / 9)).toEqual({ width: 160, height: 90 });
-  });
-
-  test("roundedRectPath traces square corners with no corner", () => {
-    expect(roundedRectPath({ x: 1, y: 2, width: 10, height: 20 }, 0)).toBe(
-      "M1 2H11A0 0 0 0 1 11 2V22A0 0 0 0 1 11 22H1A0 0 0 0 1 1 22V2A0 0 0 0 1 1 2Z",
-    );
-  });
-
-  test("roundedRectPath shrinks a corner too big for a narrow rectangle", () => {
-    expect(
-      roundedRectPath({ x: 0, y: 0, width: 10, height: 40 }, 20),
-    ).toStartWith("M5 0H5A5 5 0 0 1 10 5");
   });
 });
 

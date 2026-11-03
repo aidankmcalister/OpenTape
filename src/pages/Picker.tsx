@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { AppWindow, Monitor } from "lucide-react";
-import { rectStyle, roundedRectPath } from "@/lib/geometry";
+import { rectStyle, type RoundedRect } from "@/lib/geometry";
 import AreaBox from "@/components/picker/AreaBox";
 import CaptureBar, {
   CaptureTile,
@@ -52,25 +52,35 @@ const Highlight = memo(
   }) {
     const { rect, covered, barRect, title, icon, size, target } = highlight;
     const isDisplay = target.kind === "display";
-    const corner = isDisplay ? 0 : 10;
-    const visible = [
-      roundedRectPath(rect, corner),
-      ...covered.map((part) => roundedRectPath(part, 0)),
-    ].join("");
+    const shapes = (window: string, inFront: string) => (
+      <>
+        <Shape shape={rect} fill={window} />
+        {covered.map((front, index) => (
+          <Shape key={index} shape={front} fill={inFront} />
+        ))}
+      </>
+    );
     return (
       <div className="fixed inset-0 overflow-hidden">
-        {!isDisplay && <DimOutside rect={rect} />}
-        {covered.map((part, index) => (
-          <div
-            key={index}
-            className="absolute bg-dim"
-            style={rectStyle(part)}
+        <svg className="absolute inset-0 size-full">
+          <mask id="visible">{shapes("white", "black")}</mask>
+          <mask id="hidden">
+            <rect width="100%" height="100%" fill="white" />
+            {shapes("black", "white")}
+          </mask>
+          <rect
+            width="100%"
+            height="100%"
+            className="fill-dim"
+            mask="url(#hidden)"
           />
-        ))}
-        <div
-          className="absolute inset-0 bg-tint"
-          style={{ clipPath: `path(evenodd, "${visible}")` }}
-        />
+          <rect
+            width="100%"
+            height="100%"
+            className="fill-tint"
+            mask="url(#visible)"
+          />
+        </svg>
         {barRect && (
           <div
             className="absolute flex items-center justify-center"
@@ -94,3 +104,13 @@ const Highlight = memo(
   },
   (previous, next) => sameHighlight(previous.highlight, next.highlight),
 );
+
+function Shape({
+  shape: { corner, ...rect },
+  fill,
+}: {
+  shape: RoundedRect;
+  fill: string;
+}) {
+  return <rect {...rect} rx={corner} fill={fill} />;
+}

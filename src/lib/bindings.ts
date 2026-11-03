@@ -96,4 +96,4 @@ export type VideoSample = { ms: number, isKey: boolean, size: number, };
 
 export type VideoTrack = { codec: string, description: Array<number>, width: number, height: number, durationMs: number, samples: Array<VideoSample>, };
 
-export type WindowInfo = { id: number, pid: number, app: string, frame: Frame, size: CaptureSize, displayId: number | null, };
+export type WindowInfo = { id: number, pid: number, app: string, frame: Frame, size: CaptureSize, displayId: number | null, corner: number, };

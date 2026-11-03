@@ -135,6 +135,7 @@ describe("pickerView", () => {
     frame,
     size: { width: frame.width * 2, height: frame.height * 2 },
     displayId,
+    corner: 16,
   });
   const FRONT = windowAt(10, "Finder", rect(100, 100, 400, 300));
   const BACK = windowAt(11, "Safari", rect(0, 0, 1000, 800));
@@ -204,7 +205,28 @@ describe("pickerView", () => {
     });
     expect(highlightAt(stacked, 50, 50)).toMatchObject({
       title: "Safari",
-      covered: [FRONT.frame, rect(900, 700, 100, 100)],
+      covered: [
+        { ...FRONT.frame, corner: 16 },
+        { ...partial.frame, corner: 16 },
+      ],
+    });
+  });
+
+  test("window mode counts the same app's windows inside the window as part of it", () => {
+    const toolbar = {
+      ...windowAt(14, "Safari", rect(0, 0, 1000, 68)),
+      pid: BACK.pid,
+    };
+    const withToolbar = session("window", {
+      sources: {
+        displays: [LAPTOP, MONITOR],
+        windows: [toolbar, BACK, SPANNING],
+        icons: {},
+      },
+    });
+    expect(highlightAt(withToolbar, 50, 500)).toMatchObject({
+      title: "Safari",
+      covered: [],
     });
   });
 

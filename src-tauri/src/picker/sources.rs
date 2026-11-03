@@ -1,11 +1,13 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::{LazyLock, Mutex},
+    f64::consts::FRAC_1_SQRT_2,
+    sync::{LazyLock, Mutex, mpsc},
+    time::Duration,
 };
 
 use anyhow::Result;
 use base64::{Engine, engine::general_purpose::STANDARD};
-use cidre::{cg, sc};
+use cidre::{blocks, cg, sc};
 use objc2::AllocAnyThread;
 use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSRunningApplication};
 use objc2_foundation::{NSDictionary, NSPoint, NSRect, NSSize};
@@ -41,6 +43,7 @@ pub(super) struct WindowInfo {
     pub frame: Frame,
     pub size: CaptureSize,
     pub display_id: Option<u32>,
+    pub corner: f64,
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
@@ -98,6 +101,13 @@ pub(super) struct Framing {
 }
 
 static ICONS: LazyLock<Mutex<HashMap<u32, String>>> = LazyLock::new(Mutex::default);
+static CORNERS: LazyLock<Mutex<HashMap<u32, f64>>> = LazyLock::new(Mutex::default);
+
+const FLOATING_WINDOW_LAYER: isize = 3;
+const CORNER_PROBE: f64 = 40.0;
+const CORNER_PIXELS: usize = 80;
+const FALLBACK_CORNER: f64 = 16.0;
+const MAX_CORNER: f64 = 32.0;
 
 pub(super) fn list(app: &AppHandle) -> Result<Sources> {
     let content = capture::shareable_content()?;
@@ -114,11 +124,23 @@ pub(super) fn list(app: &AppHandle) -> Result<Sources> {
         });
     }
     let mut windows = Vec::new();
-    for window in content.windows().iter() {
+    let mut corners = lock(&CORNERS).clone();
+    let mut unmeasured = Vec::new();
+    let all_windows = content.windows();
+    for window in all_windows.iter() {
         if let Some(info) = pickable_window(&content, window, &displays) {
+            if !corners.contains_key(&info.id) {
+                unmeasured.push(window);
+            }
             windows.push(info);
         }
     }
+    corners.extend(measure_corners(&unmeasured));
+    corners.retain(|id, _| windows.iter().any(|window| window.id == *id));
+    for window in &mut windows {
+        window.corner = corners.get(&window.id).copied().unwrap_or(FALLBACK_CORNER);
+    }
+    *lock(&CORNERS) = corners;
     sort_front_to_back(&mut windows, &stacking_order());
     let pids: HashSet<u32> = windows.iter().map(|window| window.pid).collect();
     let known = lock(&ICONS).clone();
@@ -242,11 +264,63 @@ fn pickable_window(
         frame,
         size: CaptureSize::of(window.frame(), scale),
         display_id: display_at_center(displays, frame),
+        corner: FALLBACK_CORNER,
     })
 }
 
 fn is_pickable(layer: isize, on_screen: bool, frame: Frame) -> bool {
-    layer == NORMAL_WINDOW_LAYER && on_screen && frame.width >= 40.0 && frame.height >= 40.0
+    let is_window_or_panel = (NORMAL_WINDOW_LAYER..=FLOATING_WINDOW_LAYER).contains(&layer);
+    is_window_or_panel && on_screen && frame.width >= 40.0 && frame.height >= 40.0
+}
+
+/// macOS 26 rounds windows by style (about 26 pt with a toolbar, 16 without), so this captures
+/// each window's top-left corner once, all at the same time, and reads the radius from its alpha.
+fn measure_corners(windows: &[&sc::Window]) -> HashMap<u32, f64> {
+    let (sender, measured) = mpsc::channel();
+    for window in windows {
+        let filter = sc::ContentFilter::with_desktop_independent_window(window);
+        let mut config = sc::StreamCfg::new();
+        config.set_src_rect(cg::Rect::new(0.0, 0.0, CORNER_PROBE, CORNER_PROBE));
+        config.set_width(CORNER_PIXELS);
+        config.set_height(CORNER_PIXELS);
+        config.set_ignore_shadows_single_window(true);
+        config.set_shows_cursor(false);
+        let (id, sender) = (window.id(), sender.clone());
+        let mut done = blocks::ResultCh::new2(move |image: Option<&cg::Image>, _| {
+            let _ = sender.send((id, image.and_then(corner_radius)));
+        });
+        sc::ScreenshotManager::capture_image_ch(&filter, &config, Some(&mut done));
+    }
+    drop(sender);
+    let mut corners = HashMap::new();
+    while let Ok((id, corner)) = measured.recv_timeout(Duration::from_secs(1)) {
+        if let Some(corner) = corner {
+            corners.insert(id, corner);
+        }
+    }
+    corners
+}
+
+/// The first opaque pixel on the corner's diagonal sits r × (1 - 1/√2) in from both edges.
+fn corner_radius(image: &cg::Image) -> Option<f64> {
+    let row = CORNER_PIXELS * 4;
+    let mut pixels = vec![0_u8; row * CORNER_PIXELS];
+    let alpha_last = cg::BitmapInfo::with_alpha(cg::ImageAlphaInfo::PremultipliedLast);
+    let side = CORNER_PIXELS as f64;
+    let rgb = cg::ColorSpace::device_rgb()?;
+    cg::Context::new_bitmap(
+        pixels.as_mut_ptr().cast(),
+        CORNER_PIXELS,
+        CORNER_PIXELS,
+        8,
+        row,
+        &rgb,
+        alpha_last,
+    )?
+    .draw_image(cg::Rect::new(0.0, 0.0, side, side), image);
+    let inset = (0..CORNER_PIXELS).find(|&step| pixels[step * row + step * 4 + 3] >= 128)?;
+    let points = inset as f64 * CORNER_PROBE / side;
+    Some(points / (1.0 - FRAC_1_SQRT_2)).filter(|&corner| corner <= MAX_CORNER)
 }
 
 fn sort_front_to_back(windows: &mut [WindowInfo], order: &[u32]) {

@@ -29,6 +29,7 @@ fn window(id: u32, x: f64) -> WindowInfo {
         },
         size: CaptureSize::of(cg::Rect::zero(), 2.0),
         display_id: None,
+        corner: 16.0,
     }
 }
 
@@ -128,6 +129,8 @@ fn is_pickable_should_skip_menus_hidden_and_tiny_windows() {
     let big = window(1, 0.0).frame;
     let tiny = Frame { width: 10.0, ..big };
     assert!(is_pickable(0, true, big));
+    assert!(is_pickable(3, true, big));
+    assert!(!is_pickable(20, true, big));
     assert!(!is_pickable(25, true, big));
     assert!(!is_pickable(0, false, big));
     assert!(!is_pickable(0, true, tiny));

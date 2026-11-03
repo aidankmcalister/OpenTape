@@ -3,6 +3,7 @@ import type { Point } from "@/lib/bindings";
 export type { Point };
 export type Size = { width: number; height: number };
 export type Rect = Point & Size;
+export type RoundedRect = Rect & { corner: number };
 
 export function contains(rect: Rect, point: Point): boolean {
   return (
@@ -13,7 +14,7 @@ export function contains(rect: Rect, point: Point): boolean {
   );
 }
 
-export function relativeTo(rect: Rect, origin: Point): Rect {
+export function relativeTo<T extends Rect>(rect: T, origin: Point): T {
   return { ...rect, x: rect.x - origin.x, y: rect.y - origin.y };
 }
 
@@ -47,26 +48,4 @@ export function percentStyle(rect: Rect) {
 export function fitInside(bounds: Size, ratio: number): Size {
   const width = Math.min(bounds.width, bounds.height * ratio);
   return { width, height: width / ratio };
-}
-
-export function roundedRectPath(
-  { x, y, width, height }: Rect,
-  corner: number,
-): string {
-  const r = Math.min(corner, width / 2, height / 2);
-  const right = x + width;
-  const bottom = y + height;
-  const arc = (toX: number, toY: number) => `A${r} ${r} 0 0 1 ${toX} ${toY}`;
-  return [
-    `M${x + r} ${y}`,
-    `H${right - r}`,
-    arc(right, y + r),
-    `V${bottom - r}`,
-    arc(right - r, bottom),
-    `H${x + r}`,
-    arc(x, bottom - r),
-    `V${y + r}`,
-    arc(x + r, y),
-    "Z",
-  ].join("");
 }

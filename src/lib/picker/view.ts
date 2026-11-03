@@ -1,19 +1,26 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { DisplayInfo, Session, Sources, Target } from "@/lib/bindings";
+import type {
+  DisplayInfo,
+  Session,
+  Sources,
+  Target,
+  WindowInfo,
+} from "@/lib/bindings";
 import {
   contains,
   intersect,
   relativeTo,
   type Point,
   type Rect,
+  type RoundedRect,
   type Size,
 } from "@/lib/geometry";
 
 export const record = (target: Target) => invoke<void>("record", { target });
 
 export type Highlight = {
-  rect: Rect;
-  covered: Rect[];
+  rect: RoundedRect;
+  covered: RoundedRect[];
   barRect: Rect | null;
   title: string;
   icon: string | null;
@@ -45,7 +52,8 @@ export function pickerView(
     if (!holdsCursor(display, cursor)) {
       return { mode: "display", highlight: null };
     }
-    const highlight = highlightOf(display, display.frame, [], true, {
+    const frame = { ...display.frame, corner: 0 };
+    const highlight = highlightOf(display, frame, [], true, {
       title: display.name,
       icon: null,
       size: display.size,
@@ -62,11 +70,12 @@ export function pickerView(
   if (!window) return { mode: "window", highlight: null };
   const inFront = windows
     .slice(0, windows.indexOf(window))
-    .map(({ frame }) => frame);
+    .filter((front) => front.pid !== window.pid || !isInside(front, window))
+    .map(shapeOf);
   const showsBar = pinned
     ? pinned.displayId === display.id
     : holdsCursor(display, cursor);
-  const highlight = highlightOf(display, window.frame, inFront, showsBar, {
+  const highlight = highlightOf(display, shapeOf(window), inFront, showsBar, {
     title: window.app,
     icon: icons[window.pid] ?? null,
     size: window.size,
@@ -82,10 +91,20 @@ export function holdsCursor(
   return cursor !== null && contains(display.frame, cursor);
 }
 
+const shapeOf = ({ frame, corner }: WindowInfo) => ({ ...frame, corner });
+
+function isInside(inner: WindowInfo, outer: WindowInfo): boolean {
+  const overlap = intersect(inner.frame, outer.frame);
+  return (
+    overlap?.width === inner.frame.width &&
+    overlap.height === inner.frame.height
+  );
+}
+
 function highlightOf(
   display: DisplayInfo,
-  frame: Rect,
-  inFront: Rect[],
+  frame: RoundedRect,
+  inFront: RoundedRect[],
   showsBar: boolean,
   about: Pick<Highlight, "title" | "icon" | "size" | "target">,
 ): Highlight {
@@ -100,9 +119,8 @@ function highlightOf(
     ...about,
     rect,
     covered: inFront
-      .map((front) => intersect(front, frame))
-      .filter((overlap) => overlap !== null)
-      .map((overlap) => relativeTo(overlap, display.frame)),
+      .filter((front) => intersect(front, frame))
+      .map((front) => relativeTo(front, display.frame)),
     barRect: showsBar ? intersect(rect, screen) : null,
   };
 }
