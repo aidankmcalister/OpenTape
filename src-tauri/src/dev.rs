@@ -4,9 +4,10 @@ use anyhow::{Context, Result};
 use tauri::{AppHandle, Manager};
 
 use crate::capture::{CAMERA_FILE, EVENTS_FILE, META_FILE};
-use crate::current_recording::{CurrentRecording, PROJECT_FILE};
+use crate::current_recording::{CurrentRecording, PROJECT_FILE, TYPING_FILE};
 
 const VIDEO_VAR: &str = "EDIT_VIDEO";
+const PREVIEW_VAR: &str = "PREVIEW_ONLY";
 const TEST_CLIP: &str = "OpenTape test clip";
 
 pub(crate) fn open_editor_if_asked(app: &AppHandle) -> bool {
@@ -54,11 +55,15 @@ fn open_editor(app: &AppHandle, choice: &str) -> Result<()> {
         std::fs::copy(&source, &copy)
             .with_context(|| format!("could not copy {}", source.display()))?;
     }
-    let project = folder.join(PROJECT_FILE);
-    if project.exists() {
-        std::fs::remove_file(project)?;
+    for fresh in [PROJECT_FILE, TYPING_FILE] {
+        if folder.join(fresh).exists() {
+            std::fs::remove_file(folder.join(fresh))?;
+        }
     }
     current.keep(app, copy)?;
+    if std::env::var_os(PREVIEW_VAR).is_some() {
+        return Ok(());
+    }
     current.edit(app)
 }
 

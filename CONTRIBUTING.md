@@ -27,7 +27,7 @@ bun run dev:app
 
 The app opens to the record bar at the bottom of your screen, with an icon in the menu bar. There's no main window; clicking the Dock icon or New recording in the menu brings the record bar back.
 
-To work on the editor without recording first, run `bun run dev:editor`. It opens `~/Downloads/OpenTape test clip/recording.mov`, with the `events.jsonl` and `meta.json` beside it if they're there. `EDIT_VIDEO=latest bun run dev:editor` opens the newest video in Downloads instead, and `EDIT_VIDEO=/path/to/video.mp4 bun run dev:editor` opens any video.
+To work on the editor without recording first, run `bun run dev:editor`. It opens `~/Downloads/OpenTape test clip/recording.mov`, with the `events.jsonl` and `meta.json` beside it if they're there. `EDIT_VIDEO=latest bun run dev:editor` opens the newest video in Downloads instead, and `EDIT_VIDEO=/path/to/video.mp4 bun run dev:editor` opens any video. `bun run dev:preview` takes the same `EDIT_VIDEO` and stops at the preview instead of the editor.
 
 To test anything involving permissions, build a debug app instead with `bun tauri build --debug`. It's signed with a local certificate named `screen-recorder dev` (`bundle.macOS.signingIdentity` in `src-tauri/tauri.conf.json`), so macOS keeps your permission between rebuilds. Make a self-signed code-signing certificate with that name in Keychain Access, or change the field. `bun tauri build` makes the app in `src-tauri/target/release/bundle/macos/`.
 

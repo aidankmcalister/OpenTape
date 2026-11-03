@@ -6,7 +6,9 @@ use tauri::ipc::Response;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
-use super::{CurrentRecording, CursorLog, PICTURE_TYPES, Shell, ShownRecording, Window};
+use super::{
+    CurrentRecording, CursorLog, PICTURE_TYPES, Shell, ShownRecording, TYPING_FILE, Window,
+};
 use crate::export::typing::{TypingSpot, TypingStretch};
 use crate::export::{ExportLayout, ExportOptions};
 use crate::macos::{self, Alert, Choice};
@@ -156,10 +158,27 @@ pub(crate) async fn cursor_log(app: AppHandle) -> CmdResult<Option<CursorLog>> {
 #[tauri::command]
 pub(crate) async fn typing_spots(
     app: AppHandle,
+    window: tauri::WebviewWindow,
     stretches: Vec<TypingStretch>,
 ) -> CmdResult<Vec<TypingSpot>> {
     let (video, _) = app.state::<CurrentRecording>().video(None)?;
-    Ok(run_blocking(move || crate::export::typing::typing_spots(&video, &stretches)).await?)
+    let saved = video.with_file_name(TYPING_FILE);
+    Ok(run_blocking(move || {
+        if let Some(spots) = std::fs::read(&saved)
+            .ok()
+            .and_then(|json| serde_json::from_slice(&json).ok())
+        {
+            return Ok(spots);
+        }
+        let spots = crate::export::typing::typing_spots(&video, &stretches, |progress| {
+            let _ = PageEvent::TypingProgress(progress).send_to(&app, window.label());
+        })?;
+        if let Err(err) = std::fs::write(&saved, serde_json::to_vec(&spots)?) {
+            log::warn!("could not keep the typing spots: {err}");
+        }
+        Ok(spots)
+    })
+    .await?)
 }
 
 #[tauri::command]

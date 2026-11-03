@@ -24,7 +24,7 @@ pub(crate) struct TypingStretch {
     end: f64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "bindings.ts")]
 pub(crate) struct TypingSpot {
     t: f64,
@@ -32,7 +32,11 @@ pub(crate) struct TypingSpot {
     y: f64,
 }
 
-pub(crate) fn typing_spots(video: &Path, stretches: &[TypingStretch]) -> Result<Vec<TypingSpot>> {
+pub(crate) fn typing_spots(
+    video: &Path,
+    stretches: &[TypingStretch],
+    on_progress: impl Fn(f32),
+) -> Result<Vec<TypingSpot>> {
     let asset = unsafe { AVURLAsset::URLAssetWithURL_options(&file_url(video), None) };
     let frames = unsafe { AVAssetImageGenerator::assetImageGeneratorWithAsset(&asset) };
     unsafe {
@@ -41,11 +45,24 @@ pub(crate) fn typing_spots(video: &Path, stretches: &[TypingStretch]) -> Result<
         frames.setRequestedTimeToleranceBefore(seconds(0.05));
         frames.setRequestedTimeToleranceAfter(seconds(0.05));
     }
+    let times: Vec<Vec<f64>> = stretches
+        .iter()
+        .map(|stretch| {
+            let mut times = Vec::new();
+            let mut t = (stretch.start - STEP_S).max(0.0);
+            while t <= stretch.end + STEP_S {
+                times.push(t);
+                t += STEP_S;
+            }
+            times
+        })
+        .collect();
+    let total = times.iter().map(Vec::len).sum::<usize>().max(1);
+    let mut done = 0;
     let mut spots = Vec::new();
-    for stretch in stretches {
+    for stretch_times in &times {
         let mut before: Option<(Vec<u8>, usize)> = None;
-        let mut t = (stretch.start - STEP_S).max(0.0);
-        while t <= stretch.end + STEP_S {
+        for &t in stretch_times {
             #[allow(deprecated)]
             let image = unsafe {
                 frames.copyCGImageAtTime_actualTime_error(seconds(t), std::ptr::null_mut())
@@ -60,7 +77,8 @@ pub(crate) fn typing_spots(video: &Path, stretches: &[TypingStretch]) -> Result<
                 }
                 before = Some(now);
             }
-            t += STEP_S;
+            done += 1;
+            on_progress(done as f32 / total as f32);
         }
     }
     Ok(spots)
@@ -164,7 +182,8 @@ mod tests {
         let video = std::env::var("TYPING_TEST_VIDEO").expect("TYPING_TEST_VIDEO");
         let [start, end] = ["TYPING_TEST_START", "TYPING_TEST_END"]
             .map(|name| std::env::var(name).expect(name).parse().unwrap());
-        let spots = typing_spots(Path::new(&video), &[TypingStretch { start, end }]).unwrap();
+        let spots =
+            typing_spots(Path::new(&video), &[TypingStretch { start, end }], |_| {}).unwrap();
         for spot in &spots {
             println!("{:.1}s at {:.2}, {:.2}", spot.t, spot.x, spot.y);
         }

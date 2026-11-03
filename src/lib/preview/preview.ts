@@ -1,9 +1,19 @@
 import type { ExportState } from "@/lib/editor/export";
 
 export type DockLayer =
-  "actions" | "saving" | "copying" | "saved" | "copied" | "failed";
+  | "processing"
+  | "actions"
+  | "saving"
+  | "copying"
+  | "saved"
+  | "copied"
+  | "failed";
 
-export function dockLayer(state: ExportState): DockLayer {
+export function dockLayer(
+  state: ExportState,
+  isProcessing: boolean,
+): DockLayer {
+  if (isProcessing) return "processing";
   switch (state.stage) {
     case "idle":
       return "actions";

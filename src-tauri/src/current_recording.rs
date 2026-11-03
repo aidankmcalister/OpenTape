@@ -15,6 +15,7 @@ use crate::util::lock;
 const NAME_FORMAT: &str = "%Y-%m-%d %H.%M.%S";
 const MAX_NAME_BYTES: usize = 200;
 pub(crate) const PROJECT_FILE: &str = "project.json";
+pub(crate) const TYPING_FILE: &str = "typing.json";
 pub(crate) const PICTURE_TYPES: [&str; 5] = ["png", "jpg", "jpeg", "heic", "webp"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

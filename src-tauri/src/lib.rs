@@ -44,6 +44,7 @@ pub(crate) enum PageEvent {
     PreviewPointer(Option<Point>),
     PreviewKey(PreviewKey),
     ExportProgress(f32),
+    TypingProgress(f32),
     ExportAndClose,
     NewRecording(Option<picker::Mode>),
     SettingsChanged(settings::Settings),

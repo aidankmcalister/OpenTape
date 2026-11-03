@@ -2,6 +2,11 @@ import { expect, test } from "bun:test";
 import type { ExportState } from "@/lib/editor/export";
 import { dockLayer, loopProgress, type DockLayer } from "./preview";
 
+test("dockLayer: a recording still being processed shows processing", () => {
+  expect(dockLayer({ stage: "idle" }, true)).toBe("processing");
+  expect(dockLayer({ stage: "idle" }, false)).toBe("actions");
+});
+
 test.each<[string, ExportState, DockLayer]>([
   ["nothing running shows the actions", { stage: "idle" }, "actions"],
   [
@@ -26,7 +31,7 @@ test.each<[string, ExportState, DockLayer]>([
   ],
   ["a failure shows failed", { stage: "failed", reason: "no disk" }, "failed"],
 ])("dockLayer: %s", (_, state, layer) => {
-  expect(dockLayer(state)).toBe(layer);
+  expect(dockLayer(state, false)).toBe(layer);
 });
 
 test.each([

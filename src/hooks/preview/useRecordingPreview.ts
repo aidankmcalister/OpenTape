@@ -8,6 +8,8 @@ import type { PreviewKey } from "@/lib/bindings";
 import { frameShape } from "@/lib/editor/appearance";
 import { dockLayer } from "@/lib/preview/preview";
 
+const SLOW_AFTER_MS = 500;
+
 export function useRecordingPreview(videoSrc: string) {
   const recording = useFinishedRecording(videoSrc, 0, true);
   const { playback, edits, exporting, isLoaded, isReady } = recording;
@@ -15,6 +17,8 @@ export function useRecordingPreview(videoSrc: string) {
   useTimeMap(playback, edits.time);
   const [isHovered, setIsHovered] = useState(false);
   const [isShaped, setIsShaped] = useState(false);
+  const [isSlow, setIsSlow] = useState(false);
+  const [processed, setProcessed] = useState(0);
   const { hoveredName, setPointer } = usePointerHover();
   const oneAtATime = useOneAtATime();
   const isBusy = exporting.state.stage === "exporting";
@@ -29,6 +33,12 @@ export function useRecordingPreview(videoSrc: string) {
       .catch(console.error)
       .finally(() => setIsShaped(true));
   }, [shape]);
+
+  useEffect(() => {
+    if (isReady) return;
+    const timeout = setTimeout(() => setIsSlow(true), SLOW_AFTER_MS);
+    return () => clearTimeout(timeout);
+  }, [isReady]);
 
   useEffect(() => {
     if (!isReady) return;
@@ -46,7 +56,7 @@ export function useRecordingPreview(videoSrc: string) {
     save: () =>
       exporting.showSaved ? exporting.showSaved() : exporting.start?.("file"),
     copy: () => exporting.start?.("clipboard"),
-    edit: whenIdle("edit_recording"),
+    edit: isReady ? whenIdle("edit_recording") : () => {},
   } satisfies Record<PreviewKey, () => void>;
 
   useTauriEvent(
@@ -58,13 +68,15 @@ export function useRecordingPreview(videoSrc: string) {
     "window",
   );
   useTauriEvent("preview-key", (key) => actions[key](), "window");
+  useTauriEvent("typing-progress", setProcessed, "window");
 
   return {
     ...recording,
     isShown: isShaped,
     isHovered,
     hoveredName,
-    layer: dockLayer(exporting.state),
+    layer: dockLayer(exporting.state, !isReady && isSlow),
+    processed,
     ...actions,
     close: whenIdle("close_recording"),
   };

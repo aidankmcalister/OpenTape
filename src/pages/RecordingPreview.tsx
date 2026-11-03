@@ -94,6 +94,9 @@ function Preview({
           )}
           layerClassName="gap-1 p-1"
           layers={{
+            processing: (
+              <Progress label="Processing…" progress={preview.processed} />
+            ),
             actions: (
               <>
                 <Action
