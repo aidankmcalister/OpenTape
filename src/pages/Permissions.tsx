@@ -1,7 +1,15 @@
 import type { ComponentType } from "react";
-import { Check, Mic, Monitor, RotateCcw } from "lucide-react";
+import {
+  ChartNoAxesColumn,
+  Check,
+  Mic,
+  Monitor,
+  RotateCcw,
+} from "lucide-react";
 import appIcon from "@/assets/app-icon.svg";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { useAppSettings } from "@/hooks/useAppSettings";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useShowWhenReady } from "@/hooks/useTauri";
 import type { Access, Permission } from "@/lib/bindings";
@@ -19,6 +27,7 @@ const ROWS: {
 
 export default function Permissions() {
   const { permissions, allow, finish, restart } = usePermissions();
+  const { settings, change } = useAppSettings();
   useShowWhenReady();
   const progress = permissions && setupProgress(permissions);
   const title = progress?.isAllSet
@@ -57,6 +66,23 @@ export default function Permissions() {
             onAllow={() => allow(permission)}
           />
         ))}
+        <div className="flex h-14 items-center gap-3 rounded-xl bg-muted px-2 ring-1 ring-hairline">
+          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-accent text-muted-foreground [&_svg]:size-4">
+            <ChartNoAxesColumn />
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col text-ui font-medium">
+            Share anonymous usage
+            <span className="text-micro font-normal text-muted-foreground">
+              Counts launches, recordings and exports. Never what you record.
+            </span>
+          </span>
+          <Switch
+            className="mr-2"
+            checked={settings?.sharesUsage ?? false}
+            disabled={!settings}
+            onCheckedChange={(checked) => change({ sharesUsage: checked })}
+          />
+        </div>
       </section>
       <Button
         variant="primary"

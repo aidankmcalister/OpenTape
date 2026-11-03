@@ -94,6 +94,7 @@ pub(crate) async fn export_recording(
 ) -> CmdResult<String> {
     let handle = app.clone();
     let to_clipboard = options.to_clipboard;
+    let format = options.extension();
     let path = run_blocking(move || {
         handle
             .state::<CurrentRecording>()
@@ -101,7 +102,17 @@ pub(crate) async fn export_recording(
                 let _ = PageEvent::ExportProgress(progress).send_to(&handle, window.label());
             })
     })
-    .await?;
+    .await;
+    crate::usage::send(
+        &app,
+        if path.is_ok() {
+            "export done"
+        } else {
+            "export failed"
+        },
+        serde_json::json!({ "format": format, "to": if to_clipboard { "clipboard" } else { "file" } }),
+    );
+    let path = path?;
     if to_clipboard {
         macos::put_file_on_clipboard(&app, path.clone())?;
     }

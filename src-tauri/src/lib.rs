@@ -12,6 +12,7 @@ mod settings;
 mod stage;
 mod tray;
 mod update;
+mod usage;
 mod util;
 mod windows;
 
@@ -153,6 +154,7 @@ pub fn run() -> tauri::Result<()> {
                 path.app_config_dir()?.join("settings.json"),
             ));
             settings::apply(app.handle());
+            usage::send(app.handle(), "app opened", serde_json::Value::Null);
             let bar = app
                 .get_webview_window(bar::LABEL)
                 .ok_or("the bar window is missing")?;

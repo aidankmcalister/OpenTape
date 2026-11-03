@@ -387,7 +387,9 @@ async fn stop(
     };
     go_idle(app, saved.as_ref().err());
     let video_path = PathBuf::from(saved?.video_path);
-    app.state::<CurrentRecording>().keep(app, video_path)
+    app.state::<CurrentRecording>().keep(app, video_path)?;
+    crate::usage::send(app, "recording finished", serde_json::Value::Null);
+    Ok(())
 }
 
 async fn start_capture(app: &AppHandle, target: Target) {

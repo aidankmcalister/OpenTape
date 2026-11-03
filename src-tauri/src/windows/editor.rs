@@ -32,6 +32,7 @@ pub(crate) fn show(app: &AppHandle) -> Result<()> {
     window.center()?;
     window.show()?;
     window.set_focus()?;
+    crate::usage::send(app, "editor opened", serde_json::Value::Null);
     Ok(())
 }
 

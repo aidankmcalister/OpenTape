@@ -2691,6 +2691,8 @@ dependencies = [
  "objc2-foundation",
  "objc2-image-io",
  "objc2-quartz-core",
+ "reqwest",
+ "rustls",
  "serde",
  "serde_json",
  "tauri",

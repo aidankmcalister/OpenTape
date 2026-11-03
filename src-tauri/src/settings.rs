@@ -27,6 +27,7 @@ pub(crate) struct Settings {
     pub record_shortcut: String,
     pub counts_down: bool,
     pub hides_dock_icon: bool,
+    pub shares_usage: bool,
     pub has_finished_setup: bool,
 }
 
@@ -40,6 +41,7 @@ impl Default for Settings {
             record_shortcut: "Alt+Shift+KeyR".into(),
             counts_down: true,
             hides_dock_icon: false,
+            shares_usage: false,
             has_finished_setup: false,
         }
     }
@@ -208,6 +210,7 @@ mod tests {
         assert!(read(&path).suggests_edits);
         assert!(read(&path).counts_down);
         assert!(!read(&path).hides_dock_icon);
+        assert!(!read(&path).shares_usage);
     }
 
     #[test]

@@ -58,6 +58,7 @@ export function SettingsBody({
     recordShortcut,
     countsDown,
     hidesDockIcon,
+    sharesUsage,
   } = settings;
   const saved = settings.appearance !== null;
   return (
@@ -167,6 +168,20 @@ export function SettingsBody({
           <Switch
             checked={hidesDockIcon}
             onCheckedChange={(checked) => change({ hidesDockIcon: checked })}
+          />
+        </Row>
+      </DialogSection>
+      <DialogSection title="Privacy">
+        <Row
+          label={
+            <Help text="Counts launches, recordings and exports, with the app version and export format. Never what you record, file names or anything that identifies you.">
+              Share anonymous usage
+            </Help>
+          }
+        >
+          <Switch
+            checked={sharesUsage}
+            onCheckedChange={(checked) => change({ sharesUsage: checked })}
           />
         </Row>
       </DialogSection>
