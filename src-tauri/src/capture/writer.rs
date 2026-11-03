@@ -249,8 +249,16 @@ pub(super) fn create_recorder(
     writer.set_movie_fragment_interval(cm::Time::new(2, 1));
     let bitrate = (size.width * size.height * 8) as i64;
     let compression = ns::Dictionary::with_keys_values(
-        &[ns::str!(c"AverageBitRate")],
-        &[ns::Number::with_i64(bitrate).as_ref()],
+        &[
+            ns::str!(c"AverageBitRate"),
+            ns::str!(c"MaxKeyFrameIntervalDuration"),
+            ns::str!(c"AllowFrameReordering"),
+        ],
+        &[
+            ns::Number::with_i64(bitrate).as_ref(),
+            ns::Number::with_f64(0.25).as_ref(),
+            ns::Number::with_bool(false).as_ref(),
+        ],
     );
     let settings: arc::R<ns::Dictionary<ns::String, ns::Id>> = ns::Dictionary::with_keys_values(
         &[

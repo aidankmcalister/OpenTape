@@ -348,10 +348,14 @@ export function stretched(
   };
 }
 
+const byKind = new WeakMap<Region[], Partial<Record<RegionKind, Region[]>>>();
+
 export function sameKind(regions: Region[], kind: RegionKind): Region[] {
-  return regions
+  const kinds = byKind.get(regions) ?? {};
+  byKind.set(regions, kinds);
+  return (kinds[kind] ??= regions
     .filter((region) => region.kind === kind)
-    .sort((a, b) => a.startMs - b.startMs);
+    .sort((a, b) => a.startMs - b.startMs));
 }
 
 export function gapsBetween(spans: Span[], fromMs: number, toMs: number) {

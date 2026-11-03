@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { Command, Redo, Undo } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -66,9 +66,17 @@ function Workspace({
       ? edits.project.regions.find(({ id }) => id === edits.editingId)
       : undefined;
   const { appearance, regions, clips } = edits.project;
-  const soloed = lanes.solo
-    ? regions.filter(({ kind }) => kind === lanes.solo)
-    : regions;
+  const soloed = useMemo(
+    () =>
+      lanes.solo ? regions.filter(({ kind }) => kind === lanes.solo) : regions,
+    [regions, lanes.solo],
+  );
+  const settled = edits.saved.regions;
+  const zoomRegions = useMemo(
+    () =>
+      lanes.solo ? settled.filter(({ kind }) => kind === lanes.solo) : settled,
+    [settled, lanes.solo],
+  );
   const time = lanes.solo
     ? timeMap(clips, soloed, playback.durationMs)
     : edits.time;
@@ -177,6 +185,7 @@ function Workspace({
             ratio={playback.ratio}
             clock={playback.clock}
             regions={soloed}
+            zoomRegions={zoomRegions}
             clips={clips}
             rings={rings}
             cursor={cursor}

@@ -87,6 +87,7 @@ type FrameProps = {
   ratio: number;
   clock: Clock;
   regions: Region[];
+  zoomRegions?: Region[];
   clips: Clip[];
   rings: RingEvent[];
   cursor: CursorTrack;
@@ -103,6 +104,7 @@ export function Frame({
   ratio,
   clock,
   regions,
+  zoomRegions = regions,
   clips,
   rings,
   cursor,
@@ -117,12 +119,12 @@ export function Frame({
   const { x: cropX, y: cropY } = frameCrop(appearance, ratio);
   const kept = keptClips(clips, durationMs);
   const zoomAt = useMemo(() => {
-    const shown = isFocusing ? [] : regions;
+    const shown = isFocusing ? [] : zoomRegions;
     const at = isFocusing
       ? zoomPath(shown)
       : zoomPath(shown, cursor, { x: cropX, y: cropY }, durationMs);
     return (seconds: number) => at(outputAt(shown, seconds * 1000));
-  }, [isFocusing, regions, cursor, cropX, cropY, durationMs]);
+  }, [isFocusing, zoomRegions, cursor, cropX, cropY, durationMs]);
 
   return (
     <div ref={ref} className="grid size-full place-items-center">
@@ -182,7 +184,6 @@ export function Frame({
               track={cursor}
               settings={appearance.cursor}
               durationMs={durationMs}
-              startMs={kept[0].startMs}
               endMs={kept[kept.length - 1].endMs}
               video={video}
               size={recording}
@@ -359,7 +360,6 @@ function Cursor({
   track,
   settings,
   durationMs,
-  startMs,
   endMs,
   video,
   size,
@@ -369,15 +369,14 @@ function Cursor({
   track: CursorTrack;
   settings: CursorSettings;
   durationMs: number;
-  startMs: number;
   endMs: number;
   video: Rect;
   size: Size;
   zoomAt: ZoomAt;
 }) {
   const spotAt = useMemo(
-    () => cursorPath(track, settings, durationMs, { startMs, endMs }),
-    [track, settings, durationMs, startMs, endMs],
+    () => cursorPath(track, settings, durationMs, { startMs: 0, endMs }),
+    [track, settings, durationMs, endMs],
   );
   const { style, hidesOutside } = nativeOr(settings);
   const pictures = useMemo(

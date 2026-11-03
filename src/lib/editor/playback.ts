@@ -83,7 +83,7 @@ export function createFrames<F extends Decoded>(
   function bytes(index: number) {
     const chunk = Math.floor(index / CHUNK_SAMPLES);
     for (const kept of chunks.keys())
-      if (kept < chunk || kept > chunk + 1) chunks.delete(kept);
+      if (kept < chunk - 1 || kept > chunk + 1) chunks.delete(kept);
     for (const wantedChunk of [chunk, chunk + 1]) {
       const from = wantedChunk * CHUNK_SAMPLES;
       if (chunks.has(wantedChunk) || from >= samples.length) continue;

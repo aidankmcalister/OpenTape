@@ -232,6 +232,7 @@ function videoDecoder(
   const config = {
     codec: track.codec,
     description: new Uint8Array(track.description),
+    optimizeForLatency: true,
   };
   const open = () => {
     const decoder = new VideoDecoder({ output, error: console.error });
