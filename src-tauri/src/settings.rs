@@ -4,14 +4,15 @@ use std::sync::Mutex;
 
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, State, path::BaseDirectory};
+use tauri::{ActivationPolicy, AppHandle, Manager, State, path::BaseDirectory};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_global_shortcut::Shortcut;
 use ts_rs::TS;
 
 use crate::current_recording::CurrentRecording;
 use crate::util::{CmdResult, lock, run_blocking};
-use crate::{PageEvent, tray, windows};
+use crate::windows::{self, editor};
+use crate::{PageEvent, tray};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", default)]
@@ -25,6 +26,7 @@ pub(crate) struct Settings {
     pub suggests_edits: bool,
     pub record_shortcut: String,
     pub counts_down: bool,
+    pub hides_dock_icon: bool,
     pub has_finished_setup: bool,
 }
 
@@ -37,6 +39,7 @@ impl Default for Settings {
             suggests_edits: true,
             record_shortcut: "Alt+Shift+KeyR".into(),
             counts_down: true,
+            hides_dock_icon: false,
             has_finished_setup: false,
         }
     }
@@ -87,6 +90,22 @@ pub(crate) fn apply(app: &AppHandle) {
     }
     app.state::<CurrentRecording>()
         .set_save_folder(settings.save_folder.map(PathBuf::from));
+    let is_editing = app
+        .get_webview_window(editor::LABEL)
+        .is_some_and(|window| window.is_visible().unwrap_or(false));
+    update_dock(app, is_editing);
+}
+
+pub(crate) fn update_dock(app: &AppHandle, is_editing: bool) {
+    let hides = app.state::<AppSettings>().current().hides_dock_icon && !is_editing;
+    let policy = if hides {
+        ActivationPolicy::Accessory
+    } else {
+        ActivationPolicy::Regular
+    };
+    if let Err(err) = app.set_activation_policy(policy) {
+        log::warn!("could not show or hide the Dock icon: {err:#}");
+    }
 }
 
 #[tauri::command]
@@ -188,6 +207,7 @@ mod tests {
         assert_eq!(read(&path).save_folder.as_deref(), Some("/tmp/x"));
         assert!(read(&path).suggests_edits);
         assert!(read(&path).counts_down);
+        assert!(!read(&path).hides_dock_icon);
     }
 
     #[test]

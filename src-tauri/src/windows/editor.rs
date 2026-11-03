@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use tauri::{AppHandle, Manager, WindowEvent};
 
 use crate::current_recording::CurrentRecording;
+use crate::settings;
 
 pub(crate) const LABEL: &str = "editor";
 
@@ -27,6 +28,7 @@ pub(crate) fn show(app: &AppHandle) -> Result<()> {
     let window = app
         .get_webview_window(LABEL)
         .context("the editor window is missing")?;
+    settings::update_dock(app, true);
     window.center()?;
     window.show()?;
     window.set_focus()?;
@@ -37,4 +39,5 @@ pub(crate) fn hide(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(LABEL) {
         let _ = window.hide();
     }
+    settings::update_dock(app, false);
 }

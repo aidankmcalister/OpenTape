@@ -52,7 +52,13 @@ export function SettingsBody({
   const { settings, change, chooseSaveFolder, exportSettings } = app;
   const update = useUpdate();
   if (!settings) return null;
-  const { saveFolder, suggestsEdits, recordShortcut, countsDown } = settings;
+  const {
+    saveFolder,
+    suggestsEdits,
+    recordShortcut,
+    countsDown,
+    hidesDockIcon,
+  } = settings;
   const saved = settings.appearance !== null;
   return (
     <>
@@ -148,6 +154,20 @@ export function SettingsBody({
               Set from this recording
             </Button>
           ) : null}
+        </Row>
+      </DialogSection>
+      <DialogSection title="Dock">
+        <Row
+          label={
+            <Help text="OpenTape stays in the menu bar. The icon comes back while the editor is open.">
+              Hide Dock icon
+            </Help>
+          }
+        >
+          <Switch
+            checked={hidesDockIcon}
+            onCheckedChange={(checked) => change({ hidesDockIcon: checked })}
+          />
         </Row>
       </DialogSection>
       <DialogSection title="About">
