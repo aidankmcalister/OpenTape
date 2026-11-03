@@ -63,7 +63,7 @@ export default function Timeline({
     drag.stretch !== null,
   );
   const skim = useSkim(lengthMs, (ms) =>
-    onSkim(ms === null ? null : time.source(ms)),
+    onSkim(ms === null ? null : time.source(Math.max(0, ms - trimmedMs))),
   );
   return (
     <div
@@ -140,7 +140,7 @@ export default function Timeline({
               />
               {skim.hoverMs !== null ? (
                 <Marker
-                  ms={skim.hoverMs}
+                  ms={skim.hoverMs - trimmedMs}
                   timelineMs={lengthMs}
                   widthPx={trackWidth}
                   zIndex={regions.length + 3}
