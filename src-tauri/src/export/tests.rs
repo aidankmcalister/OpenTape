@@ -192,14 +192,20 @@ fn exports_a_recording_in_the_default_appearance() {
         to_clipboard: false,
         name: None,
     };
-    export(
+    let cancels = std::env::var("EXPORT_TEST_CANCEL").is_ok();
+    let exported = export(
         Path::new(&video),
         Path::new(&output),
         &layout,
         &options,
         |_| {},
-    )
-    .unwrap();
+        || cancels,
+    );
+    if cancels {
+        assert!(exported.unwrap_err().is::<super::Canceled>());
+        return;
+    }
+    exported.unwrap();
     assert!(Path::new(&output).exists());
 }
 

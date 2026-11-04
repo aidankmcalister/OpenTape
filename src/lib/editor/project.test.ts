@@ -215,3 +215,22 @@ test("editClips fits modifiers to the footage that is left", () => {
   expect(cut.regions).toEqual([{ ...project.regions[0], endMs: 2000 }]);
   expect(editClips(project, (clips) => clips)).toBe(project);
 });
+
+test("source time from output time matches summing every earlier speed block, across many blocks", () => {
+  const region = (startMs: number, endMs: number, amount: number) =>
+    ({ id: startMs, kind: "speed", startMs, endMs, amount }) satisfies Region;
+  const regions: Region[] = Array.from({ length: 30 }, (_, index) =>
+    region(index * 3000, index * 3000 + 1500, [2, 0.5, 4][index % 3]),
+  );
+  const slow = (outputMs: number) =>
+    regions.reduce((ms, { startMs, endMs, amount }) => {
+      const playedMs = outputMs - outputAt(regions, startMs);
+      return (
+        ms +
+        Math.min(Math.max(playedMs, 0), (endMs - startMs) / amount) *
+          (amount - 1)
+      );
+    }, outputMs);
+  for (let outputMs = 0; outputMs < 95_000; outputMs += 777)
+    expect(sourceAt(regions, outputMs)).toBeCloseTo(slow(outputMs), 6);
+});

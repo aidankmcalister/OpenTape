@@ -78,6 +78,7 @@ export function useRecordingPreview(videoSrc: string) {
     layer: dockLayer(exporting.state, !isReady && isSlow),
     processed,
     ...actions,
-    close: whenIdle("close_recording"),
+    close: () =>
+      void oneAtATime(() => invoke("close_recording")).catch(console.error),
   };
 }

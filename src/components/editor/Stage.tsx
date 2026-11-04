@@ -50,6 +50,7 @@ import Island from "./Island";
 import { hueOf, REGION_ICONS } from "./timeline/kinds";
 import { followPointer } from "@/hooks/usePointerHover";
 import { cn } from "@/lib/utils";
+import { frameDrawer } from "@/lib/editor/frameDrawer";
 
 export default function Stage({
   solo,
@@ -209,23 +210,17 @@ function Picture({
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    const context = canvas.current?.getContext("2d");
-    if (!frames || !context) return;
+    const draw = canvas.current && frameDrawer(canvas.current);
+    if (!frames || !draw) return;
     let drawn: VideoFrame | null = null;
-    const draw = () => {
+    const show = () => {
       const frame = frames.frameAt(clock.seconds() * 1000);
       if (!frame || frame === drawn) return;
       drawn = frame;
-      context.drawImage(
-        frame,
-        0,
-        0,
-        context.canvas.width,
-        context.canvas.height,
-      );
+      draw(frame);
     };
-    draw();
-    const stops = [clock.subscribe(draw), frames.subscribe(draw)];
+    show();
+    const stops = [clock.subscribe(show), frames.subscribe(show)];
     return () => stops.forEach((stop) => stop());
   }, [frames, clock, size]);
   return (

@@ -56,7 +56,7 @@ pub(super) fn write_mp4(
     samples: Option<&AVAssetReaderAudioMixOutput>,
     output: &Path,
     settings: &NSDictionary<NSString, AnyObject>,
-    progress_at: impl Fn(CMTime),
+    progress_at: impl Fn(CMTime) -> Result<()>,
 ) -> Result<()> {
     let video_type = unsafe { AVMediaTypeVideo }.context("AVFoundation has no video type")?;
     let mp4 = unsafe { AVFileTypeMPEG4 }.context("AVFoundation has no MP4 type")?;
@@ -98,8 +98,11 @@ pub(super) fn write_mp4(
         for (index, feed) in feeds.iter_mut().enumerate() {
             if let Some(time) = feed.write_next(&writer)? {
                 wrote = true;
-                if index == 0 {
-                    progress_at(time);
+                if index == 0
+                    && let Err(err) = progress_at(time)
+                {
+                    unsafe { writer.cancelWriting() };
+                    return Err(err);
                 }
             }
         }
@@ -127,7 +130,7 @@ pub(super) fn write_gif(
     output: &Path,
     frame_rate: u32,
     duration: f64,
-    progress_at: impl Fn(CMTime),
+    progress_at: impl Fn(CMTime) -> Result<()>,
 ) -> Result<()> {
     let url = CFURL::from_file_path(output).context("the GIF's path isn't a file URL")?;
     let count = (duration * f64::from(frame_rate)).ceil() as usize + 1;
@@ -167,7 +170,7 @@ pub(super) fn write_gif(
         let picture = unsafe { context.createCGImage_fromRect(&image, image.extent()) }
             .context("could not draw a frame of the GIF")?;
         unsafe { gif.add_image(&picture, Some(delay.as_ref())) };
-        progress_at(unsafe { frame.presentation_time_stamp() });
+        progress_at(unsafe { frame.presentation_time_stamp() })?;
     }
     ensure!(unsafe { gif.finalize() }, "could not finish the GIF");
     Ok(())

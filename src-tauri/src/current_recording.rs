@@ -1,6 +1,9 @@
 use std::{
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use anyhow::{Context, Result, ensure};
@@ -58,6 +61,8 @@ pub(crate) struct CurrentRecording {
     save_folder: Mutex<Option<PathBuf>>,
     kept: Mutex<Option<Kept>>,
     left_behind: Mutex<Option<PathBuf>>,
+    exporting: Mutex<()>,
+    cancels_export: AtomicBool,
 }
 
 struct Kept {
@@ -83,6 +88,8 @@ impl CurrentRecording {
             save_folder: Mutex::new(None),
             kept: Mutex::new(None),
             left_behind: Mutex::new(None),
+            exporting: Mutex::new(()),
+            cancels_export: AtomicBool::new(false),
         }
     }
 
@@ -260,7 +267,9 @@ impl CurrentRecording {
         layout: &ExportLayout,
         options: &ExportOptions,
         progress: impl Fn(f32),
-    ) -> Result<PathBuf> {
+    ) -> Result<Option<PathBuf>> {
+        let _running = lock(&self.exporting);
+        self.cancels_export.store(false, Ordering::Relaxed);
         let (video, export_name) = self.video(options.name.as_deref())?;
         let extension = options.extension();
         let output = if options.to_clipboard {
@@ -269,11 +278,26 @@ impl CurrentRecording {
         } else {
             free_path(&self.output_folder(), &export_name, extension, Path::exists)
         };
-        export::export(&video, &output, layout, options, progress)?;
+        let exported = export::export(&video, &output, layout, options, progress, || {
+            self.cancels_export.load(Ordering::Relaxed)
+        });
+        if let Err(err) = exported {
+            if err.is::<export::Canceled>() {
+                let _ = std::fs::remove_file(&output);
+                return Ok(None);
+            }
+            return Err(err);
+        }
         if let Some(kept) = lock(&self.kept).as_mut().filter(|_| !options.to_clipboard) {
             kept.saved_to = Some(output.clone());
         }
-        Ok(output)
+        Ok(Some(output))
+    }
+
+    /// Stops an export in progress and waits for it to let go of the recording.
+    fn cancel_export(&self) {
+        self.cancels_export.store(true, Ordering::Relaxed);
+        drop(lock(&self.exporting));
     }
 
     pub(crate) fn close(&self, shell: &impl Shell) -> Result<()> {
@@ -291,6 +315,7 @@ impl CurrentRecording {
                 Choice::Second => {}
             }
         }
+        self.cancel_export();
         let kept = lock(&self.kept).take();
         shell.switch(window, Window::Bar, None)?;
         let Some(folder) = kept.as_ref().and_then(|kept| kept.video_path.parent()) else {

@@ -75,10 +75,11 @@ export function useExport(
         cursor: { ...cursor, images },
         sound,
       });
-      const path = await invoke<string>("export_recording", {
+      const path = await invoke<string | null>("export_recording", {
         layout,
         options: exportOptions({ ...settings, to }, title),
       });
+      if (path === null) return setState({ stage: "idle" });
       setState({ stage: "done", path, toClipboard });
       if (!toClipboard) setSavedTo(path);
       if (closes) await invoke("close_recording");

@@ -1,7 +1,8 @@
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::ptr::NonNull;
+use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, ensure};
 use objc2::runtime::AnyObject;
@@ -16,6 +17,7 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use crate::export::{audio_tracks, file_url, read_all, reason, seconds};
+use crate::util::lock;
 
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -442,14 +444,28 @@ fn edit_shift_ms(elst: Option<&[u8]>, movie_scale: f64, scale: f64) -> f64 {
     shift_ms
 }
 
+// The parsed frame index of the last recording asked for, so each scrub reads only
+// the frames it needs instead of the whole index again.
+type KnownSamples = (PathBuf, u64, Arc<Vec<VideoSample>>);
+static KNOWN_SAMPLES: Mutex<Option<KnownSamples>> = Mutex::new(None);
+
 pub(crate) fn video_samples(video: &Path, from: usize, to: usize) -> Result<Vec<u8>> {
-    let track = video_track(video)?;
-    let samples = track
-        .samples
-        .get(from..to)
-        .context("those frames aren't in the recording")?;
     let mut file = File::open(video)?;
     let length = file.metadata()?.len();
+    let known = {
+        let mut known = lock(&KNOWN_SAMPLES);
+        match known.as_ref() {
+            Some((path, size, samples)) if path == video && *size == length => samples.clone(),
+            _ => {
+                let samples = Arc::new(video_track(video)?.samples);
+                *known = Some((video.to_path_buf(), length, samples.clone()));
+                samples
+            }
+        }
+    };
+    let samples = known
+        .get(from..to)
+        .context("those frames aren't in the recording")?;
     ensure!(
         samples
             .iter()

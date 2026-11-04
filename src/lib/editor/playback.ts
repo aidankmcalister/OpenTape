@@ -25,6 +25,7 @@ export type Frames<F extends Decoded> = {
 export const CHUNK_SAMPLES = 60;
 const FRAMES_AHEAD = 8;
 const WAITING = 16;
+const SETTLE_MS = 1000;
 
 const micros = (ms: number) => Math.round(ms * 1000);
 
@@ -49,10 +50,12 @@ export function createFrames<F extends Decoded>(
   let shown: F | null = null;
   let waiting = 0;
   let wanted = 0;
+  let settlingSince = 0;
   let isClosed = false;
 
   const decoder = makeDecoder((frame) => {
     if (isClosed || !fed.has(frame.timestamp)) return frame.close();
+    settlingSince = 0;
     waiting -= 1;
     frames = [...frames, frame].sort((a, b) => a.timestamp - b.timestamp);
     settle();
@@ -78,6 +81,7 @@ export function createFrames<F extends Decoded>(
     waiting = 0;
     fed.clear();
     run = { start: key, next: key, lastFed: -1, isFlushed: false };
+    settlingSince = performance.now();
   }
 
   function bytes(index: number) {
@@ -131,9 +135,16 @@ export function createFrames<F extends Decoded>(
       const isPassed = shownIndex() < 0 && frames.length > 0;
       const isOutrun = at > run.start && at >= run.next && wanted > run.lastFed;
       if (at < run.start || isOutrun || isPassed) {
-        if (frames.length === 0 && waiting > 0) return null;
+        const isSettling =
+          frames.length === 0 &&
+          settlingSince > 0 &&
+          performance.now() - settlingSince < SETTLE_MS;
+        if (isSettling) return null;
         const stale = frames[Math.max(shownIndex(), 0)];
-        if (stale && stale !== shown) return (shown = stale);
+        if (stale && stale !== shown) {
+          setTimeout(() => listeners.forEach((listener) => listener()));
+          return (shown = stale);
+        }
         restart(at);
       }
       settle();

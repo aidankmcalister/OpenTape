@@ -453,9 +453,16 @@ export function outputAt(regions: Region[], sourceMs: number): number {
   );
 }
 
+const speedStarts = new WeakMap<Region[], number[]>();
+
 export function sourceAt(regions: Region[], outputMs: number): number {
-  return sameKind(regions, "speed").reduce((ms, { startMs, endMs, amount }) => {
-    const playedMs = outputMs - outputAt(regions, startMs);
+  const speeds = sameKind(regions, "speed");
+  const starts =
+    speedStarts.get(regions) ??
+    speeds.map(({ startMs }) => outputAt(regions, startMs));
+  speedStarts.set(regions, starts);
+  return speeds.reduce((ms, { startMs, endMs, amount }, index) => {
+    const playedMs = outputMs - starts[index];
     return ms + clamp(playedMs, 0, (endMs - startMs) / amount) * (amount - 1);
   }, outputMs);
 }

@@ -166,6 +166,20 @@ describe("fitToClips", () => {
     ];
     expect(fitToClips(spans, KEPT)).toBe(spans);
   });
+
+  test("splitting a long recording leaves every modifier as it was, despite rounding", () => {
+    const durationMs = 867_391;
+    const clips = [0.21, 0.37, 0.52].reduce(
+      (clips: Clip[], share) =>
+        splitClip(clips, share * 867_391.6666, durationMs),
+      [],
+    );
+    const spans = [
+      { id: 1, startMs: 593_753.4939999809, endMs: 600_361.8089999945 },
+      { id: 2, startMs: 626_356.5000000002, endMs: 629_690.208999993 },
+    ];
+    expect(fitToClips(spans, clips)).toBe(spans);
+  });
 });
 
 test("output time skips cuts and runs faster inside a speed region", () => {

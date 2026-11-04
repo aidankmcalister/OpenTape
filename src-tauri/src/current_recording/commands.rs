@@ -93,7 +93,7 @@ pub(crate) async fn export_recording(
     window: tauri::WebviewWindow,
     layout: ExportLayout,
     options: ExportOptions,
-) -> CmdResult<String> {
+) -> CmdResult<Option<String>> {
     let handle = app.clone();
     let to_clipboard = options.to_clipboard;
     let format = options.extension();
@@ -107,18 +107,20 @@ pub(crate) async fn export_recording(
     .await;
     crate::usage::send(
         &app,
-        if path.is_ok() {
-            "export done"
-        } else {
-            "export failed"
+        match &path {
+            Ok(Some(_)) => "export done",
+            Ok(None) => "export canceled",
+            Err(_) => "export failed",
         },
         serde_json::json!({ "format": format, "to": if to_clipboard { "clipboard" } else { "file" } }),
     );
-    let path = path?;
+    let Some(path) = path? else {
+        return Ok(None);
+    };
     if to_clipboard {
         macos::put_file_on_clipboard(&app, path.clone())?;
     }
-    Ok(path.display().to_string())
+    Ok(Some(path.display().to_string()))
 }
 
 #[tauri::command]

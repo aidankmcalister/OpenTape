@@ -1,6 +1,10 @@
+use std::cmp::Reverse;
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::thread;
 
 use anyhow::{Result, ensure};
+use objc2::rc::Retained;
 use objc2_av_foundation::{AVAssetImageGenerator, AVURLAsset};
 use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use objc2_core_graphics::{
@@ -16,6 +20,7 @@ const STEP_S: f64 = 0.5;
 const CHANGED: u8 = 24;
 const MOST_CHANGED: f64 = 0.15;
 const CELL: usize = 16;
+const WORKERS: usize = 4;
 
 #[derive(Debug, Clone, Copy, Deserialize, TS)]
 #[ts(export, export_to = "bindings.ts")]
@@ -35,16 +40,8 @@ pub(crate) struct TypingSpot {
 pub(crate) fn typing_spots(
     video: &Path,
     stretches: &[TypingStretch],
-    on_progress: impl Fn(f32),
+    on_progress: impl Fn(f32) + Sync,
 ) -> Result<Vec<TypingSpot>> {
-    let asset = unsafe { AVURLAsset::URLAssetWithURL_options(&file_url(video), None) };
-    let frames = unsafe { AVAssetImageGenerator::assetImageGeneratorWithAsset(&asset) };
-    unsafe {
-        frames.setAppliesPreferredTrackTransform(true);
-        frames.setMaximumSize(CGSize::new(WIDTH, WIDTH * 4.0));
-        frames.setRequestedTimeToleranceBefore(seconds(0.05));
-        frames.setRequestedTimeToleranceAfter(seconds(0.05));
-    }
     let times: Vec<Vec<f64>> = stretches
         .iter()
         .map(|stretch| {
@@ -58,30 +55,78 @@ pub(crate) fn typing_spots(
         })
         .collect();
     let total = times.iter().map(Vec::len).sum::<usize>().max(1);
-    let mut done = 0;
-    let mut spots = Vec::new();
-    for stretch_times in &times {
-        let mut before: Option<(Vec<u8>, usize)> = None;
-        for &t in stretch_times {
-            #[allow(deprecated)]
-            let image = unsafe {
-                frames.copyCGImageAtTime_actualTime_error(seconds(t), std::ptr::null_mut())
-            };
-            if let Ok(image) = image {
-                let now = brightness(&image)?;
-                if let Some((x, y)) = before
-                    .as_ref()
-                    .and_then(|(past, width)| changed_spot(past, &now.0, *width))
-                {
-                    spots.push(TypingSpot { t, x, y });
-                }
-                before = Some(now);
-            }
-            done += 1;
-            on_progress(done as f32 / total as f32);
+    // Each worker decodes on its own, which roughly quarters the wait on a
+    // long recording. The longest stretches go first to the least busy worker.
+    let mut order: Vec<usize> = (0..times.len()).collect();
+    order.sort_by_key(|&index| Reverse(times[index].len()));
+    let mut plans = vec![(0, Vec::new()); WORKERS];
+    for index in order {
+        if let Some((load, plan)) = plans.iter_mut().min_by_key(|(load, _)| *load) {
+            *load += times[index].len();
+            plan.push(index);
         }
     }
+    let done = AtomicUsize::new(0);
+    let (times, done, on_progress) = (&times, &done, &on_progress);
+    let found = thread::scope(|scope| {
+        let workers: Vec<_> = plans
+            .iter()
+            .map(|(_, plan)| {
+                scope.spawn(move || {
+                    let mut spots = Vec::new();
+                    let frames = generator(video);
+                    for &index in plan {
+                        let mut before: Option<(Vec<u8>, usize)> = None;
+                        for &t in &times[index] {
+                            #[allow(deprecated)]
+                            let image = unsafe {
+                                frames.copyCGImageAtTime_actualTime_error(
+                                    seconds(t),
+                                    std::ptr::null_mut(),
+                                )
+                            };
+                            if let Ok(image) = image {
+                                let now = brightness(&image)?;
+                                if let Some((x, y)) = before
+                                    .as_ref()
+                                    .and_then(|(past, width)| changed_spot(past, &now.0, *width))
+                                {
+                                    spots.push(TypingSpot { t, x, y });
+                                }
+                                before = Some(now);
+                            }
+                            let finished = done.fetch_add(1, Ordering::Relaxed) + 1;
+                            on_progress(finished as f32 / total as f32);
+                        }
+                    }
+                    anyhow::Ok(spots)
+                })
+            })
+            .collect();
+        workers
+            .into_iter()
+            .map(|worker| {
+                worker
+                    .join()
+                    .map_err(|_| anyhow::anyhow!("finding typing stopped unexpectedly"))?
+            })
+            .collect::<Result<Vec<_>>>()
+    })?;
+    let mut spots: Vec<TypingSpot> = found.into_iter().flatten().collect();
+    spots.sort_by(|a, b| a.t.total_cmp(&b.t));
     Ok(spots)
+}
+
+fn generator(video: &Path) -> Retained<AVAssetImageGenerator> {
+    let asset = unsafe { AVURLAsset::URLAssetWithURL_options(&file_url(video), None) };
+    let frames = unsafe { AVAssetImageGenerator::assetImageGeneratorWithAsset(&asset) };
+    unsafe {
+        frames.setAppliesPreferredTrackTransform(true);
+        frames.setMaximumSize(CGSize::new(WIDTH, WIDTH * 4.0));
+        frames.setRequestedTimeToleranceBefore(seconds(0.05));
+        frames.setRequestedTimeToleranceAfter(seconds(0.05));
+    }
+    frames
 }
 
 fn brightness(image: &CGImage) -> Result<(Vec<u8>, usize)> {

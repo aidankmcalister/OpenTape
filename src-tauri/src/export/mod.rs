@@ -1,16 +1,15 @@
 use std::path::Path;
-use std::ptr::NonNull;
 
 use anyhow::{Context, Result, ensure};
-use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2_av_foundation::{
     AVAsset, AVAssetReader, AVAssetReaderAudioMixOutput, AVAssetReaderStatus,
-    AVAssetReaderVideoCompositionOutput, AVAssetTrack, AVAsynchronousCIImageFilteringRequest,
-    AVAudioTimePitchAlgorithmVarispeed, AVMediaTypeAudio, AVMediaTypeVideo, AVMutableComposition,
-    AVMutableVideoComposition, AVURLAsset,
+    AVAssetReaderVideoCompositionOutput, AVAssetTrack, AVAudioTimePitchAlgorithmVarispeed,
+    AVMediaTypeAudio, AVMediaTypeVideo, AVMutableComposition, AVMutableVideoComposition,
+    AVURLAsset,
 };
 use objc2_core_foundation::{CGAffineTransform, CGPoint, CGRect, CGSize};
+use objc2_core_image::CIImage;
 use objc2_core_media::{
     CMAudioFormatDescriptionGetStreamBasicDescription, CMFormatDescription, CMTime, CMTimeRange,
     kCMTimeZero,
@@ -19,6 +18,7 @@ use objc2_foundation::{NSArray, NSError, NSString, NSURL};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+mod compositor;
 mod cursor;
 mod cutout;
 mod rings;
@@ -30,6 +30,18 @@ use cutout::cutout;
 pub(crate) use rings::ExportRing;
 use rings::RingPictures;
 use writers::{compression, write_gif, write_mp4};
+
+/// What an export stops with when it is canceled before the end.
+#[derive(Debug)]
+pub(crate) struct Canceled;
+
+impl std::fmt::Display for Canceled {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("the export was canceled")
+    }
+}
+
+impl std::error::Error for Canceled {}
 
 #[derive(Debug, Clone, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -189,6 +201,7 @@ pub(crate) fn export(
     layout: &ExportLayout,
     options: &ExportOptions,
     progress: impl Fn(f32),
+    is_canceled: impl Fn() -> bool,
 ) -> Result<()> {
     let background = (layout.background_image.as_deref())
         .and_then(|name| Path::new(name).file_name())
@@ -210,54 +223,47 @@ pub(crate) fn export(
         CGSize::new(layout.width.into(), layout.height.into()),
     );
 
-    let draw_frame = RcBlock::new(
-        move |request: NonNull<AVAsynchronousCIImageFilteringRequest>| {
-            let request = unsafe { request.as_ref() };
-            unsafe {
-                let now = uncut(&scene.cuts, request.compositionTime().seconds());
-                let zoom = zoom_at(&scene.zoom, scene.zoom_rate, now);
-                let video = zoomed(&scene.video, &scene.recording, zoom);
-                let place = placement(&video, scene.height, natural);
-                let mut frame = request.sourceImage().imageByApplyingTransform(place);
-                for blur in scene
-                    .blurs
-                    .iter()
-                    .filter(|blur| (blur.start..blur.end).contains(&now))
-                {
-                    frame = frame
-                        .imageByClampingToExtent()
-                        .imageByApplyingGaussianBlurWithSigma(blur.radius * zoom.scale)
-                        .imageByCroppingToRect(blur.area(&video, scene.height))
-                        .imageByCompositingOverImage(&frame);
-                }
-                for ring in scene.rings.iter().filter(|ring| ring.is_showing(now)) {
-                    if let Ok(image) =
-                        ring.image(now, &video, zoom.scale, scene.height, &ring_pictures)
-                    {
-                        frame = image.imageByCompositingOverImage(&frame);
-                    }
-                }
-                let mut image = cutout.imageByCompositingOverImage(&frame);
-                if let Some(Ok(Some(drawn))) = scene
-                    .cursor
-                    .as_ref()
-                    .zip(pictures.as_ref())
-                    .map(|(cursor, pictures)| cursor.image(now, &video, scene.height, pictures))
-                {
-                    image = drawn.imageByCompositingOverImage(&image);
-                }
-                let image = image.imageByCroppingToRect(picture);
-                request.finishWithImage_context(&image, None);
+    let draw = move |seconds: f64, source: &CIImage| unsafe {
+        let now = uncut(&scene.cuts, seconds);
+        let zoom = zoom_at(&scene.zoom, scene.zoom_rate, now);
+        let video = zoomed(&scene.video, &scene.recording, zoom);
+        let place = placement(&video, scene.height, natural);
+        let mut frame = source.imageByApplyingTransform(place);
+        for blur in scene
+            .blurs
+            .iter()
+            .filter(|blur| (blur.start..blur.end).contains(&now))
+        {
+            frame = frame
+                .imageByClampingToExtent()
+                .imageByApplyingGaussianBlurWithSigma(blur.radius * zoom.scale)
+                .imageByCroppingToRect(blur.area(&video, scene.height))
+                .imageByCompositingOverImage(&frame);
+        }
+        for ring in scene.rings.iter().filter(|ring| ring.is_showing(now)) {
+            if let Ok(image) = ring.image(now, &video, zoom.scale, scene.height, &ring_pictures) {
+                frame = image.imageByCompositingOverImage(&frame);
             }
-        },
-    );
-    #[allow(deprecated)]
-    let composition = unsafe {
-        AVMutableVideoComposition::videoCompositionWithAsset_applyingCIFiltersWithHandler(
-            &asset,
-            &draw_frame,
-        )
+        }
+        let mut image = cutout.imageByCompositingOverImage(&frame);
+        if let Some(Ok(Some(drawn))) = scene
+            .cursor
+            .as_ref()
+            .zip(pictures.as_ref())
+            .map(|(cursor, pictures)| cursor.image(now, &video, scene.height, pictures))
+        {
+            image = drawn.imageByCompositingOverImage(&image);
+        }
+        image.imageByCroppingToRect(picture)
     };
+    #[allow(deprecated)]
+    let composition =
+        unsafe { AVMutableVideoComposition::videoCompositionWithPropertiesOfAsset(&asset) };
+    let whole = CMTimeRange {
+        start: unsafe { kCMTimeZero },
+        duration: unsafe { asset.duration() },
+    };
+    let _turn = compositor::use_compositor(&composition, &track, whole, Box::new(draw));
     unsafe {
         composition.setRenderSize(picture.size);
         composition.setSourceTrackIDForFrameTiming(0);
@@ -279,11 +285,13 @@ pub(crate) fn export(
     let duration = unsafe { asset.duration().seconds() };
     let reported = std::cell::Cell::new(0.0);
     let progress_at = |time: CMTime| {
+        ensure!(!is_canceled(), Canceled);
         let done = unsafe { time.seconds() } / duration;
         if duration > 0.0 && done - reported.get() >= 0.01 {
             reported.set(done);
             progress(done as f32);
         }
+        Ok(())
     };
     read_all(&reader, || match options.format {
         ExportFormat::Mp4 => {

@@ -17,7 +17,7 @@ describe("frames", () => {
     size: 2,
   }));
 
-  function fake() {
+  function fake(loaded: Promise<void> = Promise.resolve()) {
     const loads: number[][] = [];
     const fed: Chunk[] = [];
     const closed: number[] = [];
@@ -29,6 +29,7 @@ describe("frames", () => {
       SAMPLES,
       async (from, to) => {
         loads.push([from, to]);
+        await loaded;
         return Uint8Array.from({ length: (to - from) * 2 }, (_, at) =>
           Math.floor(at / 2 + from),
         ).buffer;
@@ -124,6 +125,38 @@ describe("frames", () => {
     expect(decoding.resets()).toBe(1);
     await Bun.sleep(0);
     expect(decoding.fedMs()[17]).toBe(4000);
+  });
+
+  test("while skimming with slow loads, finishes the seek it started before following the pointer, so frames keep landing", async () => {
+    let release = () => {};
+    const decoding = fake(new Promise((done) => (release = done)));
+    decoding.frames.frameAt(5050);
+    decoding.frames.frameAt(8050);
+    decoding.frames.frameAt(9050);
+    release();
+    await Bun.sleep(0);
+    expect(decoding.fedMs()[0]).toBe(5000);
+    await decoding.deliver();
+    const shown = decoding.frames.frameAt(9050)?.timestamp ?? 0;
+    expect(shown).toBeGreaterThanOrEqual(5_000_000);
+    expect(shown).toBeLessThan(9_000_000);
+    decoding.frames.frameAt(9050);
+    await Bun.sleep(0);
+    expect(decoding.fedMs()).toContain(9000);
+  });
+
+  test("after a single click to a far spot, starts decoding there without waiting for another request", async () => {
+    const decoding = fake();
+    let wanted = 0;
+    decoding.frames.subscribe(() => decoding.frames.frameAt(wanted));
+    decoding.frames.frameAt(wanted);
+    await decoding.deliver();
+    wanted = 8050;
+    expect(decoding.frames.frameAt(wanted)).not.toBeNull();
+    await Bun.sleep(5);
+    await decoding.deliver();
+    expect(decoding.fedMs()).toContain(8000);
+    expect(decoding.frames.frameAt(wanted)?.timestamp).toBe(8_000_000);
   });
 
   test("closes every frame exactly once, even ones that arrive after a seek or after closing", async () => {

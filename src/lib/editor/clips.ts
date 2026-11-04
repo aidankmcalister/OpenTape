@@ -196,6 +196,8 @@ export function timeMap(clips: Clip[], regions: Region[], durationMs: number) {
 
 const MIN_KEPT_MS = 500;
 
+const ROUNDING_MS = 0.001;
+
 export function fitToClips<T extends Span>(spans: T[], clips: Clip[]): T[] {
   if (clips.length === 0) return spans;
   const time = timeMap(clips, [], 0);
@@ -208,9 +210,10 @@ export function fitToClips<T extends Span>(spans: T[], clips: Clip[]): T[] {
       startMs: time.source(startMs, "start"),
       endMs: time.source(endMs, "end"),
     };
-    return fit.startMs === span.startMs && fit.endMs === span.endMs
-      ? [span]
-      : [{ ...span, ...fit }];
+    const isSame =
+      Math.abs(fit.startMs - span.startMs) < ROUNDING_MS &&
+      Math.abs(fit.endMs - span.endMs) < ROUNDING_MS;
+    return isSame ? [span] : [{ ...span, ...fit }];
   });
   return fitted.every((span, index) => span === spans[index]) &&
     fitted.length === spans.length
