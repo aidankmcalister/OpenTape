@@ -54,6 +54,7 @@ export const KEYMAP: Binding[] = [
   { action: "undo", key: "z", meta: true, shift: false },
   { action: "redo", key: "z", meta: true, shift: true },
   { action: "openPalette", key: "k", meta: true },
+  { action: "openSettings", key: ",", meta: true },
 ];
 
 export const ACTION_NAMES: Record<EditorAction, string> = {
@@ -155,6 +156,7 @@ export const SHORTCUTS: {
       { actions: ["redo"] },
       { actions: ["export"] },
       { actions: ["openPalette"] },
+      { actions: ["openSettings"] },
     ],
   },
 ];

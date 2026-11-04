@@ -96,6 +96,7 @@ describe("shortcuts sheet", () => {
     ["export", "⌘E"],
     ["redo", "⇧⌘Z"],
     ["openPalette", "⌘K"],
+    ["openSettings", "⌘,"],
   ] as const)("keyLabel(%p) is %p", (action, label) => {
     expect(keyLabel(action)).toBe(label);
   });

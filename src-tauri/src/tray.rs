@@ -69,7 +69,7 @@ pub(crate) fn setup(app: &AppHandle) -> tauri::Result<()> {
             &stop,
             &restore,
             &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?,
+            &MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?,
             &update,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "quit", "Quit OpenTape", true, None::<&str>)?,
