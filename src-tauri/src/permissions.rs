@@ -87,7 +87,7 @@ pub(crate) fn focus_if_open(app: &AppHandle) -> bool {
 }
 
 fn show(app: &AppHandle) -> tauri::Result<()> {
-    bar::WINDOW.hide(app);
+    bar::hide(app);
     windows::show_dialog(app, WINDOW, |window| {
         window.title("OpenTape").inner_size(456.0, 460.0)
     })

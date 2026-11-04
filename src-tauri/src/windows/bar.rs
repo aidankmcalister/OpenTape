@@ -104,6 +104,11 @@ pub(crate) fn show_when_ready() {
     SHOWS_WHEN_READY.store(true, Ordering::Relaxed);
 }
 
+pub(crate) fn hide(app: &AppHandle) {
+    SHOWS_WHEN_READY.store(false, Ordering::Relaxed);
+    WINDOW.hide(app);
+}
+
 #[tauri::command]
 pub(crate) fn bar_ready(app: AppHandle) {
     if SHOWS_WHEN_READY.swap(false, Ordering::Relaxed) {
@@ -113,7 +118,7 @@ pub(crate) fn bar_ready(app: AppHandle) {
 
 #[tauri::command]
 pub(crate) fn hide_bar(app: AppHandle) {
-    WINDOW.hide(&app);
+    hide(&app);
 }
 
 pub(crate) fn setup(bar: &WebviewWindow) -> tauri::Result<()> {

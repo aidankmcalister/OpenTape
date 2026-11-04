@@ -29,7 +29,7 @@ impl Shell for AppHandle {
 
     fn switch(&self, from: Window, to: Window, recording: Option<&ShownRecording>) -> Result<()> {
         match from {
-            Window::Bar => bar::WINDOW.hide(self),
+            Window::Bar => bar::hide(self),
             Window::Preview => preview::WINDOW.hide(self),
             Window::Editor => editor::hide(self),
         }
