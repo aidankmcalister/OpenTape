@@ -580,6 +580,7 @@ const TYPING_MIN_MS = 3000;
 const TYPING_LEAD_MS = 300;
 const MIN_PAN_SHARE = 0.08;
 const STRAY_SHARE = 0.2;
+const BURST_GAP_MS = 2000;
 
 type SuggestionTrack = Pick<
   CursorTrack,
@@ -644,16 +645,42 @@ export function suggestedSpeeds(
 
 export function steadySpots(spots: CursorMove[]): CursorMove[] {
   if (spots.length === 1) return spots;
-  return spots.filter((spot, at) =>
-    [-2, -1, 1, 2].some((step) => {
-      const other = spots[at + step];
+  const isNear = (a: CursorMove, b: CursorMove) =>
+    Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) < STRAY_SHARE;
+  let burst = 0;
+  let groups: { burst: number; spots: CursorMove[] }[] = [];
+  spots.forEach((spot, at) => {
+    if (at > 0 && spot.ms - spots[at - 1].ms > BURST_GAP_MS) burst += 1;
+    const linked = groups.filter(
+      (group) =>
+        group.burst === burst &&
+        group.spots.some((other) => isNear(spot, other)),
+    );
+    groups = [
+      ...groups.filter((group) => !linked.includes(group)),
+      { burst, spots: [...linked.flatMap((group) => group.spots), spot] },
+    ];
+  });
+  const span = ({ spots }: (typeof groups)[number]) =>
+    spots.map(({ ms }) => ms).sort((a, b) => a - b);
+  return groups
+    .filter((group) => {
+      const own = span(group);
       return (
-        other !== undefined &&
-        Math.max(Math.abs(spot.x - other.x), Math.abs(spot.y - other.y)) <
-          STRAY_SHARE
+        group.spots.length > 1 &&
+        !groups.some((other) => {
+          const theirs = span(other);
+          return (
+            other.burst === group.burst &&
+            other.spots.length > group.spots.length &&
+            theirs[0] < own[own.length - 1] &&
+            own[0] < theirs[theirs.length - 1]
+          );
+        })
       );
-    }),
-  );
+    })
+    .flatMap((group) => group.spots)
+    .sort((a, b) => a.ms - b.ms);
 }
 
 export function suggestedZooms(

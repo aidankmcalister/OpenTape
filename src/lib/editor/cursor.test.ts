@@ -590,6 +590,23 @@ test("a lone flicker far from the spots around it is dropped, but a real move to
   expect(steadySpots([flicker])).toEqual([flicker]);
 });
 
+test("something animating elsewhere while you type is dropped, so the zoom stays on the text", () => {
+  const typing = [0, 500, 1500, 2500, 3000, 4000, 5000].map((ms) => ({
+    ms,
+    x: 0.27 + ms / 25_000,
+    y: 0.9,
+  }));
+  const spinner = [1000, 2000, 3500, 4500].map((ms) => ({
+    ms,
+    x: 0.07,
+    y: 0.32,
+  }));
+  const spots = [...typing, ...spinner].sort((a, b) => a.ms - b.ms);
+  expect(steadySpots(spots)).toEqual(typing);
+  const later = [9000, 9500].map((ms) => ({ ms, x: 0.07, y: 0.32 }));
+  expect(steadySpots([...spots, ...later])).toEqual([...typing, ...later]);
+});
+
 test("a styled cursor leads by its smoothing lag, so a steady cursor sits where it really is", () => {
   const track = {
     ...TRACK,
