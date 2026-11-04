@@ -21,6 +21,9 @@ export type EditorAction =
   | "openPalette"
   | "openSettings"
   | "openShortcuts"
+  | "zoomTimelineIn"
+  | "zoomTimelineOut"
+  | "fitTimeline"
   | "showBackground"
   | "showCursor"
   | "showSound";
@@ -55,6 +58,9 @@ export const KEYMAP: Binding[] = [
   { action: "redo", key: "z", meta: true, shift: true },
   { action: "openPalette", key: "k", meta: true },
   { action: "openSettings", key: ",", meta: true },
+  { action: "zoomTimelineIn", key: "=", meta: true },
+  { action: "zoomTimelineOut", key: "-", meta: true },
+  { action: "fitTimeline", key: "0", meta: true },
 ];
 
 export const ACTION_NAMES: Record<EditorAction, string> = {
@@ -79,6 +85,9 @@ export const ACTION_NAMES: Record<EditorAction, string> = {
   showCursor: "Cursor panel",
   showSound: "Sound panel",
   openShortcuts: "Keyboard shortcuts",
+  zoomTimelineIn: "Zoom the timeline in",
+  zoomTimelineOut: "Zoom the timeline out",
+  fitTimeline: "Fit the timeline",
   openSettings: "Settings",
   openPalette: "Command palette",
 };
@@ -138,6 +147,11 @@ export const SHORTCUTS: {
       },
       { actions: ["toggleLoop"] },
       { actions: ["toggleSound"] },
+      {
+        label: "Zoom the timeline in or out, or pinch",
+        actions: ["zoomTimelineIn", "zoomTimelineOut"],
+      },
+      { actions: ["fitTimeline"] },
     ],
   },
   {

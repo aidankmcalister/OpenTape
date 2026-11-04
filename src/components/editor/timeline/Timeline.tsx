@@ -33,6 +33,8 @@ export default function Timeline({
   lanes: laneState,
   trackRef,
   trackWidth,
+  viewportRef,
+  zoom,
 }: {
   clock: Clock;
   durationMs: number;
@@ -43,6 +45,8 @@ export default function Timeline({
   lanes: Lanes;
   trackRef: RefObject<HTMLDivElement | null>;
   trackWidth: number;
+  viewportRef: RefObject<HTMLDivElement | null>;
+  zoom: number;
 }) {
   const { time, shown } = edits;
   const { at } = time;
@@ -98,63 +102,69 @@ export default function Timeline({
           />
         ))}
         <div
-          ref={trackRef}
-          data-track
-          className="absolute inset-x-3 inset-y-0 select-none"
-          {...skim.skimProps}
-          onPointerDown={(event) => {
-            edits.select([]);
-            scrubProps.onPointerDown(event);
-          }}
+          ref={viewportRef}
+          className="absolute inset-x-3 inset-y-0 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
-          {durationMs > 0 ? (
-            <div
-              data-flow
-              className="absolute inset-y-0 w-full"
-              style={{ left: `${percentAt(trimmedMs, lengthMs)}%` }}
-            >
-              <Ruler timelineMs={lengthMs} width={trackWidth} />
-              <RecordingTrack
-                edits={edits}
-                timelineMs={lengthMs}
-                drag={drag.clip}
-                skim={skim}
-              />
-              <LaneTracks
-                edits={edits}
-                lanes={lanes}
-                heightPx={heightPx}
-                timelineMs={lengthMs}
-                trackWidth={trackWidth}
-                clock={clock}
-                drag={drag}
-                solo={laneState.solo}
-                onSeek={(ms) => onSeek(time.source(ms))}
-              />
-              <Playhead
-                clock={clock}
-                timelineMs={lengthMs}
-                widthPx={trackWidth}
-                playheadMs={(seconds) => at(heldMs ?? seconds * 1000)}
-                zIndex={regions.length + 2}
-              />
-              {skim.hoverMs !== null ? (
-                <Marker
-                  ms={skim.hoverMs - trimmedMs}
+          <div
+            ref={trackRef}
+            data-track
+            className="relative h-full select-none"
+            style={{ width: `${zoom * 100}%` }}
+            {...skim.skimProps}
+            onPointerDown={(event) => {
+              edits.select([]);
+              scrubProps.onPointerDown(event);
+            }}
+          >
+            {durationMs > 0 ? (
+              <div
+                data-flow
+                className="absolute inset-y-0 w-full"
+                style={{ left: `${percentAt(trimmedMs, lengthMs)}%` }}
+              >
+                <Ruler timelineMs={lengthMs} width={trackWidth} />
+                <RecordingTrack
+                  edits={edits}
+                  timelineMs={lengthMs}
+                  drag={drag.clip}
+                  skim={skim}
+                />
+                <LaneTracks
+                  edits={edits}
+                  lanes={lanes}
+                  heightPx={heightPx}
+                  timelineMs={lengthMs}
+                  trackWidth={trackWidth}
+                  clock={clock}
+                  drag={drag}
+                  solo={laneState.solo}
+                  onSeek={(ms) => onSeek(time.source(ms))}
+                />
+                <Playhead
+                  clock={clock}
                   timelineMs={lengthMs}
                   widthPx={trackWidth}
-                  zIndex={regions.length + 3}
-                  isMuted
-                >
-                  {edits.isCutting ? (
-                    <div className="absolute top-10 left-1/2 grid size-5 -translate-x-1/2 place-items-center rounded-full bg-highlight text-on-hue">
-                      <Scissors className="size-3" />
-                    </div>
-                  ) : null}
-                </Marker>
-              ) : null}
-            </div>
-          ) : null}
+                  playheadMs={(seconds) => at(heldMs ?? seconds * 1000)}
+                  zIndex={regions.length + 2}
+                />
+                {skim.hoverMs !== null ? (
+                  <Marker
+                    ms={skim.hoverMs - trimmedMs}
+                    timelineMs={lengthMs}
+                    widthPx={trackWidth}
+                    zIndex={regions.length + 3}
+                    isMuted
+                  >
+                    {edits.isCutting ? (
+                      <div className="absolute top-10 left-1/2 grid size-5 -translate-x-1/2 place-items-center rounded-full bg-highlight text-on-hue">
+                        <Scissors className="size-3" />
+                      </div>
+                    ) : null}
+                  </Marker>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>

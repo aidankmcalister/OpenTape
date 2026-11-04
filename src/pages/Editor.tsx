@@ -7,6 +7,7 @@ import Stage from "@/components/editor/Stage";
 import Transport from "@/components/editor/timeline/Transport";
 import { useStageSound, useTimeMap } from "@/hooks/editor/usePlayback";
 import { useKeymap } from "@/hooks/editor/useKeymap";
+import { useTimelineZoom } from "@/hooks/editor/useTimelineZoom";
 import Timeline from "@/components/editor/timeline/Timeline";
 import ExportButton from "@/components/editor/header/ExportButton";
 import UpdateChip from "@/components/editor/header/UpdateChip";
@@ -81,6 +82,12 @@ function Workspace({
     ? timeMap(clips, soloed, playback.durationMs)
     : edits.time;
   const moves = useTimeMap(playback, time);
+  const timelineZoom = useTimelineZoom(
+    edits.time.lengthMs,
+    playback.clock,
+    playback.isPlaying,
+    (seconds) => edits.time.at(seconds * 1000),
+  );
   useStageSound(playback, time, edits.project.sound);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [panel, setPanel] = useState<SidebarPanel>("background");
@@ -114,6 +121,9 @@ function Workspace({
     openPalette: () => setDialog("palette"),
     openSettings: () => setDialog("settings"),
     openShortcuts: () => setDialog("shortcuts"),
+    zoomTimelineIn: timelineZoom.zoomIn,
+    zoomTimelineOut: timelineZoom.zoomOut,
+    fitTimeline: timelineZoom.fit,
     showBackground: () => setPanel("background"),
     showCursor: () => setPanel("cursor"),
     showSound: () => setPanel("sound"),
@@ -225,6 +235,8 @@ function Workspace({
               lanes={lanes}
               trackRef={trackRef}
               trackWidth={track.width}
+              viewportRef={timelineZoom.viewportRef}
+              zoom={timelineZoom.zoom}
             />
           </Island>
           <ModifierEditor

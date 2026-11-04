@@ -17,6 +17,9 @@ import {
   rulerMarks,
   parseTimeLabel,
   timeLabel,
+  followScroll,
+  maxZoom,
+  zoomAround,
 } from "./timeline";
 
 describe("timeline", () => {
@@ -202,3 +205,22 @@ test.each([
     expect(suggestionContent(width, "Auto zoom")).toBe(fit);
   },
 );
+
+test("the timeline zooms around the pointer, from fitting the view to five seconds across", () => {
+  expect(maxZoom(867_000)).toBeCloseTo(173.4);
+  expect(maxZoom(3000)).toBe(1);
+  expect(zoomAround(1, 2, 250, 0, 60_000)).toEqual({ zoom: 2, scrollPx: 250 });
+  expect(zoomAround(2, 0.5, 250, 250, 60_000)).toEqual({
+    zoom: 1,
+    scrollPx: 0,
+  });
+  expect(zoomAround(10, 4, 0, 0, 60_000).zoom).toBe(12);
+  expect(zoomAround(1, 0.5, 100, 0, 60_000)).toEqual({ zoom: 1, scrollPx: 0 });
+});
+
+test("while playing, the timeline turns the page when the playhead reaches the edge", () => {
+  expect(followScroll(500, 0, 1000)).toBe(0);
+  expect(followScroll(990, 0, 1000)).toBe(950);
+  expect(followScroll(100, 400, 1000)).toBe(60);
+  expect(followScroll(20, 0, 1000)).toBe(0);
+});

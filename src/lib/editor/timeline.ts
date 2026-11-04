@@ -12,6 +12,38 @@ export function msAtX(x: number, width: number, durationMs: number): number {
   return clamp(x / width, 0, 1) * durationMs;
 }
 
+const MIN_VIEW_MS = 5000;
+const FOLLOW_EDGE_PX = 40;
+
+export function maxZoom(lengthMs: number): number {
+  return Math.max(1, lengthMs / MIN_VIEW_MS);
+}
+
+export function zoomAround(
+  zoom: number,
+  factor: number,
+  anchorPx: number,
+  scrollPx: number,
+  lengthMs: number,
+) {
+  const next = clamp(zoom * factor, 1, maxZoom(lengthMs));
+  return {
+    zoom: next,
+    scrollPx: Math.max(0, ((scrollPx + anchorPx) * next) / zoom - anchorPx),
+  };
+}
+
+export function followScroll(
+  playheadPx: number,
+  scrollPx: number,
+  viewportPx: number,
+): number {
+  const isShown =
+    playheadPx >= scrollPx &&
+    playheadPx <= scrollPx + viewportPx - FOLLOW_EDGE_PX;
+  return isShown ? scrollPx : Math.max(0, playheadPx - FOLLOW_EDGE_PX);
+}
+
 export const FRAME_MS = 1000 / 60;
 export const STEP_MS = 1000 / 120;
 
