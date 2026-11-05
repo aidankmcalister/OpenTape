@@ -30,3 +30,4 @@ dist-ssr
 /.agents
 /.claude
 /skills-lock.json
+.env

@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { usePointerHover } from "@/hooks/usePointerHover";
+import posthog, { isPostHogConfigured } from "@/lib/posthog";
+import { posthogLog } from "@/lib/posthog-logs";
 import {
   useInvokeOnMount,
   useOneAtATime,
@@ -61,7 +63,12 @@ export function usePicker(displayId: number) {
   );
 
   const recordOnce = (target: Target) =>
-    void oneAtATime(() => record(target)).catch(console.error);
+    void oneAtATime(async () => {
+      await record(target);
+      if (isPostHogConfigured)
+        posthog.capture("recording_started", { target_type: target.kind });
+      posthogLog.recordingStarted(target.kind);
+    }).catch(console.error);
 
   useTauriEvent(
     "picker-key",

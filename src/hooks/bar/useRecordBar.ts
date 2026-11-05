@@ -16,6 +16,8 @@ import {
   useTauriEvent,
 } from "@/hooks/useTauri";
 import { useUpdate } from "@/hooks/useUpdate";
+import posthog, { isPostHogConfigured } from "@/lib/posthog";
+import { posthogLog } from "@/lib/posthog-logs";
 import type {
   Animation,
   Countdown,
@@ -103,6 +105,19 @@ export function useRecordBar() {
     }
   }
 
+  async function captureAttempt(
+    job: () => Promise<unknown>,
+    event: "recording_paused" | "recording_resumed" | "recording_restarted",
+  ) {
+    try {
+      await oneAtATime(job);
+      if (isPostHogConfigured) posthog.capture(event);
+      posthogLog.recordingAction(event);
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
   async function chooseMode(mode: Mode | null) {
     setError(null);
     await attempt(async () => {
@@ -131,8 +146,12 @@ export function useRecordBar() {
     hideUpdate: () => setIsUpdateHidden(true),
     relaunch,
     togglePause: () =>
-      attempt(() => invoke("pause_recording", { paused: phase !== "paused" })),
-    restart: () => attempt(() => invoke("restart_recording")),
+      captureAttempt(
+        () => invoke("pause_recording", { paused: phase !== "paused" }),
+        phase === "paused" ? "recording_resumed" : "recording_paused",
+      ),
+    restart: () =>
+      captureAttempt(() => invoke("restart_recording"), "recording_restarted"),
     stop: () => attempt(() => invoke("stop_recording")),
     cancelCountdown: () => void invoke("cancel_countdown").catch(console.error),
     dismissError: () => setError(null),

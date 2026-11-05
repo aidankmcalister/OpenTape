@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import type { Lanes } from "@/hooks/editor/useProject";
+import posthog, { isPostHogConfigured } from "@/lib/posthog";
 import { ALL_KINDS, REGIONS, type RegionKind } from "@/lib/editor/regions";
 import { KindTile } from "./kinds";
 
@@ -59,6 +60,8 @@ export default function AddMenu({
                   keywords={[REGIONS[kind].key]}
                   onSelect={() => {
                     onAdd(kind);
+                    if (isPostHogConfigured)
+                      posthog.capture("modifier_added", { modifier_type: kind });
                     onOpenChange(false);
                   }}
                 >
