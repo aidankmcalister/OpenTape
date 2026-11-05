@@ -55,13 +55,21 @@ fn open_editor(app: &AppHandle, choice: &str) -> Result<()> {
         std::fs::copy(&source, &copy)
             .with_context(|| format!("could not copy {}", source.display()))?;
     }
-    for fresh in [PROJECT_FILE, TYPING_FILE] {
-        if folder.join(fresh).exists() {
-            std::fs::remove_file(folder.join(fresh))?;
+    // The preview finds the typing again so Processing shows; the editor reuses
+    // what the preview found, as it does after a real recording.
+    let is_preview = std::env::var_os(PREVIEW_VAR).is_some();
+    let fresh: &[&str] = if is_preview {
+        &[PROJECT_FILE, TYPING_FILE]
+    } else {
+        &[PROJECT_FILE]
+    };
+    for name in fresh {
+        if folder.join(name).exists() {
+            std::fs::remove_file(folder.join(name))?;
         }
     }
     current.keep(app, copy)?;
-    if std::env::var_os(PREVIEW_VAR).is_some() {
+    if is_preview {
         return Ok(());
     }
     current.edit(app)

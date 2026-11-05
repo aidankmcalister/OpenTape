@@ -89,7 +89,7 @@ src-tauri/src/           the Rust side
   util.rs                small shared helpers and the error type commands return
 ```
 
-[GLOSSARY.md](GLOSSARY.md) names things. Use those names in code, issues and pull requests. A few rules keep the code easy to change:
+A few rules keep the code easy to change:
 
 - Logic, state and looks live in separate folders: `lib/name.ts` is plain logic, `hooks/useName.ts` holds React state, and `components/Name.tsx` or `pages/Name.tsx` decides how it looks. Components never call Rust directly, so a redesign only touches `pages/` and `components/`.
 - The top of `components/`, `hooks/` and `lib/` is shared by every window. A subfolder (`bar`, `picker`, `preview`, `editor`) belongs to one window. Import with `@/…` between folders and `./…` inside one.
