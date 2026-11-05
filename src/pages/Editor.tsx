@@ -17,7 +17,6 @@ import Sidebar, {
 } from "@/components/editor/sidebar/Sidebar";
 import CommandPalette from "@/components/editor/CommandPalette";
 import { useElementSize } from "@/hooks/useElementSize";
-import posthog, { isPostHogConfigured } from "@/lib/posthog";
 import {
   useFinishedRecording,
   useLanes,
@@ -307,10 +306,7 @@ function Title({
         onChange={(event) => setDraft(event.currentTarget.value)}
         onBlur={(event) => {
           const next = event.currentTarget.value.trim();
-          if (next && next !== name) {
-            onRename(next);
-            if (isPostHogConfigured) posthog.capture("recording_renamed");
-          }
+          if (next && next !== name) onRename(next);
           setDraft(null);
         }}
         onKeyDown={(event) => {

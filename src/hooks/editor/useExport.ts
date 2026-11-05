@@ -2,7 +2,6 @@ import { useEffect, useEffectEvent, useState } from "react";
 import type { AppSettings } from "@/hooks/useAppSettings";
 import { invoke } from "@tauri-apps/api/core";
 import { useTauriEvent } from "@/hooks/useTauri";
-import { posthogLog } from "@/lib/posthog-logs";
 import {
   aboutMegabytes,
   exportLayout,
@@ -81,7 +80,6 @@ export function useExport(
         options: exportOptions({ ...settings, to }, title),
       });
       if (path === null) return setState({ stage: "idle" });
-      posthogLog.exportCompleted(toClipboard ? "clipboard" : "file");
       setState({ stage: "done", path, toClipboard });
       if (!toClipboard) setSavedTo(path);
       if (closes) await invoke("close_recording");

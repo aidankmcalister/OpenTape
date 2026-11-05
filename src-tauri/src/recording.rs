@@ -299,6 +299,12 @@ pub(crate) fn set_capture_inputs(
 pub(crate) fn pause_recording(app: AppHandle, paused: bool) -> CmdResult {
     app.state::<RecordingState>().set_paused(paused)?;
     announce_status(&app);
+    let event = if paused {
+        "recording paused"
+    } else {
+        "recording resumed"
+    };
+    crate::usage::send(&app, event, serde_json::Value::Null);
     Ok(())
 }
 
@@ -329,6 +335,7 @@ pub(crate) async fn restart_recording(
         go_idle(&app, Some(&err));
         return Ok(());
     }
+    crate::usage::send(&app, "recording restarted", serde_json::Value::Null);
     start_capture(&app, target).await;
     Ok(())
 }
@@ -393,10 +400,20 @@ async fn stop(
 }
 
 async fn start_capture(app: &AppHandle, target: Target) {
+    let kind = match target {
+        Target::Display { .. } => "display",
+        Target::Window { .. } => "window",
+        Target::Area { .. } => "area",
+    };
     match open_capture(app, target).await {
         Ok(running) => {
             app.state::<RecordingState>().mark_started(running);
             announce_status(app);
+            crate::usage::send(
+                app,
+                "recording started",
+                serde_json::json!({ "target": kind }),
+            );
         }
         Err(err) => go_idle(app, Some(&err)),
     }

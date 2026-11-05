@@ -174,7 +174,7 @@ export function SettingsBody({
       <DialogSection title="Privacy">
         <Row
           label={
-            <Help text="Counts launches, recordings and exports, with the app version and export format. Never what you record, file names or anything that identifies you.">
+            <Help text="Counts launches, recordings, pauses, restarts and exports, with the app version, export format and whether you recorded a screen, window or area. Never what you record, file names or anything that identifies you.">
               Share anonymous usage
             </Help>
           }
