@@ -54,7 +54,7 @@ export default function RecordingTrack({
   );
 }
 
-const CUT_GAP_PX = 3;
+const CUT_GAP_PX = 1;
 
 function ClipItem({
   clip,

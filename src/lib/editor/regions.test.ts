@@ -18,6 +18,7 @@ import {
   removeRegionAt,
   REGIONS,
   regionAt,
+  settleAll,
   settleSuggestion,
 } from "./regions";
 
@@ -333,4 +334,29 @@ test("settleSuggestion keeps a suggestion as a plain region, or removes it", () 
     amount: 1.5,
   });
   expect(settleSuggestion([suggested, other], 1, false)).toEqual([other]);
+});
+
+test("Keep all and Dismiss all settle every suggestion of every kind at once and leave kept blocks alone", () => {
+  const block = (
+    id: number,
+    kind: "zoom" | "speed" | "blur",
+    isSuggested?: true,
+  ) => ({
+    id,
+    kind,
+    startMs: id * 1000,
+    endMs: id * 1000 + 500,
+    amount: 1,
+    isSuggested,
+  });
+  const regions = [
+    block(1, "zoom", true),
+    block(2, "speed", true),
+    block(3, "blur"),
+  ];
+  expect(settleAll(regions, true).some(({ isSuggested }) => isSuggested)).toBe(
+    false,
+  );
+  expect(settleAll(regions, true)[2]).toBe(regions[2]);
+  expect(settleAll(regions, false)).toEqual([regions[2]]);
 });

@@ -427,6 +427,13 @@ export function settleSuggestion(
   );
 }
 
+export function settleAll(regions: Region[], isKept: boolean): Region[] {
+  if (!isKept) return regions.filter(({ isSuggested }) => !isSuggested);
+  return regions.map((region) =>
+    region.isSuggested ? { ...region, isSuggested: undefined } : region,
+  );
+}
+
 export function removeRegionAt(regions: Region[], ms: number): Region[] {
   return regions.filter((region) => !covers(region, ms));
 }

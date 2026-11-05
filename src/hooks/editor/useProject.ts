@@ -32,10 +32,10 @@ import {
   addRegion,
   changeRegion,
   dragRegions,
-  MIN_REGION_MS,
   nextId,
   removeRegionAt,
   removeRegions,
+  settleAll,
   settleSuggestion,
   type Region,
   type RegionDrag,
@@ -48,7 +48,6 @@ import {
   splitClip,
   trimClip,
 } from "@/lib/editor/clips";
-import { MIN_BLOCK_PX } from "@/lib/editor/timeline";
 import {
   changeProject,
   editClips,
@@ -63,12 +62,12 @@ import {
   undo,
 } from "@/lib/editor/project";
 import type { SoundSettings } from "@/lib/editor/sound";
+import { waitingSuggestions } from "@/lib/editor/timeline";
 import type { Clock } from "@/lib/time";
 
 export function useProject(
   clock: Clock,
   durationMs: number,
-  trackWidthPx: number,
   cursor: CursorTrack,
 ) {
   const [history, setHistory] = useState(() => historyOf(NEW_PROJECT));
@@ -111,10 +110,6 @@ export function useProject(
   const project = draft ?? history.present;
   const time = timeMap(project.clips, project.regions, durationMs);
   const shown = time.shown(project.regions);
-  const minMs =
-    trackWidthPx > 0
-      ? Math.max(MIN_REGION_MS, (MIN_BLOCK_PX / trackWidthPx) * time.lengthMs)
-      : MIN_REGION_MS;
   const selectOnly = (ids: number[], clipId: number | null = null) => {
     setSelectedIds(ids);
     setSelectedClipId(clipId);
@@ -151,7 +146,7 @@ export function useProject(
       const atMs = time.at(playheadMs());
       change(
         inKeptTime((regions, lengthMs) =>
-          addRegion(regions, kind, atMs, lengthMs, minMs),
+          addRegion(regions, kind, atMs, lengthMs),
         ),
       );
       selectOnly([nextId(project.regions)]);
@@ -164,7 +159,7 @@ export function useProject(
     ) =>
       apply(
         inKeptTime((regions, lengthMs) =>
-          dragRegions(regions, ids, drag, deltaMs, lengthMs, minMs),
+          dragRegions(regions, ids, drag, deltaMs, lengthMs),
         ),
         isPreview,
       ),
@@ -198,6 +193,8 @@ export function useProject(
       ),
     settle: (id: number, isKept: boolean) =>
       changeRegions((regions) => settleSuggestion(regions, id, isKept)),
+    settleAll: (isKept: boolean) =>
+      changeRegions((regions) => settleAll(regions, isKept)),
     isCutting,
     setCutting: setIsCutting,
     split: (atMs: number) =>
@@ -235,6 +232,50 @@ export function useProject(
 
 export type Edits = ReturnType<typeof useProject>;
 
+export function useReview(edits: Edits, show: (outputMs: number) => void) {
+  const [review, setReview] = useState<{ id: number; total: number } | null>(
+    null,
+  );
+  const waiting = waitingSuggestions(edits.shown);
+  const index = waiting.findIndex(({ id }) => id === review?.id);
+  const open = (region: Region | undefined, total: number) => {
+    if (!region) return stop();
+    setReview({ id: region.id, total });
+    edits.select([region.id]);
+    show(region.startMs);
+  };
+  const stop = () => {
+    setReview(null);
+    edits.select([]);
+  };
+  const step = (by: number) => {
+    if (review && waiting[index + by]) open(waiting[index + by], review.total);
+  };
+  const settle = (isKept: boolean) => {
+    if (!review || index < 0) return;
+    edits.settle(review.id, isKept);
+    open(waiting[index + 1] ?? waiting[index - 1], review.total);
+  };
+  return {
+    count: waiting.length,
+    isReviewing: review !== null && index >= 0,
+    position: review ? review.total - waiting.length + index + 1 : 0,
+    hasBack: index > 0,
+    hasNext: index >= 0 && index < waiting.length - 1,
+    total: review?.total ?? 0,
+    start: () => open(waiting[0], waiting.length),
+    back: () => step(-1),
+    next: () => step(1),
+    keep: () => settle(true),
+    dismiss: () => settle(false),
+    done: stop,
+    keepAll: () => edits.settleAll(true),
+    dismissAll: () => edits.settleAll(false),
+  };
+}
+
+export type Review = ReturnType<typeof useReview>;
+
 export function useSavedProject(edits: Edits, fresh: Project | null) {
   const [saved, setSaved] = useState<string | null>();
   const [isLoaded, setIsLoaded] = useState(false);
@@ -254,20 +295,11 @@ export function useSavedProject(edits: Edits, fresh: Project | null) {
   return isLoaded;
 }
 
-export function useFinishedRecording(
-  videoSrc: string,
-  trackWidthPx: number,
-  loops: boolean,
-) {
+export function useFinishedRecording(videoSrc: string, loops: boolean) {
   const playback = usePlayback(videoSrc, loops);
   const read = useCursor();
   const cursor = read ?? NO_CURSOR;
-  const edits = useProject(
-    playback.clock,
-    playback.durationMs,
-    trackWidthPx,
-    cursor,
-  );
+  const edits = useProject(playback.clock, playback.durationMs, cursor);
   const app = useAppSettings();
   const isLoaded = useSavedProject(edits, app.newProject);
   const isReady = isLoaded && read !== null && playback.videoSize !== null;

@@ -1,4 +1,9 @@
-import { useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useState,
+  type KeyboardEvent,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { Check, ChevronDown, ChevronRight, Eye, X } from "lucide-react";
 import { Kbd } from "@/components/ui/kbd";
 import { Toggle } from "@/components/ui/toggle";
@@ -25,8 +30,9 @@ import {
   type RegionKind,
 } from "@/lib/editor/regions";
 import {
-  blockContent,
-  suggestionContent,
+  blockFit,
+  laneNeighbors,
+  markSpan,
   msAtX,
   percentAt,
   regionsInBox,
@@ -231,6 +237,10 @@ export function LaneTracks({
             trackWidth={trackWidth}
             rank={order.indexOf(region)}
             isSelected={edits.selectedIds.includes(region.id)}
+            hasPill={
+              edits.selectedIds.length === 1 &&
+              edits.selectedIds[0] === region.id
+            }
             isFocusStop={region.id === focusStop}
             touches={touchingSides(regions, region)}
             isDimmed={solo !== null && solo !== region.kind}
@@ -286,6 +296,7 @@ function Block({
   trackWidth,
   rank,
   isSelected,
+  hasPill,
   isFocusStop,
   touches,
   isDimmed,
@@ -304,6 +315,7 @@ function Block({
   trackWidth: number;
   rank: number;
   isSelected: boolean;
+  hasPill: boolean;
   isFocusStop: boolean;
   touches: { start: boolean; end: boolean };
   isDimmed: boolean;
@@ -317,20 +329,26 @@ function Block({
 }) {
   const [isPillOpen, setIsPillOpen] = useState(false);
   const Icon = REGION_ICONS[region.kind];
-  const suggestion = region.isSuggested ? SUGGESTIONS[region.kind] : undefined;
+  const suggestion = region.isSuggested
+    ? (SUGGESTIONS[region.kind] ?? {
+        label: REGIONS[region.kind].label,
+        question: `Keep this ${REGIONS[region.kind].label.toLowerCase()}?`,
+      })
+    : undefined;
   const label = suggestion?.label ?? REGIONS[region.kind].label;
   const value = suggestion ? "" : blockValue(region);
   const lengthMs = region.endMs - region.startMs;
   const gapsPx = Number(touches.start) + Number(touches.end);
-  const widthPx = (trackWidth * lengthMs) / timelineMs - gapsPx;
-  const content = blockContent(widthPx, label, value);
+  const pxAt = (ms: number) => (ms / timelineMs) * trackWidth;
+  const fit = blockFit(pxAt(lengthMs) - gapsPx);
   const isActive = useClockValue(clock, (seconds) =>
     covers(region, at(seconds * 1000)),
   );
   const span = `${timeLabel(region.startMs)} to ${timeLabel(region.endMs)}`;
+  const left = percentAt(region.startMs, timelineMs);
   const place = {
     ...hueOf(region.kind),
-    left: `calc(${percentAt(region.startMs, timelineMs)}% + ${touches.start ? 1 : 0}px)`,
+    left: `calc(${left}% + ${touches.start ? 1 : 0}px)`,
     width: `calc(${percentAt(lengthMs, timelineMs)}% - ${gapsPx}px)`,
     zIndex: isSelected ? regions.length + 1 : rank + 1,
   };
@@ -338,69 +356,54 @@ function Block({
     "data-flow": true,
     "data-region-id": region.id,
     "data-selected": isSelected,
+    "data-active": isActive && !isSelected,
     "aria-label": `${label} ${value}, ${span}`,
+    tabIndex: isFocusStop ? 0 : -1,
+    onKeyDown,
     onDoubleClick: onOpen,
     ...drag(region.id, "move", region.isSuggested),
   };
-
-  if (suggestion && !lane.isCollapsed) {
-    const fit = suggestionContent(widthPx, label);
-    const choice = (
-      <span
-        className="flex shrink-0 gap-1"
-        style={hueOf(region.kind)}
-        onPointerDown={(event) => event.stopPropagation()}
-        onDoubleClick={(event) => event.stopPropagation()}
+  const choice = suggestion ? (
+    <span
+      className="flex shrink-0 gap-1"
+      style={hueOf(region.kind)}
+      onPointerDown={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
+    >
+      <button
+        type="button"
+        aria-label={`Keep ${label.toLowerCase()}`}
+        className="flex size-4 items-center justify-center rounded-sm bg-hue/25 text-hue-foreground transition-colors hover:bg-hue hover:text-on-hue"
+        onClick={() => onSettle(true)}
       >
-        <button
-          type="button"
-          aria-label={`Keep ${label.toLowerCase()}`}
-          className="flex size-4 items-center justify-center rounded-sm bg-hue/25 text-hue-foreground transition-colors hover:bg-hue hover:text-on-hue"
-          onClick={() => onSettle(true)}
-        >
-          <Check className="size-3" />
-        </button>
-        <button
-          type="button"
-          aria-label={`Remove ${label.toLowerCase()}`}
-          className="flex size-4 items-center justify-center rounded-sm bg-foreground/10 text-muted-foreground transition-colors hover:text-foreground"
-          onClick={() => onSettle(false)}
-        >
-          <X className="size-3" />
-        </button>
-      </span>
-    );
-    const block = (
-      <div
-        {...shared}
-        tabIndex={isFocusStop ? 0 : -1}
-        onKeyDown={onKeyDown}
-        className={cn(
-          "group wipe-in absolute flex cursor-default items-center gap-1.5 overflow-hidden rounded-md border border-dashed border-hue/70 bg-hue-fill/15 pr-1 pl-2.5 text-label font-semibold whitespace-nowrap text-hue-foreground outline-none data-[selected=true]:border-solid",
-          "focus-visible:ring-2 focus-visible:ring-highlight focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-          fit === "icon" && "justify-center px-0",
-          isDimmed && "opacity-35",
-        )}
-        style={{ ...place, top: lane.top + 4, height: 24 }}
+        <Check className="size-3" />
+      </button>
+      <button
+        type="button"
+        aria-label={`Remove ${label.toLowerCase()}`}
+        className="flex size-4 items-center justify-center rounded-sm bg-foreground/10 text-muted-foreground transition-colors hover:text-foreground"
+        onClick={() => onSettle(false)}
+      >
+        <X className="size-3" />
+      </button>
+    </span>
+  ) : null;
+  const withPill = (block: ReactElement) => (
+    <Tooltip open={hasPill || isPillOpen} onOpenChange={setIsPillOpen}>
+      <TooltipTrigger render={block} />
+      <TooltipContent
+        side="top"
+        className="gap-1.5 pr-1 text-label font-semibold text-hue-foreground"
+        style={hueOf(region.kind)}
       >
         <Icon className="size-4 shrink-0" />
-        {fit === "full" ? (
-          <span className="min-w-0 truncate">{label}</span>
-        ) : null}
-        {fit === "icon" ? null : <span className="ml-auto">{choice}</span>}
-      </div>
-    );
-    if (fit !== "icon")
-      return <Named name={suggestion.question}>{block}</Named>;
-    return (
-      <Tooltip open={isSelected || isPillOpen} onOpenChange={setIsPillOpen}>
-        <TooltipTrigger render={block} />
-        <TooltipContent side="bottom" className="h-auto p-1">
-          {choice}
-        </TooltipContent>
-      </Tooltip>
-    );
-  }
+        {label}
+        {choice ?? <span className="pr-1 font-mono font-medium">{value}</span>}
+      </TooltipContent>
+    </Tooltip>
+  );
+  const focusRing =
+    "outline-none focus-visible:ring-2 focus-visible:ring-highlight focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
   if (lane.isCollapsed) {
     return (
@@ -417,59 +420,102 @@ function Block({
     );
   }
 
-  return (
+  if (fit === "mark") {
+    const { beforeMs, afterMs } = laneNeighbors(regions, region);
+    const startPx = pxAt(region.startMs);
+    const hit = markSpan(
+      startPx,
+      pxAt(region.endMs),
+      pxAt(beforeMs),
+      pxAt(afterMs),
+    );
+    return withPill(
+      <div
+        {...shared}
+        className={cn(
+          "group absolute cursor-grab active:cursor-grabbing",
+          focusRing,
+          isDimmed && "opacity-35",
+        )}
+        style={{
+          ...place,
+          left: `calc(${left}% + ${hit.from - startPx}px)`,
+          width: hit.to - hit.from,
+          top: lane.top,
+          height: lane.height,
+        }}
+      >
+        <div
+          className={cn(
+            "absolute top-2 h-4 rounded-xs transition-colors duration-120",
+            suggestion
+              ? "bg-hue/35 group-hover:bg-hue/55"
+              : "bg-hue/80 group-hover:bg-hue",
+            "group-data-[selected=true]:bg-hue group-data-[selected=true]:ring-1 group-data-[selected=true]:ring-hue-foreground",
+          )}
+          style={{ left: hit.markFrom - hit.from, width: hit.widthPx }}
+        />
+      </div>,
+    );
+  }
+
+  const hasText = fit === "full" || fit === "compact";
+  const block = (
     <div
       {...shared}
-      data-active={isActive && !isSelected}
-      tabIndex={isFocusStop ? 0 : -1}
-      onKeyDown={onKeyDown}
       className={cn(
-        "group wipe-in absolute flex cursor-grab items-center gap-1.5 overflow-hidden rounded-md bg-hue-fill px-2.5 text-label font-semibold whitespace-nowrap text-hue-foreground transition-colors duration-120 outline-none hover:bg-hue-hover active:cursor-grabbing",
-        "data-[active=true]:inset-ring data-[active=true]:inset-ring-hue/85 data-[selected=true]:bg-hue data-[selected=true]:text-on-hue",
-        "focus-visible:ring-2 focus-visible:ring-highlight focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-        content === "icon" && "justify-center px-0",
-        touches.start && "rounded-l-none",
-        touches.end && "rounded-r-none",
+        "group wipe-in absolute flex items-center gap-1.5 overflow-hidden rounded-md text-label font-semibold whitespace-nowrap text-hue-foreground",
+        focusRing,
+        suggestion
+          ? "cursor-default border border-dashed border-hue/70 bg-hue-fill/15 pr-1 pl-2.5 data-[selected=true]:border-solid"
+          : "cursor-grab bg-hue-fill px-2.5 transition-colors duration-120 hover:bg-hue-hover active:cursor-grabbing data-[active=true]:inset-ring data-[active=true]:inset-ring-hue/85 data-[selected=true]:bg-hue data-[selected=true]:text-on-hue",
+        !hasText && "justify-center px-0",
+        !suggestion && touches.start && "rounded-l-none",
+        !suggestion && touches.end && "rounded-r-none",
         isDimmed && "opacity-35",
       )}
       style={{ ...place, top: lane.top + 4, height: 24 }}
     >
       <Icon className="size-4 shrink-0" />
-      {content === "full" ? (
+      {fit === "full" ? (
         <span className="min-w-0 truncate">{label}</span>
       ) : null}
-      {content === "icon" ? null : (
+      {hasText && suggestion ? <span className="ml-auto">{choice}</span> : null}
+      {hasText && !suggestion ? (
         <span
           className={cn(
             "min-w-0 truncate font-mono font-medium",
-            content === "full" && "ml-auto",
+            fit === "full" && "ml-auto",
           )}
         >
           {value}
         </span>
-      )}
-      <Grip
-        edge="start"
-        isShown={content !== "icon"}
-        isActive={stretchEdge === "start"}
-        {...drag(region.id, "start")}
-      />
-      <Grip
-        edge="end"
-        isShown={content !== "icon"}
-        isActive={stretchEdge === "end"}
-        {...drag(region.id, "end")}
-      />
+      ) : null}
+      {hasText && !suggestion ? (
+        <>
+          <Grip
+            edge="start"
+            isActive={stretchEdge === "start"}
+            {...drag(region.id, "start")}
+          />
+          <Grip
+            edge="end"
+            isActive={stretchEdge === "end"}
+            {...drag(region.id, "end")}
+          />
+        </>
+      ) : null}
     </div>
   );
+  if (!hasText) return withPill(block);
+  return suggestion ? <Named name={suggestion.question}>{block}</Named> : block;
 }
 
 function Grip({
   edge,
-  isShown,
   isActive,
   ...dragProps
-}: { edge: RegionDrag; isShown: boolean; isActive: boolean } & ReturnType<
+}: { edge: RegionDrag; isActive: boolean } & ReturnType<
   TimelineDrag["region"]
 >) {
   return (
@@ -480,14 +526,12 @@ function Grip({
       )}
       {...dragProps}
     >
-      {isShown ? (
-        <div
-          className={cn(
-            "h-3 w-0.75 rounded-full bg-current opacity-30 group-hover:opacity-100 group-data-[selected=true]:opacity-100",
-            isActive && "opacity-100",
-          )}
-        />
-      ) : null}
+      <div
+        className={cn(
+          "h-3 w-0.75 rounded-full bg-current opacity-30 group-hover:opacity-100 group-data-[selected=true]:opacity-100",
+          isActive && "opacity-100",
+        )}
+      />
     </div>
   );
 }

@@ -57,7 +57,6 @@ export function frameStep(
 }
 
 export const GUTTER_PX = 152;
-export const MIN_BLOCK_PX = 40;
 export const TRACKS_TOP_PX = 68;
 export const TRACK_INSET_PX = 8;
 
@@ -89,22 +88,46 @@ export function laneLayout(kinds: RegionKind[], collapsed: RegionKind[]) {
   return { lanes, heightPx };
 }
 
-type BlockContent = "full" | "value" | "icon";
+export type BlockFit = "full" | "compact" | "icon" | "mark";
 
-export function suggestionContent(widthPx: number, label: string) {
-  const withButtonsPx = 74;
-  if (widthPx >= withButtonsPx + 8 + CHAR_PX * label.length) return "full";
-  return widthPx >= withButtonsPx ? "buttons" : "icon";
+export function blockFit(widthPx: number): BlockFit {
+  if (widthPx >= 160) return "full";
+  if (widthPx >= 72) return "compact";
+  return widthPx >= 24 ? "icon" : "mark";
 }
 
-export function blockContent(
-  widthPx: number,
-  label: string,
-  value: string,
-): BlockContent {
-  const withValue = 46 + CHAR_PX * value.length;
-  if (widthPx >= withValue + 10 + CHAR_PX * label.length) return "full";
-  return widthPx >= withValue ? "value" : "icon";
+export function laneNeighbors(regions: Region[], region: Region) {
+  const others = regions.filter(
+    (other) => other.kind === region.kind && other !== region,
+  );
+  const before = others.filter(({ endMs }) => endMs <= region.startMs);
+  const after = others.filter(({ startMs }) => startMs >= region.endMs);
+  return {
+    beforeMs: Math.max(-Infinity, ...before.map(({ endMs }) => endMs)),
+    afterMs: Math.min(Infinity, ...after.map(({ startMs }) => startMs)),
+  };
+}
+
+const MARK_MIN_PX = 3;
+const MARK_HIT_PX = 12;
+
+export function markSpan(
+  startPx: number,
+  endPx: number,
+  beforePx: number,
+  afterPx: number,
+) {
+  const middle = (startPx + endPx) / 2;
+  const from = Math.max(
+    Math.min(startPx, middle - MARK_HIT_PX / 2),
+    (beforePx + startPx) / 2,
+  );
+  const to = Math.min(
+    Math.max(endPx, middle + MARK_HIT_PX / 2),
+    (endPx + afterPx) / 2,
+  );
+  const widthPx = Math.max(MARK_MIN_PX, endPx - startPx);
+  return { from, to, markFrom: middle - widthPx / 2, widthPx };
 }
 
 const MIN_LABEL_GAP_PX = 96;
@@ -182,6 +205,10 @@ export function blockOrder(regions: Region[]): Region[] {
       a.startMs - b.startMs ||
       ALL_KINDS.indexOf(a.kind) - ALL_KINDS.indexOf(b.kind),
   );
+}
+
+export function waitingSuggestions(regions: Region[]): Region[] {
+  return blockOrder(regions.filter(({ isSuggested }) => isSuggested));
 }
 
 export function lengthLabel(ms: number): string {

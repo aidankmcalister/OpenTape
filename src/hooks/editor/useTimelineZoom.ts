@@ -1,4 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  type PointerEvent,
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { followScroll, maxZoom, zoomAround } from "@/lib/editor/timeline";
 import type { Clock } from "@/lib/time";
 
@@ -114,11 +121,70 @@ export function useTimelineZoom(
 
   return {
     viewportRef,
-    zoom,
-    zoomIn: () => zoomBy(KEY_STEP, playheadAnchor()),
-    zoomOut: () => zoomBy(1 / KEY_STEP, playheadAnchor()),
-    fit: () => zoomBy(1 / latest.current.zoom, 0),
+    controls: {
+      zoom,
+      spanMs: lengthMs / zoom,
+      canZoomIn: zoom < maxZoom(lengthMs),
+      zoomIn: () => zoomBy(KEY_STEP, playheadAnchor()),
+      zoomOut: () => zoomBy(1 / KEY_STEP, playheadAnchor()),
+      fit: () => zoomBy(1 / latest.current.zoom, 0),
+      reveal: (ms: number) => {
+        const viewport = viewportRef.current;
+        if (!viewport || lengthMs <= 0) return;
+        viewport.scrollLeft = followScroll(
+          (ms / lengthMs) * viewport.scrollWidth,
+          viewport.scrollLeft,
+          viewport.clientWidth,
+        );
+      },
+    },
   };
 }
 
-export type TimelineZoom = ReturnType<typeof useTimelineZoom>;
+export type TimelineZoom = ReturnType<typeof useTimelineZoom>["controls"];
+
+export function useOverview(
+  viewportRef: RefObject<HTMLDivElement | null>,
+  zoom: number,
+) {
+  const [view, setView] = useState({ start: 0, size: 1 });
+  const grab = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const read = () =>
+      setView({
+        start: viewport.scrollLeft / viewport.scrollWidth,
+        size: viewport.clientWidth / viewport.scrollWidth,
+      });
+    read();
+    viewport.addEventListener("scroll", read);
+    return () => viewport.removeEventListener("scroll", read);
+  }, [viewportRef, zoom]);
+  const shareAt = (event: PointerEvent<HTMLElement>) => {
+    const strip = event.currentTarget.getBoundingClientRect();
+    return (event.clientX - strip.left) / strip.width;
+  };
+  const moveTo = (event: PointerEvent<HTMLElement>) => {
+    const viewport = viewportRef.current;
+    if (!viewport || grab.current === null) return;
+    viewport.scrollLeft =
+      (shareAt(event) - grab.current) * viewport.scrollWidth;
+  };
+  return {
+    ...view,
+    stripProps: {
+      onPointerDown: (event: PointerEvent<HTMLElement>) => {
+        event.currentTarget.setPointerCapture(event.pointerId);
+        const offset = shareAt(event) - view.start;
+        grab.current =
+          offset >= 0 && offset <= view.size ? offset : view.size / 2;
+        moveTo(event);
+      },
+      onPointerMove: moveTo,
+      onPointerUp: () => {
+        grab.current = null;
+      },
+    },
+  };
+}

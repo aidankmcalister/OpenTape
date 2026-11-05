@@ -21,6 +21,7 @@ import {
   useFinishedRecording,
   useLanes,
   useOpenedRecording,
+  useReview,
   useSoundTracks,
 } from "@/hooks/editor/useProject";
 import { frameCrop } from "@/lib/editor/appearance";
@@ -58,7 +59,7 @@ function Workspace({
 }) {
   const { ref: trackRef, size: track } = useElementSize<HTMLDivElement>();
   const { playback, cursor, edits, app, rings, exporting } =
-    useFinishedRecording(videoSrc, track.width, false);
+    useFinishedRecording(videoSrc, false);
   const soundTracks = useSoundTracks();
   const hasSound = soundTracks === null || soundTracks.length > 0;
   const lanes = useLanes(laneKinds(edits.shown));
@@ -88,6 +89,10 @@ function Workspace({
     playback.isPlaying,
     (seconds) => edits.time.at(seconds * 1000),
   );
+  const review = useReview(edits, (ms) => {
+    playback.seek(edits.time.source(ms));
+    timelineZoom.controls.reveal(ms);
+  });
   useStageSound(playback, time, edits.project.sound);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [panel, setPanel] = useState<SidebarPanel>("background");
@@ -110,25 +115,33 @@ function Workspace({
     export: () => exporting.start?.(),
     toggleCut: () => edits.setCutting(!edits.isCutting),
     openAdd: () => setIsAddOpen(true),
-    remove: edits.remove,
+    remove: review.isReviewing ? review.dismiss : edits.remove,
     selectAll: edits.selectAll,
     deselect: () => {
       edits.select([]);
       edits.setCutting(false);
+      review.done();
     },
     undo: edits.undo,
     redo: edits.redo,
     openPalette: () => setDialog("palette"),
     openSettings: () => setDialog("settings"),
     openShortcuts: () => setDialog("shortcuts"),
-    zoomTimelineIn: timelineZoom.zoomIn,
-    zoomTimelineOut: timelineZoom.zoomOut,
-    fitTimeline: timelineZoom.fit,
+    zoomTimelineIn: timelineZoom.controls.zoomIn,
+    zoomTimelineOut: timelineZoom.controls.zoomOut,
+    fitTimeline: timelineZoom.controls.fit,
+    reviewSuggestions: review.start,
+    keepAllSuggestions: review.keepAll,
+    dismissAllSuggestions: review.dismissAll,
     showBackground: () => setPanel("background"),
     showCursor: () => setPanel("cursor"),
     showSound: () => setPanel("sound"),
   };
   useKeymap(actions, (key) => {
+    if (key === "Enter" && review.isReviewing) {
+      review.keep();
+      return true;
+    }
     const kind = regionKindForKey(key);
     if (!kind) return false;
     edits.add(kind);
@@ -224,6 +237,7 @@ function Workspace({
               hasSound={hasSound}
               isAddOpen={isAddOpen}
               onAddOpenChange={setIsAddOpen}
+              review={review}
             />
             <Timeline
               clock={playback.clock}
@@ -236,7 +250,7 @@ function Workspace({
               trackRef={trackRef}
               trackWidth={track.width}
               viewportRef={timelineZoom.viewportRef}
-              zoom={timelineZoom.zoom}
+              zoom={timelineZoom.controls}
             />
           </Island>
           <ModifierEditor

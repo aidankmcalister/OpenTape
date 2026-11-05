@@ -11,7 +11,7 @@ import { dockLayer } from "@/lib/preview/preview";
 const SLOW_AFTER_MS = 500;
 
 export function useRecordingPreview(videoSrc: string) {
-  const recording = useFinishedRecording(videoSrc, 0, true);
+  const recording = useFinishedRecording(videoSrc, true);
   const { playback, edits, exporting, isLoaded, isReady } = recording;
   const { play, pause } = playback;
   useTimeMap(playback, edits.time);

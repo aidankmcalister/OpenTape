@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { Region } from "./regions";
 import {
-  blockContent,
-  suggestionContent,
+  blockFit,
+  waitingSuggestions,
+  laneNeighbors,
+  markSpan,
   blockOrder,
   chipShift,
   nextBlock,
@@ -107,13 +109,62 @@ test("lanes are 32px, 20px collapsed, and 64px when empty", () => {
 });
 
 test.each([
-  [140, "full"],
-  [112, "full"],
-  [111, "value"],
-  [74, "value"],
-  [73, "icon"],
-] as const)("a %ppx Zoom 1.5× block shows %p", (width, content) => {
-  expect(blockContent(width, "Zoom", "1.5×")).toBe(content);
+  [160, "full"],
+  [159, "compact"],
+  [72, "compact"],
+  [71, "icon"],
+  [24, "icon"],
+  [23, "mark"],
+  [0.5, "mark"],
+] as const)("a %ppx block of any kind is %p", (width, fit) => {
+  expect(blockFit(width)).toBe(fit);
+});
+
+test("a mark is at least 3 px wide and 12 px to hit, and two close marks split the space between them", () => {
+  expect(markSpan(100, 101, -Infinity, Infinity)).toEqual({
+    from: 94.5,
+    to: 106.5,
+    markFrom: 99,
+    widthPx: 3,
+  });
+  expect(markSpan(100, 120, -Infinity, Infinity)).toMatchObject({
+    from: 100,
+    to: 120,
+    widthPx: 20,
+  });
+  const near = markSpan(100, 101, 96, 104);
+  expect([near.from, near.to]).toEqual([98, 102.5]);
+});
+
+test("a block's neighbors are the nearest blocks of its own kind on either side", () => {
+  const region = (
+    id: number,
+    kind: Region["kind"],
+    startMs: number,
+    endMs: number,
+  ): Region => ({
+    id,
+    kind,
+    startMs,
+    endMs,
+    amount: 1,
+  });
+  const middle = region(2, "zoom", 4000, 5000);
+  const regions = [
+    region(1, "zoom", 0, 1000),
+    region(3, "zoom", 2000, 3000),
+    middle,
+    region(4, "speed", 3500, 3900),
+    region(5, "zoom", 8000, 9000),
+  ];
+  expect(laneNeighbors(regions, middle)).toEqual({
+    beforeMs: 3000,
+    afterMs: 8000,
+  });
+  expect(laneNeighbors([middle], middle)).toEqual({
+    beforeMs: -Infinity,
+    afterMs: Infinity,
+  });
 });
 
 test("the stretch tip reads 4.0s, ends 0:09.0", () => {
@@ -195,17 +246,6 @@ test("the playhead chip centers on the line, but slides inward at either end of 
   expect(chipShift(0, 0)).toBe(22);
 });
 
-test.each([
-  [200, "full"],
-  [90, "buttons"],
-  [50, "icon"],
-] as const)(
-  "a %ppx suggestion shows %p: the name goes first, then the buttons, and the icon stays",
-  (width, fit) => {
-    expect(suggestionContent(width, "Auto zoom")).toBe(fit);
-  },
-);
-
 test("the timeline zooms around the pointer, from fitting the view to five seconds across", () => {
   expect(maxZoom(867_000)).toBeCloseTo(173.4);
   expect(maxZoom(3000)).toBe(1);
@@ -223,4 +263,27 @@ test("while playing, the timeline turns the page when the playhead reaches the e
   expect(followScroll(990, 0, 1000)).toBe(950);
   expect(followScroll(100, 400, 1000)).toBe(60);
   expect(followScroll(20, 0, 1000)).toBe(0);
+});
+
+test("review goes through the waiting suggestions in time order, whatever their kind", () => {
+  const block = (
+    id: number,
+    kind: Region["kind"],
+    startMs: number,
+    isSuggested?: true,
+  ): Region => ({
+    id,
+    kind,
+    startMs,
+    endMs: startMs + 500,
+    amount: 1,
+    isSuggested,
+  });
+  const regions = [
+    block(1, "speed", 5000, true),
+    block(2, "zoom", 1000, true),
+    block(3, "zoom", 3000),
+    block(4, "blur", 3000, true),
+  ];
+  expect(waitingSuggestions(regions).map(({ id }) => id)).toEqual([2, 4, 1]);
 });

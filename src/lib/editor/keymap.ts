@@ -24,6 +24,9 @@ export type EditorAction =
   | "zoomTimelineIn"
   | "zoomTimelineOut"
   | "fitTimeline"
+  | "reviewSuggestions"
+  | "keepAllSuggestions"
+  | "dismissAllSuggestions"
   | "showBackground"
   | "showCursor"
   | "showSound";
@@ -88,6 +91,9 @@ export const ACTION_NAMES: Record<EditorAction, string> = {
   zoomTimelineIn: "Zoom the timeline in",
   zoomTimelineOut: "Zoom the timeline out",
   fitTimeline: "Fit the timeline",
+  reviewSuggestions: "Review suggestions",
+  keepAllSuggestions: "Keep all suggestions",
+  dismissAllSuggestions: "Dismiss all suggestions",
   openSettings: "Settings",
   openPalette: "Command palette",
 };
@@ -159,6 +165,10 @@ export const SHORTCUTS: {
     rows: [
       ...ADDS.map(({ label, keys }) => ({ label, keys: [keys] })),
       { label: "Open the focused modifier", keys: ["Enter"] },
+      {
+        label: "Keep or dismiss the suggestion in review",
+        keys: ["Enter", "⌫"],
+      },
       { label: "Next or previous modifier", keys: ["Tab", "⇧Tab"] },
       { label: "Modifier in the lane above or below", keys: ["↑", "↓"] },
       { actions: ["openAdd"] },
