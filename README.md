@@ -29,7 +29,7 @@ Pick a display, window or area from a floating bar and hit Record. When you stop
 
 ## Status
 
-Early: version 0.1.3. The app updates itself; to hear about new versions, star the repo and choose **Watch → Custom → Releases**.
+Early: version 0.1.4. The app updates itself; to hear about new versions, star the repo and choose **Watch → Custom → Releases**.
 
 ## Install
 
