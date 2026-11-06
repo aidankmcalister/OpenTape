@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import type { Region } from "./regions";
 import {
   blockFit,
-  waitingSuggestions,
   laneNeighbors,
   markSpan,
   blockOrder,
@@ -263,27 +262,4 @@ test("while playing, the timeline turns the page when the playhead reaches the e
   expect(followScroll(990, 0, 1000)).toBe(950);
   expect(followScroll(100, 400, 1000)).toBe(60);
   expect(followScroll(20, 0, 1000)).toBe(0);
-});
-
-test("review goes through the waiting suggestions in time order, whatever their kind", () => {
-  const block = (
-    id: number,
-    kind: Region["kind"],
-    startMs: number,
-    isSuggested?: true,
-  ): Region => ({
-    id,
-    kind,
-    startMs,
-    endMs: startMs + 500,
-    amount: 1,
-    isSuggested,
-  });
-  const regions = [
-    block(1, "speed", 5000, true),
-    block(2, "zoom", 1000, true),
-    block(3, "zoom", 3000),
-    block(4, "blur", 3000, true),
-  ];
-  expect(waitingSuggestions(regions).map(({ id }) => id)).toEqual([2, 4, 1]);
 });

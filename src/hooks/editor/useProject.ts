@@ -62,7 +62,6 @@ import {
   undo,
 } from "@/lib/editor/project";
 import type { SoundSettings } from "@/lib/editor/sound";
-import { waitingSuggestions } from "@/lib/editor/timeline";
 import type { Clock } from "@/lib/time";
 
 export function useProject(
@@ -231,50 +230,6 @@ export function useProject(
 }
 
 export type Edits = ReturnType<typeof useProject>;
-
-export function useReview(edits: Edits, show: (outputMs: number) => void) {
-  const [review, setReview] = useState<{ id: number; total: number } | null>(
-    null,
-  );
-  const waiting = waitingSuggestions(edits.shown);
-  const index = waiting.findIndex(({ id }) => id === review?.id);
-  const open = (region: Region | undefined, total: number) => {
-    if (!region) return stop();
-    setReview({ id: region.id, total });
-    edits.select([region.id]);
-    show(region.startMs);
-  };
-  const stop = () => {
-    setReview(null);
-    edits.select([]);
-  };
-  const step = (by: number) => {
-    if (review && waiting[index + by]) open(waiting[index + by], review.total);
-  };
-  const settle = (isKept: boolean) => {
-    if (!review || index < 0) return;
-    edits.settle(review.id, isKept);
-    open(waiting[index + 1] ?? waiting[index - 1], review.total);
-  };
-  return {
-    count: waiting.length,
-    isReviewing: review !== null && index >= 0,
-    position: review ? review.total - waiting.length + index + 1 : 0,
-    hasBack: index > 0,
-    hasNext: index >= 0 && index < waiting.length - 1,
-    total: review?.total ?? 0,
-    start: () => open(waiting[0], waiting.length),
-    back: () => step(-1),
-    next: () => step(1),
-    keep: () => settle(true),
-    dismiss: () => settle(false),
-    done: stop,
-    keepAll: () => edits.settleAll(true),
-    dismissAll: () => edits.settleAll(false),
-  };
-}
-
-export type Review = ReturnType<typeof useReview>;
 
 export function useSavedProject(edits: Edits, fresh: Project | null) {
   const [saved, setSaved] = useState<string | null>();

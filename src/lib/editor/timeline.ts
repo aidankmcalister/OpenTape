@@ -207,10 +207,6 @@ export function blockOrder(regions: Region[]): Region[] {
   );
 }
 
-export function waitingSuggestions(regions: Region[]): Region[] {
-  return blockOrder(regions.filter(({ isSuggested }) => isSuggested));
-}
-
 export function lengthLabel(ms: number): string {
   return Math.round(ms / 100) < 600
     ? `${(ms / 1000).toFixed(1)}s`

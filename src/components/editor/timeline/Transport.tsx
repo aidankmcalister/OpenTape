@@ -1,7 +1,4 @@
 import {
-  Check,
-  ChevronLeft,
-  ChevronRight,
   Gauge,
   MousePointer2,
   Pause,
@@ -12,10 +9,8 @@ import {
   SkipForward,
   Volume2,
   VolumeX,
-  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Kbd } from "@/components/ui/kbd";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,7 +30,7 @@ import {
   useClockValue,
   type useTimeMap,
 } from "@/hooks/editor/usePlayback";
-import type { Edits, Lanes, Review } from "@/hooks/editor/useProject";
+import type { Edits, Lanes } from "@/hooks/editor/useProject";
 import { formatTime, type Clock } from "@/lib/time";
 import AddMenu from "./AddMenu";
 
@@ -49,7 +44,6 @@ export default function Transport({
   hasSound,
   isAddOpen,
   onAddOpenChange,
-  review,
 }: {
   playback: Playback;
   moves: ReturnType<typeof useTimeMap>;
@@ -58,59 +52,34 @@ export default function Transport({
   hasSound: boolean;
   isAddOpen: boolean;
   onAddOpenChange: (isOpen: boolean) => void;
-  review: Review;
 }) {
   return (
     <div className="grid h-10.25 grid-cols-[1fr_auto_1fr] items-start px-1 pt-1 hairline-b">
-      {review.isReviewing ? (
-        <ReviewBar review={review} />
-      ) : (
-        <div className="flex items-center gap-1">
-          <Toggle
-            size="icon"
-            aria-label="Select tool"
-            pressed={!edits.isCutting}
-            onPressedChange={() => edits.setCutting(false)}
-          >
-            <MousePointer2 />
-          </Toggle>
-          <Toggle
-            size="icon"
-            aria-label="Cut tool"
-            pressed={edits.isCutting}
-            onPressedChange={edits.setCutting}
-          >
-            <Scissors />
-          </Toggle>
-          <Separator orientation="vertical" className="mx-1 my-3" />
-          <AddMenu
-            isOpen={isAddOpen}
-            onOpenChange={onAddOpenChange}
-            onAdd={edits.add}
-            lanes={lanes}
-          />
-          {review.count > 0 ? (
-            <>
-              <Separator orientation="vertical" className="mx-1 my-3" />
-              <span className="px-1 text-label whitespace-nowrap text-muted-foreground tabular-nums">
-                {review.count}{" "}
-                {review.count === 1 ? "suggestion" : "suggestions"}
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-highlight"
-                onClick={review.start}
-              >
-                Review
-              </Button>
-              <Button variant="ghost" size="sm" onClick={review.keepAll}>
-                Keep all
-              </Button>
-            </>
-          ) : null}
-        </div>
-      )}
+      <div className="flex items-center gap-1">
+        <Toggle
+          size="icon"
+          aria-label="Select tool"
+          pressed={!edits.isCutting}
+          onPressedChange={() => edits.setCutting(false)}
+        >
+          <MousePointer2 />
+        </Toggle>
+        <Toggle
+          size="icon"
+          aria-label="Cut tool"
+          pressed={edits.isCutting}
+          onPressedChange={edits.setCutting}
+        >
+          <Scissors />
+        </Toggle>
+        <Separator orientation="vertical" className="mx-1 my-3" />
+        <AddMenu
+          isOpen={isAddOpen}
+          onOpenChange={onAddOpenChange}
+          onAdd={edits.add}
+          lanes={lanes}
+        />
+      </div>
       <div className="flex justify-center gap-1">
         <Button
           variant="ghost"
@@ -193,47 +162,6 @@ export default function Transport({
         <Separator orientation="vertical" className="mx-2 my-3" />
         <TimeReadout clock={playback.clock} at={edits.time.at} />
       </div>
-    </div>
-  );
-}
-
-function ReviewBar({ review }: { review: Review }) {
-  return (
-    <div className="flex items-center gap-1">
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label="Previous suggestion"
-        disabled={!review.hasBack}
-        onClick={review.back}
-      >
-        <ChevronLeft />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label="Next suggestion"
-        disabled={!review.hasNext}
-        onClick={review.next}
-      >
-        <ChevronRight />
-      </Button>
-      <span className="px-1 font-mono text-label whitespace-nowrap text-muted-foreground tabular-nums">
-        {review.position} of {review.total}
-      </span>
-      <Button variant="ghost" size="sm" onClick={review.keep}>
-        <Check data-icon="inline-start" />
-        Keep
-        <Kbd>↵</Kbd>
-      </Button>
-      <Button variant="ghost" size="sm" onClick={review.dismiss}>
-        <X data-icon="inline-start" />
-        Dismiss
-        <Kbd>⌫</Kbd>
-      </Button>
-      <Button variant="ghost" size="sm" onClick={review.done}>
-        Done
-      </Button>
     </div>
   );
 }
