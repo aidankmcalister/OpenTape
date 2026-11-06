@@ -256,6 +256,12 @@ pub(crate) fn export(
         }
         image.imageByCroppingToRect(picture)
     };
+    // GIF times frames in hundredths of a second, and browsers slow down
+    // frames shorter than 0.02 s, so a GIF never goes past 50 fps.
+    let frame_rate = match options.format {
+        ExportFormat::Mp4 => options.frame_rate,
+        ExportFormat::Gif => options.frame_rate.min(50),
+    };
     #[allow(deprecated)]
     let composition =
         unsafe { AVMutableVideoComposition::videoCompositionWithPropertiesOfAsset(&asset) };
@@ -267,7 +273,7 @@ pub(crate) fn export(
     unsafe {
         composition.setRenderSize(picture.size);
         composition.setSourceTrackIDForFrameTiming(0);
-        composition.setFrameDuration(CMTime::new(1, options.frame_rate as i32));
+        composition.setFrameDuration(CMTime::new(1, frame_rate as i32));
     }
 
     let tracks = NSArray::from_retained_slice(&[track]);
@@ -298,7 +304,13 @@ pub(crate) fn export(
             let settings = compression(layout.width, layout.height, options.bits_per_pixel)?;
             write_mp4(&frames, sound.as_deref(), output, &settings, progress_at)
         }
-        ExportFormat::Gif => write_gif(&frames, output, options.frame_rate, duration, progress_at),
+        ExportFormat::Gif => write_gif(
+            &frames,
+            output,
+            (layout.width, layout.height),
+            frame_rate,
+            progress_at,
+        ),
     })
 }
 

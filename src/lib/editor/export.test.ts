@@ -6,6 +6,7 @@ import {
   DEFAULT_EXPORT,
   exportLayout,
   exportOptions,
+  exportResolution,
   readExport,
 } from "./export";
 
@@ -88,7 +89,7 @@ describe("export", () => {
       ),
     ).toEqual({
       format: "gif",
-      frameRate: 60,
+      frameRate: 30,
       bitsPerPixel: 8,
       toClipboard: true,
       name: "Launch demo",
@@ -344,4 +345,22 @@ test("a new blur is a centered box whose strength sets a radius sized for the ex
     full.height / 2,
   );
   expect(half.blurs[0].radius).toBeCloseTo(16 * scale, 0);
+});
+
+test("GIFs keep their own resolution, 720p unless 1080p is picked; MP4 keeps its own", () => {
+  const gif = {
+    ...DEFAULT_EXPORT,
+    format: "gif" as const,
+    resolution: "4K" as const,
+  };
+  expect(exportResolution(gif)).toBe("720p");
+  expect(exportResolution({ ...gif, gifResolution: "1080p" })).toBe("1080p");
+  expect(exportResolution({ ...gif, format: "mp4" })).toBe("4K");
+});
+
+test("GIFs keep their own frame rate, 30 unless 50 is picked; MP4 keeps its own", () => {
+  const gif = { ...DEFAULT_EXPORT, format: "gif" as const };
+  expect(exportOptions(gif, null).frameRate).toBe(30);
+  expect(exportOptions({ ...gif, gifFrameRate: 50 }, null).frameRate).toBe(50);
+  expect(exportOptions(DEFAULT_EXPORT, null).frameRate).toBe(60);
 });

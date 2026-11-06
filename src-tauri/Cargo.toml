@@ -39,7 +39,6 @@ objc2-av-foundation = { version = "=0.3.2", default-features = false, features =
 objc2-core-image = { version = "=0.3.2", default-features = false, features = ["std", "CIImage", "CIContext", "objc2-core-foundation", "objc2-core-graphics", "objc2-core-video"] }
 objc2-core-graphics = { version = "=0.3.2", default-features = false, features = ["std", "CGBitmapContext", "CGColor", "CGColorSpace", "CGContext", "CGGradient", "CGImage", "CGPath"] }
 objc2-core-foundation = { version = "=0.3.2", default-features = false, features = ["std", "CFCGTypes", "CFDictionary", "CFNumber", "CFString", "CFURL"] }
-objc2-image-io = { version = "=0.3.2", default-features = false, features = ["std", "CGImageDestination", "CGImageProperties", "objc2-core-graphics"] }
 block2 = "=0.6.2"
 objc2-core-video = { version = "=0.3.2", default-features = false, features = ["std", "CVBase", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVReturn"] }
 objc2-core-media = { version = "=0.3.2", default-features = false, features = ["std", "CMBlockBuffer", "CMFormatDescription", "CMTime", "CMTimeRange", "CMSampleBuffer", "objc2-core-audio-types", "objc2-core-video"] }
@@ -49,9 +48,14 @@ tauri-plugin-updater = "=2.14.0"
 log = "=0.4.34"
 reqwest = { version = "=0.13.5", default-features = false, features = ["json", "rustls-no-provider"] }
 rustls = { version = "=0.23.46", default-features = false, features = ["ring"] }
+gif = "0.14"
+quantette = { version = "0.6", default-features = false, features = ["std", "kmeans"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.dev]
+opt-level = 1
+
 [profile.release]
 codegen-units = 1
 lto = true

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/tooltip";
 import type { Exporting } from "@/hooks/editor/useExport";
 import {
+  exportResolution,
   QUALITIES,
   type ExportSettings as Settings,
 } from "@/lib/editor/export";
@@ -136,6 +137,7 @@ export function ExportChoices({
   size?: ReactNode;
   inRows?: boolean;
 }) {
+  const isGif = settings.format === "gif";
   return (
     <>
       <div className={inRows ? "contents" : "grid grid-cols-2 gap-3"}>
@@ -146,20 +148,36 @@ export function ExportChoices({
           options={{ mp4: "MP4", gif: "GIF" }}
           onChange={(format) => change({ format })}
         />
-        <Choice<"30" | "60">
+        <Choice<"30" | "50" | "60">
           label="Frame rate"
           inRows={inRows}
-          value={`${settings.frameRate}`}
-          options={{ 30: "30", 60: "60" }}
-          onChange={(rate) => change({ frameRate: rate === "30" ? 30 : 60 })}
+          value={`${isGif ? settings.gifFrameRate : settings.frameRate}`}
+          options={isGif ? { 30: "30", 50: "50" } : { 30: "30", 60: "60" }}
+          onChange={(rate) =>
+            change(
+              isGif
+                ? { gifFrameRate: rate === "50" ? 50 : 30 }
+                : { frameRate: rate === "60" ? 60 : 30 },
+            )
+          }
         />
       </div>
       <Choice<Settings["resolution"]>
         label="Resolution"
         inRows={inRows}
-        value={settings.resolution}
-        options={{ "720p": "720p", "1080p": "1080p", "4K": "4K" }}
-        onChange={(resolution) => change({ resolution })}
+        value={exportResolution(settings)}
+        options={{
+          "720p": "720p",
+          "1080p": "1080p",
+          ...(!isGif && { "4K": "4K" }),
+        }}
+        onChange={(resolution) =>
+          change(
+            isGif
+              ? { gifResolution: resolution === "1080p" ? "1080p" : "720p" }
+              : { resolution },
+          )
+        }
         aside={size}
       />
       <Choice<Settings["quality"]>
@@ -211,7 +229,7 @@ function Choice<Value extends string>({
 }: {
   label: string;
   value: Value;
-  options: Record<Value, ReactNode>;
+  options: Partial<Record<Value, ReactNode>>;
   onChange: (value: Value) => void;
   aside?: ReactNode;
   hints?: Record<Value, string>;

@@ -132,6 +132,14 @@ export const RESOLUTIONS = { "720p": 720, "1080p": 1080, "4K": 2160 };
 
 type Resolution = keyof typeof RESOLUTIONS;
 
+export function exportResolution({
+  format,
+  resolution,
+  gifResolution,
+}: ExportSettings): Resolution {
+  return format === "gif" ? gifResolution : resolution;
+}
+
 export const QUALITIES = {
   best: {
     bitsPerPixel: 12,
@@ -150,7 +158,9 @@ export const QUALITIES = {
 export type ExportSettings = {
   format: ExportFormat;
   frameRate: 30 | 60;
+  gifFrameRate: 30 | 50;
   resolution: Resolution;
+  gifResolution: "720p" | "1080p";
   quality: keyof typeof QUALITIES;
   to: "file" | "clipboard";
 };
@@ -164,7 +174,9 @@ export type ExportState =
 export const DEFAULT_EXPORT: ExportSettings = {
   format: "mp4",
   frameRate: 60,
+  gifFrameRate: 30,
   resolution: "1080p",
+  gifResolution: "720p",
   quality: "balanced",
   to: "file",
 };
@@ -174,10 +186,12 @@ export function readExport(saved: unknown): ExportSettings {
   return {
     format: known.format === "gif" ? "gif" : "mp4",
     frameRate: known.frameRate === 30 ? 30 : 60,
+    gifFrameRate: known.gifFrameRate === 50 ? 50 : 30,
     resolution:
       known.resolution in RESOLUTIONS
         ? known.resolution
         : DEFAULT_EXPORT.resolution,
+    gifResolution: known.gifResolution === "1080p" ? "1080p" : "720p",
     quality:
       known.quality in QUALITIES ? known.quality : DEFAULT_EXPORT.quality,
     to: known.to === "clipboard" ? "clipboard" : "file",
@@ -191,7 +205,8 @@ export function exportOptions(
   return {
     name,
     format: settings.format,
-    frameRate: settings.frameRate,
+    frameRate:
+      settings.format === "gif" ? settings.gifFrameRate : settings.frameRate,
     bitsPerPixel: QUALITIES[settings.quality].bitsPerPixel,
     toClipboard: settings.to === "clipboard",
   };

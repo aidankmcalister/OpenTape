@@ -6,6 +6,7 @@ import {
   aboutMegabytes,
   exportLayout,
   exportOptions,
+  exportResolution,
   RESOLUTIONS,
   type ExportSettings,
   type ExportState,
@@ -39,7 +40,12 @@ export function useExport(
   const [closesAfterExport, setClosesAfterExport] = useState(false);
   const settings = app.exportSettings;
   const layoutAt = (size: Size, timeline?: Partial<ExportTimeline>) =>
-    exportLayout(appearance, size, timeline, RESOLUTIONS[settings.resolution]);
+    exportLayout(
+      appearance,
+      size,
+      timeline,
+      RESOLUTIONS[exportResolution(settings)],
+    );
 
   useTauriEvent(
     "export-progress",
