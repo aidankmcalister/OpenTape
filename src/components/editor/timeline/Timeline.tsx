@@ -70,48 +70,36 @@ export default function Timeline({
     ].join(),
     drag.stretch !== null,
   );
-  const stripPx = zoom.zoom > 1 ? STRIP_PX : 0;
   const skim = useSkim(lengthMs, (ms) =>
     onSkim(ms === null ? null : time.source(Math.max(0, ms - trimmedMs))),
   );
   return (
     <div
       className={cn(
-        "relative isolate flex pt-2 pr-2 pb-2 transition-[height] duration-160 ease-out motion-reduce:transition-none",
+        "relative isolate flex flex-col transition-[height] duration-160 ease-out motion-reduce:transition-none",
         isReflowing && "reflow",
       )}
       style={{
-        height: TRACKS_TOP_PX + heightPx + 2 * TRACK_INSET_PX + stripPx,
+        height: TRACKS_TOP_PX + heightPx + 2 * TRACK_INSET_PX + FOOTER_PX,
       }}
     >
-      <div
-        className="relative shrink-0"
-        style={{ width: GUTTER_PX, marginTop: stripPx }}
-      >
-        <ZoomControl zoom={zoom} />
-        <div className="absolute inset-x-0 top-8 flex h-9 items-center gap-2 px-3 text-label font-medium text-muted-foreground">
-          <Film className="size-4 shrink-0" />
-          Recording
+      <div className="flex min-h-0 flex-1 pt-2 pr-2 pb-2">
+        <div className="relative shrink-0" style={{ width: GUTTER_PX }}>
+          <div className="absolute inset-x-0 top-7 flex h-9 items-center gap-2 px-3 text-label font-medium text-muted-foreground">
+            <Film className="size-4 shrink-0" />
+            Recording
+          </div>
+          <div className="absolute inset-x-0" style={{ top: TRACKS_TOP_PX }}>
+            <LaneGutters
+              lanes={lanes}
+              regions={regions}
+              clock={clock}
+              laneState={laneState}
+            />
+          </div>
         </div>
-        <div className="absolute inset-x-0" style={{ top: TRACKS_TOP_PX }}>
-          <LaneGutters
-            lanes={lanes}
-            regions={regions}
-            clock={clock}
-            laneState={laneState}
-          />
-        </div>
-      </div>
-      <div className="flex flex-1 flex-col">
-        {stripPx > 0 ? (
-          <Overview
-            view={{ viewportRef, zoom: zoom.zoom }}
-            regions={shown}
-            timelineMs={lengthMs}
-          />
-        ) : null}
         <div className="relative flex-1 overflow-hidden rounded-lg bg-track-modifiers">
-          <div className="absolute inset-x-0 top-0 h-8 bg-track-recording" />
+          <div className="absolute inset-x-0 top-0 h-7 bg-track-recording" />
           {lanes.map(({ kind, top }) => (
             <div
               key={kind}
@@ -175,7 +163,7 @@ export default function Timeline({
                       isMuted
                     >
                       {edits.isCutting ? (
-                        <div className="absolute top-10 left-1/2 grid size-5 -translate-x-1/2 place-items-center rounded-full bg-highlight text-on-hue">
+                        <div className="absolute top-9 left-1/2 grid size-5 -translate-x-1/2 place-items-center rounded-full bg-highlight text-on-hue">
                           <Scissors className="size-3" />
                         </div>
                       ) : null}
@@ -187,15 +175,25 @@ export default function Timeline({
           </div>
         </div>
       </div>
+      <div className="flex h-10 shrink-0 items-center border-t border-hairline pr-2">
+        <div className="flex shrink-0 px-2" style={{ width: GUTTER_PX }}>
+          <ZoomControl zoom={zoom} />
+        </div>
+        <Overview
+          view={{ viewportRef, zoom: zoom.zoom }}
+          regions={shown}
+          timelineMs={lengthMs}
+        />
+      </div>
     </div>
   );
 }
 
-const STRIP_PX = 18;
+const FOOTER_PX = 40;
 
 function ZoomControl({ zoom }: { zoom: TimelineZoom }) {
   return (
-    <div className="absolute inset-x-2 top-0 flex h-8 items-center justify-between">
+    <div className="flex h-6 flex-1 items-center justify-between rounded-md bg-track-modifiers">
       <Button
         variant="ghost"
         size="icon-xs"
@@ -238,25 +236,32 @@ function Overview({
 }) {
   const view = useOverview(viewportRef, zoom);
   return (
-    <div
-      className="relative mx-3 mb-1.5 h-3 shrink-0 cursor-grab touch-none rounded-sm bg-track-recording active:cursor-grabbing"
-      {...view.stripProps}
-    >
-      {regions.map((region) => (
-        <div
-          key={region.id}
-          className="pointer-events-none absolute inset-y-1 min-w-px bg-hue/60"
-          style={{
-            ...hueOf(region.kind),
-            left: `${percentAt(region.startMs, timelineMs)}%`,
-            width: `${percentAt(region.endMs - region.startMs, timelineMs)}%`,
-          }}
-        />
-      ))}
+    <div className="relative h-6 flex-1 rounded-md bg-track-modifiers">
       <div
-        className="pointer-events-none absolute inset-y-0 rounded-sm bg-foreground/10 inset-ring inset-ring-foreground/40"
-        style={{ left: `${view.start * 100}%`, width: `${view.size * 100}%` }}
-      />
+        className="absolute inset-x-3 inset-y-0 cursor-grab touch-none active:cursor-grabbing"
+        {...view.stripProps}
+      >
+        {regions.map((region) => (
+          <div
+            key={region.id}
+            className="pointer-events-none absolute inset-y-2 min-w-px rounded-[1px] bg-hue/60"
+            style={{
+              ...hueOf(region.kind),
+              left: `${percentAt(region.startMs, timelineMs)}%`,
+              width: `${percentAt(region.endMs - region.startMs, timelineMs)}%`,
+            }}
+          />
+        ))}
+        {zoom > 1 ? (
+          <div
+            className="pointer-events-none absolute inset-y-0.5 rounded-sm bg-foreground/10 inset-ring inset-ring-foreground/40"
+            style={{
+              left: `${view.start * 100}%`,
+              width: `${view.size * 100}%`,
+            }}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -266,23 +271,17 @@ function Ruler({ timelineMs, width }: { timelineMs: number; width: number }) {
     ({ isCrowded }) => !isCrowded,
   );
   return rulerMarks(timelineMs, width).map(({ ms, isMajor }) => {
-    const left = `${percentAt(ms, timelineMs)}%`;
-    if (!isMajor) {
-      return (
-        <div
-          key={ms}
-          data-flow
-          className="pointer-events-none absolute top-7 h-1 w-px bg-foreground/15"
-          style={{ left }}
-        />
-      );
-    }
     return (
       <Fragment key={ms}>
         <div
           data-flow
-          className="pointer-events-none absolute top-2 h-4 w-px bg-foreground/30"
-          style={{ left }}
+          className={cn(
+            "pointer-events-none absolute top-[23px] -translate-x-1/2 -translate-y-1/2 rounded-full",
+            isMajor
+              ? "size-[3px] bg-foreground/60"
+              : "size-0.5 bg-foreground/30",
+          )}
+          style={{ left: `${percentAt(ms, timelineMs)}%` }}
         />
         {shown
           .filter((label) => label.ms === ms)
@@ -290,7 +289,7 @@ function Ruler({ timelineMs, width }: { timelineMs: number; width: number }) {
             <span
               key={text}
               data-flow
-              className="pointer-events-none absolute top-2 font-mono text-caption leading-4 text-muted-foreground"
+              className="pointer-events-none absolute top-1 font-mono text-caption leading-4 text-muted-foreground"
               style={{ left: from }}
             >
               {text}
@@ -348,7 +347,7 @@ function Marker({
     >
       <div
         className={cn(
-          "absolute top-2 flex h-4 -translate-x-1/2 items-center rounded-sm px-1.5 font-mono text-caption font-semibold text-on-hue",
+          "absolute top-1.5 flex h-4 -translate-x-1/2 items-center rounded-sm px-1.5 font-mono text-caption font-semibold text-on-hue",
           color,
         )}
         style={{ left: `calc(50% + ${chipShift(x, widthPx)}px)` }}

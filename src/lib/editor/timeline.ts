@@ -57,7 +57,7 @@ export function frameStep(
 }
 
 export const GUTTER_PX = 152;
-export const TRACKS_TOP_PX = 68;
+export const TRACKS_TOP_PX = 64;
 export const TRACK_INSET_PX = 8;
 
 const LANE_PX = 32;
@@ -131,6 +131,7 @@ export function markSpan(
 }
 
 const MIN_LABEL_GAP_PX = 96;
+const DOTS_PER_LABEL = 5;
 
 export function rulerMarks(durationMs: number, widthPx: number) {
   const pxPerSecond = widthPx / Math.max(durationMs / 1000, 0.001);
@@ -138,10 +139,10 @@ export function rulerMarks(durationMs: number, widthPx: number) {
     [1, 2, 5, 10, 15, 30, 60, 120, 300].find(
       (step) => step * pxPerSecond >= MIN_LABEL_GAP_PX,
     ) ?? 600;
-  const halfStepMs = (stepS * 1000) / 2;
+  const dotMs = (stepS * 1000) / DOTS_PER_LABEL;
   const marks: { ms: number; isMajor: boolean }[] = [];
-  for (let i = 0; i * halfStepMs <= durationMs; i++) {
-    marks.push({ ms: i * halfStepMs, isMajor: i % 2 === 0 });
+  for (let i = 0; i * dotMs <= durationMs; i++) {
+    marks.push({ ms: i * dotMs, isMajor: i % DOTS_PER_LABEL === 0 });
   }
   return marks;
 }
@@ -164,11 +165,10 @@ export function rulerLabels(durationMs: number, widthPx: number) {
       const x = (percentAt(ms, durationMs) / 100) * widthPx;
       const text = rulerLabel(ms);
       const textPx = CHAR_PX * text.length;
-      const flips = x + LABEL_GAP_PX + textPx > widthPx;
-      const from = flips ? x - LABEL_GAP_PX - textPx : x + LABEL_GAP_PX;
+      const from = Math.max(0, Math.min(x - textPx / 2, widthPx - textPx));
       const isCrowded = from < shownEnd + LABEL_GAP_PX;
       if (!isCrowded) shownEnd = from + textPx;
-      return { ms, text, flips, from, to: from + textPx, isCrowded };
+      return { ms, text, from, to: from + textPx, isCrowded };
     });
 }
 

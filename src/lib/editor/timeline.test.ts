@@ -63,11 +63,11 @@ describe("ruler", () => {
       .filter((mark) => mark.isMajor)
       .map((mark) => mark.ms);
 
-  test("at 64px a second, a 15 second clip gets a label every 2 seconds and a short tick between", () => {
+  test("at 64px a second, a 15 second clip gets a label every 2 seconds and four dots between", () => {
     expect(labeled(15_000, 960)).toEqual([
       0, 2000, 4000, 6000, 8000, 10_000, 12_000, 14_000,
     ]);
-    expect(rulerMarks(15_000, 960)[1]).toEqual({ ms: 1000, isMajor: false });
+    expect(rulerMarks(15_000, 960)[1]).toEqual({ ms: 400, isMajor: false });
   });
 
   test("with room to spare, labels come every second, end included", () => {
@@ -193,9 +193,9 @@ test("regionsInBox picks the modifiers a box touches, by time and lane", () => {
 });
 
 describe("ruler labels and block navigation", () => {
-  test("labels sit right of their tick, the last one flips left, and none overlap", () => {
+  test("labels center on their dot, stay inside the ruler, and none overlap", () => {
     const labels = rulerLabels(8400, 600);
-    expect(labels[0]).toMatchObject({ ms: 0, from: 6, flips: false });
+    expect(labels[0]).toMatchObject({ ms: 0, from: 0 });
     const last = labels[labels.length - 1];
     expect(last.to).toBeLessThanOrEqual(600);
     const shown = labels.filter(({ isCrowded }) => !isCrowded);
@@ -208,7 +208,7 @@ describe("ruler labels and block navigation", () => {
     const shown = rulerLabels(3_600_000, 200)
       .filter(({ isCrowded }) => !isCrowded)
       .map(({ text }) => text);
-    expect(shown).toEqual(["0:00", "20:00", "40:00"]);
+    expect(shown).toEqual(["0:00", "20:00", "40:00", "60:00"]);
   });
 
   const zoom = (id: number, startMs: number): Region => ({

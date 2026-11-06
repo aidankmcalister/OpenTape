@@ -22,7 +22,7 @@ export default function RecordingTrack({
   return (
     <div
       className={cn(
-        "absolute inset-x-0 top-8 h-9",
+        "absolute inset-x-0 top-7 h-9",
         edits.isCutting && "cursor-crosshair",
       )}
       onPointerDownCapture={(event: PointerEvent<HTMLElement>) => {
