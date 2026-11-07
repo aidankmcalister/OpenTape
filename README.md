@@ -45,7 +45,7 @@ To build it yourself, follow [Set up](CONTRIBUTING.md#set-up) in the contributin
 
 ## Privacy
 
-Everything stays on your Mac. There's no account and no cloud. The app checks GitHub for a new version at launch and when you click Check now. If you turn on Share anonymous usage (it's off until you do), official builds also send a count when the app opens, a recording finishes, the editor opens and an export finishes or fails, with the app version and export format. That's all: no recordings, file names, IP address or ID that lasts past a launch. The code is in [usage.rs](src-tauri/src/usage.rs), and builds from source send nothing. It needs Screen Recording permission, plus the microphone only if you choose one. Recordings wait in a hidden folder until you save or export them, and closing them deletes that copy.
+Everything stays on your Mac. There's no account and no cloud. The app checks GitHub for a new version at launch and when you click Check now. If you turn on Share anonymous usage (it's off until you do), official builds also send a count when the app opens, a recording starts (and whether it's a display, window or area), pauses, resumes, restarts or finishes, the editor opens, and an export finishes, is canceled or fails, with the app version, the export format and whether it went to a file or the clipboard. That's all: no recordings, file names, IP address or ID that lasts past a launch. The code is in [usage.rs](src-tauri/src/usage.rs), and builds from source send nothing. It needs Screen Recording permission, plus the microphone only if you choose one. Recordings wait in a hidden folder until you save or export them, and closing them deletes that copy.
 
 ## Contributing
 

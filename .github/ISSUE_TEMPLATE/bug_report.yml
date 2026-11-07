@@ -29,8 +29,16 @@ body:
   - type: input
     id: version
     attributes:
-      label: App version or commit
-      placeholder: 0.1.0, or the commit you built from
+      label: OpenTape version
+      description: In Settings, under About. Or the commit you built from.
+      placeholder: 0.1.4
+    validations:
+      required: true
+  - type: textarea
+    id: recording
+    attributes:
+      label: A recording of it
+      description: A short screen recording that shows the problem helps most. Drag the video file in here.
   - type: textarea
     id: logs
     attributes:
