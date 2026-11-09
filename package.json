@@ -1,7 +1,7 @@
 {
   "name": "opentape",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "A small, free, open-source screen recorder for macOS.",
   "license": "MIT",
   "author": "Aidan McAlister",
