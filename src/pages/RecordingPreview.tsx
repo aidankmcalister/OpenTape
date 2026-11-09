@@ -69,12 +69,13 @@ function Preview({
         {playback.durationMs === 0 ? (
           <span />
         ) : (
-          <Badge variant="overlay">{formatClock(playback.durationMs)}</Badge>
+          <Elapsed clock={playback.clock} durationMs={playback.durationMs} />
         )}
         <Button
           variant="overlay"
           size="icon-round"
           aria-label="Close"
+          disabled={state.stage === "exporting"}
           onClick={preview.close}
         >
           <X />
@@ -179,6 +180,18 @@ function Progress({ label, progress }: { label: string; progress: number }) {
         {Math.round(progress * 100)}%
       </span>
     </div>
+  );
+}
+
+/** Where playback is and how long the clip is, like 00:12 / 00:24. */
+function Elapsed({ clock, durationMs }: { clock: Clock; durationMs: number }) {
+  const elapsed = useClockValue(clock, (seconds) =>
+    formatClock(loopProgress(seconds, durationMs) * durationMs),
+  );
+  return (
+    <Badge variant="overlay" className="tabular-nums">
+      {elapsed} / {formatClock(durationMs)}
+    </Badge>
   );
 }
 

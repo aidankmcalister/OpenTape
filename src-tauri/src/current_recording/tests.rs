@@ -152,6 +152,22 @@ fn editing_after_a_save_should_ask_again_before_closing_the_editor() {
 }
 
 #[test]
+fn an_edit_after_a_save_should_ask_again_but_an_unchanged_project_should_not() {
+    let shell = FakeShell::answering(Choice::Cancel);
+    let (current, folder) = keeping_one("edited-after-save", &shell);
+    current.save_project("{}").expect("the folder is writable");
+    let saved_to = folder.with_file_name("edited-after-save.mp4");
+    std::fs::write(&saved_to, b"").expect("the temp export can be written");
+    lock(&current.kept).as_mut().expect("kept").saved_to = Some(saved_to);
+    current.save_project("{}").expect("unchanged");
+    assert!(current.saved_to().is_some());
+    current.save_project("{\"edited\":true}").expect("changed");
+    current.close(&shell).expect("asks");
+    assert_eq!(*shell.asked.borrow(), [SAVE_FIRST]);
+    assert!(folder.exists());
+}
+
+#[test]
 fn closing_the_editor_with_discard_should_delete_the_recording_and_its_edits() {
     let shell = FakeShell::answering(Choice::Second);
     let (current, folder) = keeping_one("editor-discard", &shell);

@@ -150,7 +150,7 @@ pub(crate) fn ask(app: &AppHandle, alert: Alert) -> Choice {
         .dialog()
         .message(alert.message)
         .title(alert.title)
-        .kind(MessageDialogKind::Warning)
+        .kind(MessageDialogKind::Info)
         .buttons(buttons)
         .blocking_show_with_result();
     choice_of(&result, alert.first, alert.second)

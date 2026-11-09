@@ -242,8 +242,15 @@ impl CurrentRecording {
         }
     }
 
+    /// Saves the edits; a change since the last Copy or Save makes closing ask again.
     fn save_project(&self, json: &str) -> Result<()> {
         let path = self.project_path()?;
+        if std::fs::read_to_string(&path).is_ok_and(|saved| saved == json) {
+            return Ok(());
+        }
+        if let Some(kept) = lock(&self.kept).as_mut() {
+            kept.saved_to = None;
+        }
         let draft = path.with_extension("json.part");
         std::fs::write(&draft, json)
             .with_context(|| format!("could not write {}", draft.display()))?;
@@ -288,7 +295,7 @@ impl CurrentRecording {
             }
             return Err(err);
         }
-        if let Some(kept) = lock(&self.kept).as_mut().filter(|_| !options.to_clipboard) {
+        if let Some(kept) = lock(&self.kept).as_mut() {
             kept.saved_to = Some(output.clone());
         }
         Ok(Some(output))
