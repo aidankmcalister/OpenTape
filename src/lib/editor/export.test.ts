@@ -66,16 +66,19 @@ describe("export", () => {
     expect(at("Auto").height).toBe(1080);
   });
 
-  test("aboutMegabytes estimates from the size, length and settings, to a tenth", () => {
+  test("aboutMegabytes estimates from the size, frame rate, length and quality, to a tenth", () => {
     const full = exportLayout(DEFAULT_APPEARANCE, {
       width: 1920,
       height: 1080,
     });
     const hd = { ...full, width: 1920, height: 1080 };
-    expect(aboutMegabytes(hd, 10_000, DEFAULT_EXPORT)).toBe(20.7);
+    expect(aboutMegabytes(hd, 10_000, DEFAULT_EXPORT)).toBe(7.8);
     expect(
       aboutMegabytes(hd, 10_000, { ...DEFAULT_EXPORT, quality: "small" }),
-    ).toBe(10.4);
+    ).toBe(3.9);
+    expect(
+      aboutMegabytes(hd, 10_000, { ...DEFAULT_EXPORT, frameRate: 30 }),
+    ).toBe(3.9);
     expect(
       aboutMegabytes(hd, 10_000, { ...DEFAULT_EXPORT, format: "gif" }),
     ).toBeNull();
@@ -90,7 +93,7 @@ describe("export", () => {
     ).toEqual({
       format: "gif",
       frameRate: 30,
-      bitsPerPixel: 8,
+      bitsPerPixel: 0.05,
       toClipboard: true,
       name: "Launch demo",
     });

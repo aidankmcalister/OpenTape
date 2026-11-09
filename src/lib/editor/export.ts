@@ -140,17 +140,18 @@ export function exportResolution({
   return format === "gif" ? gifResolution : resolution;
 }
 
+/** Bits per pixel of each frame: Balanced is about 6 Mbps at 1080p60. */
 export const QUALITIES = {
   best: {
-    bitsPerPixel: 12,
+    bitsPerPixel: 0.1,
     hint: "Largest file, closest to the original.",
   },
   balanced: {
-    bitsPerPixel: 8,
-    hint: "Good for sharing. A little smaller than the original.",
+    bitsPerPixel: 0.05,
+    hint: "Good for sharing.",
   },
   small: {
-    bitsPerPixel: 4,
+    bitsPerPixel: 0.025,
     hint: "Smallest file, for messages and chat.",
   },
 };
@@ -220,7 +221,12 @@ export function aboutMegabytes(
   if (settings.format === "gif") return null;
   const { bitsPerPixel } = QUALITIES[settings.quality];
   const bits =
-    (layout.width * layout.height * bitsPerPixel * durationMs) / 1000;
+    (layout.width *
+      layout.height *
+      settings.frameRate *
+      bitsPerPixel *
+      durationMs) /
+    1000;
   return Math.round(bits / 8e5) / 10;
 }
 

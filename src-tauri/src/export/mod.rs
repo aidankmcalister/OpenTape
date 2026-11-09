@@ -301,7 +301,12 @@ pub(crate) fn export(
     };
     read_all(&reader, || match options.format {
         ExportFormat::Mp4 => {
-            let settings = compression(layout.width, layout.height, options.bits_per_pixel)?;
+            let settings = compression(
+                layout.width,
+                layout.height,
+                options.frame_rate,
+                options.bits_per_pixel,
+            )?;
             write_mp4(&frames, sound.as_deref(), output, &settings, progress_at)
         }
         ExportFormat::Gif => write_gif(

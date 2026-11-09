@@ -417,14 +417,18 @@ fn hundredths(seconds: f64) -> i32 {
     (seconds * 100.0).round() as i32
 }
 
+/// `bits_per_pixel` is per pixel of each frame, so the bitrate follows the frame rate too.
 pub(super) fn compression(
     width: u32,
     height: u32,
+    frame_rate: u32,
     bits_per_pixel: f64,
 ) -> Result<Retained<NSDictionary<NSString, AnyObject>>> {
     let key =
         |key: Option<&'static NSString>| key.context("AVFoundation is missing a video setting");
-    let bitrate = NSNumber::new_f64(f64::from(width) * f64::from(height) * bits_per_pixel);
+    let bitrate = NSNumber::new_f64(
+        f64::from(width) * f64::from(height) * f64::from(frame_rate) * bits_per_pixel,
+    );
     let keyframe_every = NSNumber::new_f64(1.0);
     let compression = NSDictionary::<NSString, NSNumber>::from_slices(
         &[

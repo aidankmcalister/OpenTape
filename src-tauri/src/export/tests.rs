@@ -188,7 +188,7 @@ fn exports_a_recording_in_the_default_appearance() {
             ExportFormat::Mp4
         },
         frame_rate: var("EXPORT_TEST_FPS", "60").parse().unwrap(),
-        bits_per_pixel: var("EXPORT_TEST_BITS", "8").parse().unwrap(),
+        bits_per_pixel: var("EXPORT_TEST_BITS", "0.05").parse().unwrap(),
         to_clipboard: false,
         name: None,
     };
