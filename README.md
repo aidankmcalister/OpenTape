@@ -13,6 +13,8 @@
     <a href="https://github.com/aidankmcalister/OpenTape/issues">Issues</a>
     ·
     <a href="CONTRIBUTING.md">Contributing</a>
+    ·
+    <a href="https://github.com/sponsors/aidankmcalister">Sponsor</a>
   </p>
 </div>
 

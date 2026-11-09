@@ -55,6 +55,9 @@ quantette = { version = "0.6", default-features = false, features = ["std", "kme
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.dev]
 opt-level = 1
+# tauri dev restarts cargo when files change mid-build, which left broken incremental
+# files behind and failed the link with undefined `.llvm.` symbols.
+incremental = false
 
 [profile.release]
 codegen-units = 1
