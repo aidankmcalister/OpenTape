@@ -115,7 +115,7 @@ export function MorphPill<Key extends string>({
   isInstant?: boolean;
 } & ComponentProps<typeof Pill>) {
   const morph = useMorph(active, onShape, 2, isInstant);
-  const dragRegion = isDragRegion ? { "data-tauri-drag-region": true } : {};
+  const dragRegion = isDragRegion ? { "data-tauri-drag-region": "deep" } : {};
   return (
     <Pill
       {...dragRegion}

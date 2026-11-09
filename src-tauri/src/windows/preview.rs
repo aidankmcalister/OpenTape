@@ -15,6 +15,7 @@ pub(crate) static WINDOW: Floating = Floating::new(Behavior {
     label: LABEL,
     anchor: Anchor::BottomLeft,
     keeps_its_spot: false,
+    snaps_to_corners: true,
     on_pointer: |_| {},
     hover: Some(Hover {
         event: PageEvent::PreviewPointer,
@@ -34,6 +35,7 @@ pub(crate) fn shape_preview(window: WebviewWindow, ratio: f64) -> CmdResult {
     let size = preview_size(ratio);
     macos::with_ns_window(&window, move |ns_window| {
         ns_window.setFrame_display(NSRect::new(ns_window.frame().origin, size), true);
+        WINDOW.settle(ns_window);
     })?;
     Ok(())
 }

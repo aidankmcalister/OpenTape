@@ -1,9 +1,14 @@
-use std::{sync::Mutex, time::Duration};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use objc2::{MainThreadMarker, MainThreadOnly, rc::Retained};
-use objc2_app_kit::{NSCursor, NSEvent, NSPopUpMenuWindowLevel, NSScreen, NSWindow};
+use objc2_app_kit::{
+    NSAnimatablePropertyContainer, NSAnimationContext, NSCursor, NSEvent, NSPopUpMenuWindowLevel,
+    NSScreen, NSWindow,
+};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
-use tauri::{AppHandle, Manager, WebviewWindow};
+use objc2_quartz_core::CAMediaTimingFunction;
+use tauri::{AppHandle, Manager, WebviewWindow, WindowEvent};
 
 use crate::geometry::{Frame, Point, page_point};
 use crate::util::{Poller, lock};
@@ -11,17 +16,29 @@ use crate::{PageEvent, macos};
 
 const POINTER_CHECK_EVERY: Duration = Duration::from_millis(33);
 const EDGE_GAP: f64 = 12.0;
+/// A thrown window travels on this long before the nearest corner is picked.
+const THROW_SECONDS: f64 = 0.2;
+/// Samples older than this say nothing about how fast the window was thrown.
+const FRESH_SECONDS: f64 = 0.1;
+const GLIDE_SECONDS: f64 = 0.4;
+/// Ease out with a slight overshoot, so the window settles into its corner.
+const GLIDE_EASE: [f32; 4] = [0.3, 1.2, 0.5, 1.0];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Anchor {
     BottomCenter,
     BottomLeft,
+    BottomRight,
+    TopLeft,
+    TopRight,
 }
 
 pub(crate) struct Behavior {
     pub label: &'static str,
     pub anchor: Anchor,
     pub keeps_its_spot: bool,
+    /// Dragged and let go, the window glides to the nearest screen corner and stays there.
+    pub snaps_to_corners: bool,
     pub on_pointer: fn(&NSWindow),
     pub hover: Option<Hover>,
 }
@@ -35,6 +52,36 @@ pub(crate) struct Floating {
     window: Behavior,
     pointer_loop: Poller,
     reported: Mutex<Option<Point>>,
+    spot: Mutex<Option<Spot>>,
+    corner: Mutex<Option<Anchor>>,
+    drag: Mutex<Option<Drag>>,
+}
+
+/// The last two places a window was dragged through, to tell how fast it was thrown.
+#[derive(Debug, Clone, Copy)]
+struct Drag {
+    before: (Instant, NSPoint),
+    last: (Instant, NSPoint),
+}
+
+impl Drag {
+    fn velocity(self, now: Instant) -> NSPoint {
+        let (before_at, before) = self.before;
+        let (last_at, last) = self.last;
+        let step = last_at.duration_since(before_at).as_secs_f64();
+        let is_fresh = now.duration_since(last_at).as_secs_f64() <= FRESH_SECONDS;
+        if !is_fresh || step <= 0.0 || step > FRESH_SECONDS {
+            return NSPoint::new(0.0, 0.0);
+        }
+        NSPoint::new((last.x - before.x) / step, (last.y - before.y) / step)
+    }
+}
+
+/// Where someone dragged a window that keeps its spot: its screen and its bottom center.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Spot {
+    screen: NSRect,
+    bottom_center: NSPoint,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,11 +98,22 @@ impl Floating {
             window,
             pointer_loop: Poller::new(),
             reported: Mutex::new(None),
+            spot: Mutex::new(None),
+            corner: Mutex::new(None),
+            drag: Mutex::new(None),
         }
     }
 
-    pub(crate) fn setup(&self, window: &WebviewWindow) -> tauri::Result<()> {
+    pub(crate) fn setup(&'static self, window: &WebviewWindow) -> tauri::Result<()> {
         super::never_close(window);
+        if self.window.keeps_its_spot || self.window.snaps_to_corners {
+            let moved = window.clone();
+            window.on_window_event(move |event| {
+                if matches!(event, WindowEvent::Moved(_)) {
+                    let _ = macos::with_ns_window(&moved, |ns_window| self.note_move(ns_window));
+                }
+            });
+        }
         macos::with_ns_window(window, |ns_window| {
             macos::float_panel(ns_window, NSPopUpMenuWindowLevel);
         })
@@ -73,7 +131,7 @@ impl Floating {
         let Some(window) = app.get_webview_window(self.window.label) else {
             return;
         };
-        let anchor = self.window.anchor;
+        let anchor = self.anchor();
         let _ = macos::with_ns_window(&window, move |ns_window| {
             let main_thread = ns_window.mtm();
             if main_display {
@@ -81,7 +139,9 @@ impl Floating {
                     place(ns_window, &main, anchor);
                 }
             } else if self.window.keeps_its_spot {
-                follow_pointer(ns_window, anchor);
+                if !self.return_to_spot(ns_window) {
+                    follow_pointer(ns_window, anchor);
+                }
             } else if let Some(screen) = screen_under_pointer(main_thread) {
                 place(ns_window, &screen, anchor);
             }
@@ -108,8 +168,11 @@ impl Floating {
             }
             let app = window.app_handle().clone();
             macos::with_ns_window(&window, move |ns_window| {
-                if change.clicked {
-                    follow_pointer(ns_window, self.window.anchor);
+                if change.clicked && lock(&self.spot).is_none() {
+                    follow_pointer(ns_window, self.anchor());
+                }
+                if change.released && self.window.snaps_to_corners {
+                    self.snap(ns_window);
                 }
                 (self.window.on_pointer)(ns_window);
                 let on_page = if ns_window.isVisible() {
@@ -125,6 +188,91 @@ impl Floating {
             })
             .is_ok()
         });
+    }
+
+    /// The corner the window was last snapped to, or its usual anchor.
+    fn anchor(&self) -> Anchor {
+        lock(&self.corner).unwrap_or(self.window.anchor)
+    }
+
+    /// Puts the window back in its corner after it changes size.
+    pub(crate) fn settle(&self, ns_window: &NSWindow) {
+        if let Some(screen) = ns_window.screen() {
+            place(ns_window, &screen, self.anchor());
+        }
+    }
+
+    /// A move with the mouse held down is a drag; anything else is the app placing the window.
+    fn note_move(&self, ns_window: &NSWindow) {
+        if self.window.keeps_its_spot {
+            self.note_spot(ns_window);
+        }
+        if !self.window.snaps_to_corners || NSEvent::pressedMouseButtons() & 1 == 0 {
+            return;
+        }
+        let now = (Instant::now(), ns_window.frame().origin);
+        let mut drag = lock(&self.drag);
+        let before = drag.map_or(now, |drag| drag.last);
+        *drag = Some(Drag { before, last: now });
+    }
+
+    /// Glides a dropped window into the corner it was dropped or thrown toward.
+    fn snap(&self, ns_window: &NSWindow) {
+        let (Some(drag), Some(screen)) = (lock(&self.drag).take(), ns_window.screen()) else {
+            return;
+        };
+        let frame = ns_window.frame();
+        let visible = screen.visibleFrame();
+        let corner = nearest_corner(visible, frame, drag.velocity(Instant::now()));
+        *lock(&self.corner) = Some(corner);
+        let origin = anchored_origin(corner, visible, frame.size);
+        NSAnimationContext::beginGrouping();
+        let context = NSAnimationContext::currentContext();
+        context.setDuration(GLIDE_SECONDS);
+        let [x1, y1, x2, y2] = GLIDE_EASE;
+        context.setTimingFunction(Some(&CAMediaTimingFunction::functionWithControlPoints(
+            x1, y1, x2, y2,
+        )));
+        ns_window
+            .animator()
+            .setFrame_display(NSRect::new(origin, frame.size), true);
+        NSAnimationContext::endGrouping();
+    }
+
+    /// Remembers where the window was dragged; back at its usual spot, it follows the pointer again.
+    fn note_spot(&self, ns_window: &NSWindow) {
+        let Some(screen) = ns_window.screen() else {
+            return;
+        };
+        let spot = Spot {
+            screen: screen.frame(),
+            bottom_center: bottom_center(ns_window.frame()),
+        };
+        let usual = anchored_origin(
+            self.window.anchor,
+            screen.visibleFrame(),
+            ns_window.frame().size,
+        );
+        let is_usual = (usual.x - ns_window.frame().origin.x).abs() <= 1.0
+            && (usual.y - ns_window.frame().origin.y).abs() <= 1.0;
+        *lock(&self.spot) = (!is_usual).then_some(spot);
+    }
+
+    /// Puts the window back where it was dragged, if that screen is still there.
+    fn return_to_spot(&self, ns_window: &NSWindow) -> bool {
+        let Some(spot) = *lock(&self.spot) else {
+            return false;
+        };
+        let screens = NSScreen::screens(ns_window.mtm());
+        if !screens.iter().any(|screen| screen.frame() == spot.screen) {
+            return false;
+        }
+        let width = ns_window.frame().size.width;
+        ns_window.setFrameOrigin(NSPoint::new(
+            spot.bottom_center.x - width / 2.0,
+            spot.bottom_center.y,
+        ));
+        true
     }
 
     fn report_pointer(&self, app: &AppHandle, at: Option<Point>) {
@@ -179,15 +327,39 @@ fn follow_pointer(ns_window: &NSWindow, anchor: Anchor) {
     }
 }
 
+fn bottom_center(frame: NSRect) -> NSPoint {
+    NSPoint::new(frame.origin.x + frame.size.width / 2.0, frame.origin.y)
+}
+
 fn anchored_origin(anchor: Anchor, visible: NSRect, window: NSSize) -> NSPoint {
+    let left = visible.origin.x + EDGE_GAP;
+    let right = visible.origin.x + visible.size.width - window.width - EDGE_GAP;
+    let bottom = visible.origin.y + EDGE_GAP;
+    let top = visible.origin.y + visible.size.height - window.height - EDGE_GAP;
     match anchor {
         Anchor::BottomCenter => NSPoint::new(
             (visible.origin.x + (visible.size.width - window.width) / 2.0).round(),
-            visible.origin.y + EDGE_GAP,
+            bottom,
         ),
-        Anchor::BottomLeft => {
-            NSPoint::new(visible.origin.x + EDGE_GAP, visible.origin.y + EDGE_GAP)
-        }
+        Anchor::BottomLeft => NSPoint::new(left, bottom),
+        Anchor::BottomRight => NSPoint::new(right, bottom),
+        Anchor::TopLeft => NSPoint::new(left, top),
+        Anchor::TopRight => NSPoint::new(right, top),
+    }
+}
+
+/// The corner whose quarter of the screen the window's center lands in, after it travels
+/// on at the speed it was thrown.
+fn nearest_corner(visible: NSRect, window: NSRect, velocity: NSPoint) -> Anchor {
+    let x = window.origin.x + window.size.width / 2.0 + velocity.x * THROW_SECONDS;
+    let y = window.origin.y + window.size.height / 2.0 + velocity.y * THROW_SECONDS;
+    let is_left = x < visible.origin.x + visible.size.width / 2.0;
+    let is_bottom = y < visible.origin.y + visible.size.height / 2.0;
+    match (is_left, is_bottom) {
+        (true, true) => Anchor::BottomLeft,
+        (false, true) => Anchor::BottomRight,
+        (true, false) => Anchor::TopLeft,
+        (false, false) => Anchor::TopRight,
     }
 }
 
@@ -195,11 +367,12 @@ fn anchored_origin(anchor: Anchor, visible: NSRect, window: NSSize) -> NSPoint {
 struct PointerChange {
     moved: bool,
     clicked: bool,
+    released: bool,
 }
 
 impl PointerChange {
     fn is_still(self) -> bool {
-        !self.moved && !self.clicked
+        !self.moved && !self.clicked && !self.released
     }
 }
 
@@ -216,9 +389,11 @@ impl PointerWatch {
     }
 
     fn update(&mut self, at: Point, is_down: bool) -> PointerChange {
+        let was_down = self.last.is_some_and(|(_, was_down)| was_down);
         let change = PointerChange {
             moved: self.last.is_none_or(|(last_at, _)| last_at != at),
-            clicked: is_down && !self.last.is_some_and(|(_, was_down)| was_down),
+            clicked: is_down && !was_down,
+            released: !is_down && was_down,
         };
         self.last = Some((at, is_down));
         change
@@ -241,27 +416,76 @@ mod tests {
     }
 
     #[test]
+    fn a_dropped_window_should_snap_to_its_quarter_and_a_throw_should_carry_it_on() {
+        let visible = NSRect::new(NSPoint::new(0.0, 80.0), NSSize::new(1512.0, 869.0));
+        let at = |x, y| NSRect::new(NSPoint::new(x, y), NSSize::new(360.0, 225.0));
+        let still = NSPoint::new(0.0, 0.0);
+        assert_eq!(
+            nearest_corner(visible, at(100.0, 100.0), still),
+            Anchor::BottomLeft
+        );
+        assert_eq!(
+            nearest_corner(visible, at(1000.0, 100.0), still),
+            Anchor::BottomRight
+        );
+        assert_eq!(
+            nearest_corner(visible, at(100.0, 600.0), still),
+            Anchor::TopLeft
+        );
+        let thrown = NSPoint::new(3000.0, 2000.0);
+        assert_eq!(
+            nearest_corner(visible, at(300.0, 200.0), thrown),
+            Anchor::TopRight
+        );
+        let top_right = anchored_origin(Anchor::TopRight, visible, at(0.0, 0.0).size);
+        assert_eq!(
+            (top_right.x, top_right.y),
+            (1512.0 - 360.0 - EDGE_GAP, 80.0 + 869.0 - 225.0 - EDGE_GAP)
+        );
+    }
+
+    #[test]
+    fn a_throw_should_count_only_while_its_samples_are_fresh() {
+        let start = Instant::now();
+        let later = |ms| start + Duration::from_millis(ms);
+        let drag = Drag {
+            before: (start, NSPoint::new(0.0, 0.0)),
+            last: (later(10), NSPoint::new(20.0, -10.0)),
+        };
+        let velocity = drag.velocity(later(20));
+        assert_eq!((velocity.x.round(), velocity.y.round()), (2000.0, -1000.0));
+        let late = drag.velocity(later(500));
+        assert_eq!((late.x, late.y), (0.0, 0.0));
+    }
+
+    #[test]
     fn pointer_watch_should_report_moves_and_each_click_once() {
         let mut watch = PointerWatch::default();
         let looks = [
-            (1.0, false, true, false),
-            (1.0, false, false, false),
-            (1.0, true, false, true),
-            (1.0, true, false, false),
-            (2.0, true, true, false),
+            (1.0, false, true, false, false),
+            (1.0, false, false, false, false),
+            (1.0, true, false, true, false),
+            (1.0, true, false, false, false),
+            (2.0, true, true, false, false),
+            (2.0, false, false, false, true),
         ];
-        for (x, is_down, moved, clicked) in looks {
+        for (x, is_down, moved, clicked, released) in looks {
             let change = watch.update(Point { x, y: 0.0 }, is_down);
-            let expected = PointerChange { moved, clicked };
+            let expected = PointerChange {
+                moved,
+                clicked,
+                released,
+            };
             assert_eq!(change, expected, "at {x}, down {is_down}");
         }
-        assert!(watch.update(Point { x: 2.0, y: 0.0 }, true).is_still());
+        assert!(watch.update(Point { x: 2.0, y: 0.0 }, false).is_still());
     }
 
     static HOVERING: Floating = Floating::new(Behavior {
         label: "test",
         anchor: Anchor::BottomLeft,
         keeps_its_spot: false,
+        snaps_to_corners: false,
         on_pointer: |_| {},
         hover: Some(Hover {
             event: PageEvent::PreviewPointer,

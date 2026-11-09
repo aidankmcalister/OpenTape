@@ -45,6 +45,7 @@ function Preview({
 
   return (
     <div
+      data-tauri-drag-region="deep"
       className={cn(
         "relative h-screen w-screen overflow-hidden rounded-xl border border-glass-border bg-card",
         !preview.isShown && "invisible",

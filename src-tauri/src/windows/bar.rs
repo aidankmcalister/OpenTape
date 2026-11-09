@@ -25,6 +25,7 @@ pub(crate) static WINDOW: Floating = Floating::new(Behavior {
     label: LABEL,
     anchor: Anchor::BottomCenter,
     keeps_its_spot: true,
+    snaps_to_corners: false,
     on_pointer: let_clicks_through,
     hover: Some(Hover {
         event: PageEvent::BarPointer,
