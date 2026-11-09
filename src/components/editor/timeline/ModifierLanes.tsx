@@ -22,13 +22,13 @@ import {
   blockValue,
   covers,
   REGIONS,
-  SUGGESTIONS,
   touchingSides,
   regionAt,
   type Region,
   type RegionDrag,
   type RegionKind,
 } from "@/lib/editor/regions";
+import { SUGGESTIONS } from "@/lib/editor/cursor";
 import {
   blockFit,
   laneNeighbors,

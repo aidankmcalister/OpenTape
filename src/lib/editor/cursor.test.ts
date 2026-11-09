@@ -412,7 +412,7 @@ test("each style draws its own arrow, hand and text beam, and macOS keeps the re
   );
 });
 
-test("suggestedZooms puts one zoom on each burst of left clicks, aimed at the first and panning to the rest, around existing zooms, and skips the click that stops the recording", () => {
+test("suggestedZooms puts one zoom on each burst of left clicks, settled before the first and panning to far ones, around existing zooms, and skips the click that stops the recording or lands off screen", () => {
   const click = (ms: number, x: number, button: "left" | "right" = "left") => ({
     ms,
     x,
@@ -426,6 +426,7 @@ test("suggestedZooms puts one zoom on each burst of left clicks, aimed at the fi
     click(9000, 0.5),
     click(9600, 0.9),
     click(20_000, 0.2),
+    click(6000, -0.25),
   ];
   const existing = {
     id: 4,
@@ -440,14 +441,14 @@ test("suggestedZooms puts one zoom on each burst of left clicks, aimed at the fi
     10_000,
   ).slice(1);
   expect(zooms.map(({ id, startMs, endMs }) => [id, startMs, endMs])).toEqual([
-    [5, 400, 4000],
-    [6, 8400, 10_000],
+    [5, 100, 4000],
+    [6, 8100, 10_000],
   ]);
   expect(
     zooms.every(({ isSuggested, kind }) => isSuggested && kind === "zoom"),
   ).toBe(true);
   expect(zooms[0].center!.x).toBeCloseTo(1);
-  expect(zooms[0].path).toEqual([{ afterMs: 2100, x: 0, y: 0.5 }]);
+  expect(zooms[0].path).toEqual([{ afterMs: 2400, x: 0, y: 0.5 }]);
   expect(zooms[1]).toMatchObject({ center: { x: 0.5, y: 0.5 }, path: [] });
   expect(
     suggestedZooms(
@@ -471,8 +472,8 @@ test("suggestedZooms skips the record bar's Pause click before a pause and its R
   expect(track.pauses).toEqual([3000]);
   const zooms = suggestedZooms(track, [], 10_000);
   expect(zooms.map(({ startMs, endMs }) => [startMs, endMs])).toEqual([
-    [400, 2500],
-    [6400, 8500],
+    [100, 2500],
+    [6100, 8500],
   ]);
 });
 
@@ -494,7 +495,7 @@ test("suggestedSpeeds speeds up each stretch of typing that lasts three seconds,
     endMs: 17_000,
     amount: 4,
   };
-  const speeds = suggestedSpeeds(keys, [existing], 20_000).slice(1);
+  const speeds = suggestedSpeeds({ keys }, [existing], 20_000).slice(1);
   expect(speeds).toEqual([
     {
       id: 2,
@@ -516,7 +517,7 @@ test("typing gets an auto zoom aimed at the last click before it, joining a zoom
     20_000,
   );
   expect(alone).toMatchObject([
-    { startMs: 5100, endMs: 11_500, center: { x: 0.5, y: 0.5 }, path: [] },
+    { startMs: 4800, endMs: 11_500, center: { x: 0.5, y: 0.5 }, path: [] },
   ]);
   const clicks = [{ ms: 4000, x: 0.9, y: 0.5, button: "left" as const }];
   const [joined] = suggestedZooms(
@@ -524,11 +525,11 @@ test("typing gets an auto zoom aimed at the last click before it, joining a zoom
     [],
     20_000,
   );
-  expect(joined).toMatchObject({ startMs: 3400, endMs: 11_500 });
+  expect(joined).toMatchObject({ startMs: 3100, endMs: 11_500 });
   expect(joined.path).toEqual([]);
 });
 
-test("a typing zoom aims where the text appears and pans as it moves, not for tiny steps", () => {
+test("a typing zoom aims at the middle of the text and pans when it moves away, not for small steps", () => {
   const keys = Array.from({ length: 9 }, (_, i) => 6000 + i * 500);
   const typed = [
     { ms: 6500, x: 0.9, y: 0.1 },
@@ -543,10 +544,10 @@ test("a typing zoom aims where the text appears and pans as it moves, not for ti
     20_000,
   );
   expect(zoom.center).toEqual({ x: 1, y: 0 });
-  expect(zoom.path).toEqual([{ afterMs: 2900, x: 0.5, y: 0 }]);
+  expect(zoom.path).toEqual([{ afterMs: 3200, x: expect.closeTo(0.53), y: 0 }]);
 });
 
-test("a zoom pans only when the aimed view moves enough, so edge repeats and tiny moves don't jitter", () => {
+test("a zoom aims at the middle of nearby clicks and pans only when a click leaves the middle of the view", () => {
   const at = (ms: number, x: number) => ({
     ms,
     x,
@@ -572,12 +573,19 @@ test("a zoom pans only when the aimed view moves enough, so edge repeats and tin
     9000,
   );
   expect(tiny.path).toEqual([]);
-  const [real] = suggestedZooms(
-    track([at(1000, 0.5), at(2000, 0.7)]),
+  const [near] = suggestedZooms(
+    track([at(1000, 0.4), at(2000, 0.55)]),
     [],
     9000,
   );
-  expect(real.path).toEqual([{ afterMs: 1600, x: expect.closeTo(1), y: 0.5 }]);
+  expect(near.path).toEqual([]);
+  expect(near.center!.x).toBeCloseTo(0.425);
+  const [real] = suggestedZooms(
+    track([at(1000, 0.5), at(2000, 0.8)]),
+    [],
+    9000,
+  );
+  expect(real.path).toEqual([{ afterMs: 1900, x: expect.closeTo(1), y: 0.5 }]);
 });
 
 test("a lone flicker far from the spots around it is dropped, but a real move to a new place is kept", () => {

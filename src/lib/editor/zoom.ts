@@ -18,7 +18,8 @@ import {
 } from "./regions";
 
 const ZOOM_MS = 600;
-const PAN_MS = 750;
+/** Long enough that a pan has all but arrived when its click happens. */
+const PAN_MS = 1100;
 const STILL_SHARE = 0.015;
 const STILL_MS = 300;
 const TYPING_HOLD_MS = 1500;

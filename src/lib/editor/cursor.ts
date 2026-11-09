@@ -571,14 +571,17 @@ export type RingEvent = {
   style: RingStyle;
 };
 
-const ZOOM_GROUP_MS = 3000;
-const ZOOM_LEAD_MS = 600;
+/** With the lead and hold, two suggested zooms are never less than about a second apart. */
+const ZOOM_GROUP_MS = 3500;
+/** The 600 ms zoom-in has settled before the click, not during it. */
+const ZOOM_LEAD_MS = 900;
 const ZOOM_HOLD_MS = 1500;
 const STOP_CLICK_MS = 1000;
 const TYPING_GAP_MS = 1500;
 const TYPING_MIN_MS = 3000;
 const TYPING_LEAD_MS = 300;
-const MIN_PAN_SHARE = 0.08;
+/** A spot inside the middle 60% of the zoomed view needs no pan. */
+const INNER_SHARE = 0.6;
 const STRAY_SHARE = 0.2;
 const BURST_GAP_MS = 2000;
 
@@ -587,15 +590,36 @@ type SuggestionTrack = Pick<
   "clicks" | "keys" | "moves" | "typed" | "pauses"
 >;
 
+type Suggest = (
+  track: SuggestionTrack,
+  regions: Region[],
+  durationMs: number,
+) => Region[];
+
+/** Each suggested kind: its pill wording and how it finds its spots. Runs in this order. */
+export const SUGGESTIONS: Partial<
+  Record<RegionKind, { label: string; question: string; suggest: Suggest }>
+> = {
+  zoom: {
+    label: "Auto zoom",
+    question: "Zoom in on these clicks?",
+    suggest: suggestedZooms,
+  },
+  speed: {
+    label: "Typing",
+    question: "Speed up this typing?",
+    suggest: suggestedSpeeds,
+  },
+};
+
 export function withSuggestions(
   track: SuggestionTrack,
   regions: Region[],
   durationMs: number,
 ): Region[] {
-  return suggestedSpeeds(
-    track.keys,
-    suggestedZooms(track, regions, durationMs),
-    durationMs,
+  return Object.values(SUGGESTIONS).reduce(
+    (all, { suggest }) => suggest(track, all, durationMs),
+    regions,
   );
 }
 
@@ -624,7 +648,7 @@ function isFree(regions: Region[], kind: RegionKind, { startMs, endMs }: Span) {
 }
 
 export function suggestedSpeeds(
-  keys: number[],
+  { keys }: Pick<SuggestionTrack, "keys">,
   regions: Region[],
   durationMs: number,
 ): Region[] {
@@ -689,8 +713,9 @@ export function suggestedZooms(
   durationMs: number,
 ): Region[] {
   const lefts = clicks.filter(
-    ({ button, ms }) =>
+    ({ button, ms, ...click }) =>
       button === "left" &&
+      isOnScreen(click) &&
       ms <= durationMs - STOP_CLICK_MS &&
       !pauses.some((pauseMs) => ms > pauseMs - STOP_CLICK_MS && ms <= pauseMs),
   );
@@ -724,41 +749,48 @@ export function suggestedZooms(
     } else groups.push({ endMs: moment.endMs, moments: [moment] });
   }
   const { amount } = REGIONS.zoom;
+  const reach = INNER_SHARE / (2 * amount);
   const added: Region[] = [];
-  for (const {
-    endMs: lastMs,
-    moments: [first, ...rest],
-  } of groups) {
-    const startMs = Math.max(0, first.startMs - ZOOM_LEAD_MS);
+  for (const { endMs: lastMs, moments } of groups) {
+    const startMs = Math.max(0, moments[0].startMs - ZOOM_LEAD_MS);
     const span = {
       startMs,
       endMs: Math.min(durationMs, lastMs + ZOOM_HOLD_MS),
     };
     if (!isFree(regions, "zoom", span)) continue;
-    const center = centeredOn(first, amount);
-    const path: NonNullable<Region["path"]> = [];
-    for (const { startMs: ms, x, y } of rest) {
-      const from = path[path.length - 1] ?? center;
-      const to = centeredOn({ x, y }, amount);
-      if (
-        Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y)) <
-        MIN_PAN_SHARE
-      )
-        continue;
-      path.push({ afterMs: ms - startMs, ...to });
+    const spots: { ms: number; points: Point[] }[] = [];
+    for (const { startMs: ms, x, y } of moments) {
+      const spot = spots[spots.length - 1];
+      const mid = spot && meanOf(spot.points);
+      if (mid && Math.abs(x - mid.x) <= reach && Math.abs(y - mid.y) <= reach)
+        spot.points.push({ x, y });
+      else spots.push({ ms, points: [{ x, y }] });
     }
+    const [center, ...path] = spots.map(({ ms, points }) => ({
+      afterMs: ms - startMs,
+      ...centeredOn(meanOf(points), amount),
+    }));
     added.push({
       id: nextId([...regions, ...added]),
       kind: "zoom",
       ...span,
       amount,
-      center,
+      center: { x: center.x, y: center.y },
       path,
       settings: { focus: "Follow cursor" },
       isSuggested: true,
     });
   }
   return added.length === 0 ? regions : [...regions, ...added];
+}
+
+function isOnScreen({ x, y }: Point) {
+  return x >= 0 && x <= 1 && y >= 0 && y <= 1;
+}
+
+function meanOf(points: Point[]): Point {
+  const sum = (key: "x" | "y") => points.reduce((all, p) => all + p[key], 0);
+  return { x: sum("x") / points.length, y: sum("y") / points.length };
 }
 
 export function ringEvents(

@@ -409,13 +409,6 @@ export function removeRegions(regions: Region[], ids: number[]): Region[] {
     : regions;
 }
 
-export const SUGGESTIONS: Partial<
-  Record<RegionKind, { label: string; question: string }>
-> = {
-  zoom: { label: "Auto zoom", question: "Zoom in on these clicks?" },
-  speed: { label: "Typing", question: "Speed up this typing?" },
-};
-
 export function settleSuggestion(
   regions: Region[],
   id: number,

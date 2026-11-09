@@ -50,7 +50,7 @@ test("the focus box is the zoomed area, and dragging it back gives the focus", (
   expect(focusAt({ x: -0.2, y: 0.9 }, 2)).toEqual({ x: 0, y: 1 });
 });
 
-test("a zoom with a click path pans to each click, arriving as it happens", () => {
+test("a zoom with a click path pans to each click, all but there when it happens", () => {
   const zoomAt = zoomPath([
     {
       id: 1,
@@ -62,16 +62,16 @@ test("a zoom with a click path pans to each click, arriving as it happens", () =
       path: [{ afterMs: 2000, x: 1, y: 1 }],
     },
   ]);
-  expect(zoomAt(2000).center).toEqual({ x: 0, y: 0 });
-  const moving = zoomAt(2500).center;
+  expect(zoomAt(1800).center).toEqual({ x: 0, y: 0 });
+  const moving = zoomAt(2400).center;
   expect(moving.x).toBeGreaterThan(0);
   expect(moving.x).toBeLessThan(1);
-  expect(zoomAt(3000).center.x).toBeGreaterThan(0.9);
+  expect(zoomAt(3000).center.x).toBeGreaterThan(0.97);
   expect(zoomAt(3600).center.x).toBeCloseTo(1, 1);
   expect(zoomAt(5300).center.x).toBeCloseTo(1, 4);
 });
 
-test("a suggested typing zoom is already on the text when the first letter appears, even sped up", () => {
+test("a suggested typing zoom is already on the middle of the text when the first letter appears, even sped up", () => {
   const clicks = [{ ms: 3000, x: 0.1, y: 0.1, button: "left" as const }];
   const moves = [{ ms: 0, x: 0.1, y: 0.1 }];
   const keys = Array.from({ length: 30 }, (_, i) => 3700 + i * 120);
@@ -83,7 +83,7 @@ test("a suggested typing zoom is already on the text when the first letter appea
   const track = { clicks, keys, moves, typed, pauses: [] };
   const regions = withSuggestions(track, [], 12_000);
   expect(regions.map(({ kind }) => kind)).toEqual(["zoom", "speed"]);
-  const field = centeredOn(typed[0], REGIONS.zoom.amount);
+  const field = centeredOn({ x: 0.47, y: 0.6 }, REGIONS.zoom.amount);
   const zoomAt = zoomPath(regions, track, undefined, 12_000);
   const { center } = zoomAt(outputAt(regions, keys[0]));
   expect(Math.hypot(center.x - field.x, center.y - field.y)).toBeLessThan(0.02);
