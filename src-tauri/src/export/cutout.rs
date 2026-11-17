@@ -2,7 +2,7 @@ use std::path::Path;
 use std::ptr::{NonNull, null_mut};
 
 use super::{ExportGradient, ExportLayout, PixelRect, file_url};
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2_core_foundation::{
@@ -63,7 +63,9 @@ pub(super) fn cutout(layout: &ExportLayout, picture: Option<&Path>) -> Result<Re
         .context("could not make the background")?;
     let pixels = unsafe { CFRetained::from_raw(pixels) };
     let locked = CVPixelBufferLockFlags(0);
-    unsafe { CVPixelBufferLockBaseAddress(&pixels, locked) };
+    // SAFETY: `pixels` was just made above and stays alive until it's unlocked below.
+    let lock = unsafe { CVPixelBufferLockBaseAddress(&pixels, locked) };
+    ensure!(lock == 0, "could not draw the background");
     let (srgb, context) = canvas(width, height, Some(&pixels))?;
     let context = Some(&*context);
 

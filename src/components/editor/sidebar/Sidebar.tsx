@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Image, MousePointer2, Volume2 } from "lucide-react";
+import { Image, Keyboard, MousePointer2, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -16,11 +16,13 @@ import SettingsDialog from "./SettingsDialog";
 import ShortcutsSheet from "./ShortcutsSheet";
 import AppearancePanel from "./AppearancePanel";
 import CursorPanel from "./CursorPanel";
+import KeysPanel from "./KeysPanel";
 import SoundPanel from "./SoundPanel";
 
 const PANELS = [
   { id: "background", label: "Background", Icon: Image },
   { id: "cursor", label: "Cursor", Icon: MousePointer2 },
+  { id: "keys", label: "Keystrokes", Icon: Keyboard },
   { id: "sound", label: "Sound", Icon: Volume2 },
 ] as const;
 
@@ -102,6 +104,8 @@ export default function Sidebar({
       <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
         {shown === "cursor" ? (
           <CursorPanel edits={edits} track={cursor} />
+        ) : shown === "keys" ? (
+          <KeysPanel edits={edits} track={cursor} />
         ) : shown === "sound" ? (
           <SoundPanel edits={edits} tracks={sound} />
         ) : (

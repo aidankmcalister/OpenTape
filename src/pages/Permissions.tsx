@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import {
   ChartNoAxesColumn,
   Check,
+  Keyboard,
   Mic,
   Monitor,
   RotateCcw,
@@ -27,9 +28,11 @@ const ROWS: {
 
 export default function Permissions() {
   const { permissions, allow, finish, restart } = usePermissions();
-  const { settings, change } = useAppSettings();
+  const { settings, change, setRecordsKeys } = useAppSettings();
   useShowWhenReady();
-  const progress = permissions && setupProgress(permissions);
+  const recordsKeys = settings?.recordsKeys ?? false;
+  const progress = permissions && setupProgress(permissions, recordsKeys);
+  const keysAccess = permissions?.inputMonitoring ?? null;
   const title = progress?.isAllSet
     ? "You are all set"
     : progress?.isReminder
@@ -66,6 +69,41 @@ export default function Permissions() {
             onAllow={() => allow(permission)}
           />
         ))}
+        <div className="flex h-14 items-center gap-3 rounded-xl bg-muted px-2 ring-1 ring-hairline">
+          <span
+            className={cn(
+              "grid size-10 shrink-0 place-items-center rounded-full bg-accent text-muted-foreground [&_svg]:size-4",
+              recordsKeys &&
+                keysAccess !== null &&
+                isOn(keysAccess) &&
+                "bg-success-tint text-success",
+            )}
+          >
+            <Keyboard />
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col text-ui font-medium">
+            Record keystrokes
+            <span className="text-micro font-normal text-muted-foreground">
+              Saved on this Mac with each recording, never from password fields.
+            </span>
+          </span>
+          {recordsKeys && keysAccess !== null && !isOn(keysAccess) ? (
+            <Button
+              variant="secondary"
+              size="pill-sm"
+              className="fade-in"
+              onClick={() => allow("inputMonitoring")}
+            >
+              Open Settings
+            </Button>
+          ) : null}
+          <Switch
+            className="mr-2"
+            checked={recordsKeys}
+            disabled={!settings}
+            onCheckedChange={setRecordsKeys}
+          />
+        </div>
         <div className="flex h-14 items-center gap-3 rounded-xl bg-muted px-2 ring-1 ring-hairline">
           <span className="grid size-10 shrink-0 place-items-center rounded-full bg-accent text-muted-foreground [&_svg]:size-4">
             <ChartNoAxesColumn />

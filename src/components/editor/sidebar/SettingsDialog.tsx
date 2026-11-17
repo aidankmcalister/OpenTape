@@ -55,6 +55,7 @@ export function SettingsBody({
   const {
     saveFolder,
     suggestsEdits,
+    recordsKeys,
     recordShortcut,
     countsDown,
     hidesDockIcon,
@@ -77,7 +78,14 @@ export function SettingsBody({
         </Row>
         <Row
           label={
-            <Help text="Counts 3, 2, 1 on what you're recording. Esc cancels.">
+            <Help
+              text={
+                <>
+                  Counts 3, 2, 1 on what you're recording. <Kbd>Esc</Kbd>{" "}
+                  cancels.
+                </>
+              }
+            >
               Count down before recording
             </Help>
           }
@@ -132,6 +140,20 @@ export function SettingsBody({
             checked={suggestsEdits}
             onCheckedChange={(checked) => change({ suggestsEdits: checked })}
           />
+        </Row>
+        <Row
+          label={
+            <span className="flex flex-col">
+              Record keystrokes
+              <span className="text-micro text-muted-foreground">
+                {recordsKeys
+                  ? "Shortcuts are saved with the recording. What you type never is."
+                  : "Needed to show keystrokes. Off by default."}
+              </span>
+            </span>
+          }
+        >
+          <Switch checked={recordsKeys} onCheckedChange={app.setRecordsKeys} />
         </Row>
         <Row label="Default settings">
           {saved ? (

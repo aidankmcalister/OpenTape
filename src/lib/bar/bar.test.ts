@@ -5,21 +5,21 @@ import { barLayer, DEFAULT_OPTIONS, elapsedMsAt, parseOptions } from "./bar";
 
 test.each([
   ["nothing was saved", null],
-  ["the save isn't JSON", "{camera"],
+  ["the save isn't JSON", "{microphone"],
   ["null was saved", "null"],
 ])("parseOptions gives the defaults when %s", (_, saved) => {
   expect(parseOptions(saved)).toEqual(DEFAULT_OPTIONS);
 });
 
 test("parseOptions fills what an older save left out from the defaults", () => {
-  expect(parseOptions('{"cameraId":"facetime"}')).toEqual({
+  expect(parseOptions('{"microphoneId":"usb"}')).toEqual({
     ...DEFAULT_OPTIONS,
-    cameraId: "facetime",
+    microphoneId: "usb",
   });
 });
 
 test("parseOptions reads back what was saved", () => {
-  const saved = { cameraId: "cam", microphoneId: "mic", systemAudio: true };
+  const saved = { microphoneId: "mic", systemAudio: true };
   expect(parseOptions(JSON.stringify(saved))).toEqual(saved);
 });
 

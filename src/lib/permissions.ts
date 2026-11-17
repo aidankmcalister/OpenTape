@@ -4,17 +4,19 @@ export function isOn(access: Access) {
   return access === "allowed" || access === "needsRestart";
 }
 
-export function setupProgress(permissions: Permissions) {
-  const accesses = [permissions.screenRecording, permissions.microphone];
+export function setupProgress(permissions: Permissions, recordsKeys = false) {
+  const accesses = [
+    permissions.screenRecording,
+    permissions.microphone,
+    ...(recordsKeys ? [permissions.inputMonitoring] : []),
+  ];
   const isAllSet = accesses.every((access) => access === "allowed");
   const isReminder =
     permissions.hasFinishedSetup && permissions.screenRecording !== "allowed";
-  const action =
-    permissions.screenRecording === "needsRestart"
-      ? "restart"
-      : isAllSet
-        ? "done"
-        : "continue";
+  const needsRestart =
+    permissions.screenRecording === "needsRestart" ||
+    (recordsKeys && permissions.inputMonitoring === "needsRestart");
+  const action = needsRestart ? "restart" : isAllSet ? "done" : "continue";
   return {
     isAllSet,
     isReminder,

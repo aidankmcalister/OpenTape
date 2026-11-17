@@ -1,10 +1,17 @@
 import {
   type ComponentProps,
   type CSSProperties,
+  type ReactElement,
   type ReactNode,
   useState,
 } from "react";
+import { Kbd } from "@/components/ui/kbd";
 import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useMorph } from "@/hooks/useMorph";
 import type { Animation } from "@/lib/bindings";
 import type { Size } from "@/lib/geometry";
@@ -19,6 +26,32 @@ export default function Pill({ className, ...props }: ComponentProps<"div">) {
       )}
       {...props}
     />
+  );
+}
+
+/**
+ * A tooltip for a pill button. Pill windows aren't focused, so it opens from the pointer Rust
+ * reports (`hovered`, from usePointerHover), not from the page's own hover.
+ */
+export function PillTip({
+  label,
+  shortcut,
+  hovered,
+  children,
+}: {
+  label: string;
+  shortcut?: string;
+  hovered: string | null;
+  children: ReactElement;
+}) {
+  return (
+    <Tooltip open={hovered === label}>
+      <TooltipTrigger render={children} data-hover={label} />
+      <TooltipContent sideOffset={8}>
+        {label}
+        {shortcut ? <Kbd>{shortcut}</Kbd> : null}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

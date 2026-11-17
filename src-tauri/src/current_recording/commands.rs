@@ -124,8 +124,12 @@ pub(crate) async fn export_recording(
 }
 
 #[tauri::command]
-pub(crate) async fn show_export_in_finder(path: String) -> CmdResult {
-    run_blocking(move || reveal(Path::new(&path))).await?;
+pub(crate) async fn show_export_in_finder(app: AppHandle) -> CmdResult {
+    let path = app
+        .state::<CurrentRecording>()
+        .exported()
+        .context("nothing was exported yet")?;
+    run_blocking(move || reveal(&path)).await?;
     Ok(())
 }
 
@@ -133,6 +137,7 @@ fn reveal(path: &Path) -> Result<()> {
     ensure!(path.exists(), "{} isn't there any more", path.display());
     let status = Command::new("/usr/bin/open")
         .arg("-R")
+        .arg("--")
         .arg(path)
         .status()
         .context("could not open Finder")?;

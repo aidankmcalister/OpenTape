@@ -9,13 +9,11 @@ const UPDATE_LAYERS = {
 } as const;
 
 type SavedOptions = {
-  cameraId: string | null;
   microphoneId: string | null;
   systemAudio: boolean;
 };
 
 export const DEFAULT_OPTIONS: SavedOptions = {
-  cameraId: null,
   microphoneId: null,
   systemAudio: false,
 };

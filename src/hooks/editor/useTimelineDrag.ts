@@ -1,14 +1,20 @@
 import { useLayoutEffect, useRef, useState, type PointerEvent } from "react";
 import type { RegionDrag } from "@/lib/editor/regions";
+import { dragScrollPx } from "@/lib/editor/timeline";
 import type { Edits } from "./useProject";
 import { followPointer } from "@/hooks/usePointerHover";
 
 type Stretching = {
   track: "region" | "clip";
   id: number;
+  /** Every block the drag moves or resizes. */
+  ids: number[];
   edge: RegionDrag;
   lengthMs: number;
 };
+
+/** How near an edge, in px, a dragged block must come to catch it. */
+const SNAP_PX = 6;
 
 export function useTimelineDrag(edits: Edits) {
   const latest = useRef(edits);
@@ -19,7 +25,7 @@ export function useTimelineDrag(edits: Edits) {
 
   const dragProps = (
     select: (event: PointerEvent<HTMLElement>) => void,
-    onDrag: ((deltaMs: number) => void) | null,
+    onDrag: (deltaMs: number, withinMs: number) => void,
     stretch?: Omit<Stretching, "lengthMs">,
     onClick?: () => void,
   ) => ({
@@ -27,13 +33,29 @@ export function useTimelineDrag(edits: Edits) {
       if (event.button !== 0) return;
       event.stopPropagation();
       const track = event.currentTarget.closest("[data-track]");
-      if (!track?.clientWidth) return;
+      const view = track?.parentElement;
+      if (!track?.clientWidth || !view) return;
       select(event);
-      if (!onDrag) return;
       const { clientX: fromX, clientY: fromY } = event;
+      const fromScroll = view.scrollLeft;
       const width = track.clientWidth;
       const { lengthMs } = latest.current.time;
       let hasMoved = false;
+      let atX = fromX;
+      let frame = 0;
+      const update = () =>
+        onDrag(
+          ((atX - fromX + view.scrollLeft - fromScroll) / width) * lengthMs,
+          (SNAP_PX / width) * lengthMs,
+        );
+      // Near the view's edge, the timeline scrolls under the pointer until it moves away.
+      const scroll = () => {
+        const { left, right } = view.getBoundingClientRect();
+        const before = view.scrollLeft;
+        view.scrollLeft += dragScrollPx(atX, left, right);
+        frame = view.scrollLeft === before ? 0 : requestAnimationFrame(scroll);
+        if (frame) update();
+      };
       followPointer(
         (moved) => {
           const travel =
@@ -44,13 +66,20 @@ export function useTimelineDrag(edits: Edits) {
             setStretching(stretch ? { ...stretch, lengthMs } : null);
             hasMoved = true;
           }
-          const deltaMs = ((moved.clientX - fromX) / width) * lengthMs;
-          onDrag(deltaMs);
+          atX = moved.clientX;
+          update();
+          if (!frame) scroll();
         },
         (ended) => {
+          cancelAnimationFrame(frame);
           setStretching(null);
           if (hasMoved) latest.current.commit();
-          else if (ended.type === "pointerup" && !ended.shiftKey) onClick?.();
+          else if (
+            ended.type === "pointerup" &&
+            !ended.shiftKey &&
+            !ended.metaKey
+          )
+            onClick?.();
         },
       );
     },
@@ -58,25 +87,28 @@ export function useTimelineDrag(edits: Edits) {
 
   return {
     stretch: stretching,
-    region: (id: number, edge: RegionDrag, isFixed = false) => {
+    /** `members`: a keystroke run, which selects and moves all its blocks and opens no editor. */
+    region: (id: number, edge: RegionDrag, members?: number[]) => {
       const ids =
         edge === "move" && edits.selectedIds.includes(id)
           ? edits.selectedIds
-          : [id];
+          : (members ?? [id]);
       return dragProps(
-        (event) => edits.pick(id, event.shiftKey),
-        isFixed
-          ? null
-          : (deltaMs) => latest.current.retime(ids, edge, deltaMs, true),
-        { track: "region", id, edge },
-        () => edits.openEditor(id),
+        (event) => edits.pick(members ?? [id], event.shiftKey || event.metaKey),
+        (deltaMs, withinMs) =>
+          latest.current.retime(ids, edge, deltaMs, {
+            isPreview: true,
+            withinMs,
+          }),
+        { track: "region", id, ids, edge },
+        members ? undefined : () => edits.openEditor(id),
       );
     },
     clip: (id: number, edge: "start" | "end") =>
       dragProps(
         () => edits.selectClip(id),
         (deltaMs) => latest.current.trim(id, edge, deltaMs, true),
-        { track: "clip", id, edge },
+        { track: "clip", id, ids: [id], edge },
       ),
   };
 }

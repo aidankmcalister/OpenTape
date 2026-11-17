@@ -9,6 +9,8 @@ import type {
 } from "@/lib/bindings";
 import {
   clamp,
+  lerpPoint,
+  meanOf,
   type Point,
   type Rect,
   relativeTo,
@@ -22,6 +24,7 @@ import {
   type CursorStyle,
   MARK_COLORS,
 } from "./appearance";
+import type { Pressed } from "./keys";
 import {
   nextId,
   outputAt,
@@ -54,6 +57,7 @@ type Event = {
   y: number;
   button?: "left" | "right";
   kind?: string;
+  keys?: string[];
 };
 
 const RING_MS = 500;
@@ -70,6 +74,7 @@ export type CursorTrack = {
   presses: Moment<{ untilMs: number }>[];
   kinds: Moment<{ kind: string }>[];
   keys: number[];
+  pressed: Pressed[];
   typed: CursorMove[];
   pauses: number[];
   pointShare: number;
@@ -83,6 +88,7 @@ export const NO_CURSOR: CursorTrack = {
   presses: [],
   kinds: [],
   keys: [],
+  pressed: [],
   typed: [],
   pauses: [],
   pointShare: 0,
@@ -180,13 +186,14 @@ export function readCursor(meta: string, events: string): CursorTrack {
     .filter((line) => line.trim())
     .map((line): Event => JSON.parse(line))
     .filter(({ t }) => t >= first_frame_time && !isPaused(t))
-    .map(({ type, t, x, y, button = "left", kind = "arrow" }) => ({
+    .map(({ type, t, x, y, button = "left", kind = "arrow", keys = [] }) => ({
       type,
       ms: videoMs(t),
       x: (x - screen_rect.x) / screen_rect.width,
       y: (y - screen_rect.y) / screen_rect.height,
       button,
       kind,
+      caps: keys,
     }));
   const lefts = logged.filter(({ button }) => button === "left");
   return {
@@ -206,6 +213,9 @@ export function readCursor(meta: string, events: string): CursorTrack {
       .filter(({ type }) => type === "cursor")
       .map(({ ms, kind }) => ({ ms, kind })),
     keys: logged.filter(({ type }) => type === "key").map(({ ms }) => ms),
+    pressed: logged
+      .filter(({ type }) => type === "key")
+      .map(({ ms, caps }) => ({ ms, caps })),
     typed: [],
     pauses: pauses.map(([start]) => videoMs(start)),
     pointShare: 1 / screen_rect.width,
@@ -490,11 +500,7 @@ export function positionAt(moves: CursorMove[], ms: number) {
   if (after === moves.length) return moves[moves.length - 1];
   if (after === 0) return moves[0];
   const [from, to] = [moves[after - 1], moves[after]];
-  const share = (ms - from.ms) / (to.ms - from.ms);
-  return {
-    x: from.x + (to.x - from.x) * share,
-    y: from.y + (to.y - from.y) * share,
-  };
+  return lerpPoint(from, to, (ms - from.ms) / (to.ms - from.ms));
 }
 
 function firstAfter(sorted: { ms: number }[], ms: number): number {
@@ -786,11 +792,6 @@ export function suggestedZooms(
 
 function isOnScreen({ x, y }: Point) {
   return x >= 0 && x <= 1 && y >= 0 && y <= 1;
-}
-
-function meanOf(points: Point[]): Point {
-  const sum = (key: "x" | "y") => points.reduce((all, p) => all + p[key], 0);
-  return { x: sum("x") / points.length, y: sum("y") / points.length };
 }
 
 export function ringEvents(

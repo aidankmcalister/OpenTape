@@ -3,6 +3,7 @@ import {
   AppWindow,
   ChevronDown,
   CircleAlert,
+  Keyboard,
   Mic,
   MicOff,
   Monitor,
@@ -24,9 +25,11 @@ import {
   MorphPill,
   PillDivider,
   PillMessage,
+  PillTip,
   ProgressRing,
 } from "@/components/Pill";
 import UpdateIcon from "@/components/UpdateIcon";
+import { useAppSettings } from "@/hooks/useAppSettings";
 import { formatClock } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import type { Countdown } from "@/lib/bindings";
@@ -48,9 +51,12 @@ const MODES = [
 export default function RecordBar() {
   const bar = useRecordBar();
   const options = useCaptureOptions();
+  const app = useAppSettings();
+  const recordsKeys = app.settings?.recordsKeys ?? false;
 
   return (
-    <div className="flex h-screen w-screen justify-center">
+    // The window is taller than the pill so tooltips have room above it.
+    <div className="flex h-screen w-screen items-end justify-center">
       <MorphPill
         isDragRegion
         active={bar.layer}
@@ -59,7 +65,14 @@ export default function RecordBar() {
         onShape={bar.shape}
         layerClassName="gap-1 p-2"
         layers={{
-          setup: <Setup bar={bar} options={options} />,
+          setup: (
+            <Setup
+              bar={bar}
+              options={options}
+              recordsKeys={recordsKeys}
+              setRecordsKeys={app.setRecordsKeys}
+            />
+          ),
           permission: (
             <>
               <CircleAlert className="ml-3 size-4 shrink-0 text-destructive" />
@@ -126,9 +139,13 @@ export default function RecordBar() {
 function Setup({
   bar,
   options,
+  recordsKeys,
+  setRecordsKeys,
 }: {
   bar: Bar;
   options: ReturnType<typeof useCaptureOptions>;
+  recordsKeys: boolean;
+  setRecordsKeys: (isOn: boolean) => void;
 }) {
   return (
     <>
@@ -188,9 +205,23 @@ function Setup({
             </span>
           )
         }
-        label={options.systemAudio ? "System audio" : "No system audio"}
+        label="System audio"
         onClick={options.toggleSystemAudio}
       />
+      <PillTip
+        label={`Record keystrokes: ${recordsKeys ? "on" : "off"}`}
+        hovered={bar.hoveredName}
+      >
+        <Button
+          variant={recordsKeys ? "selected" : "ghost"}
+          size="icon-pill"
+          aria-label="Record keystrokes"
+          aria-pressed={recordsKeys}
+          onClick={() => setRecordsKeys(!recordsKeys)}
+        >
+          <Keyboard />
+        </Button>
+      </PillTip>
       <PillDivider />
       <Button
         variant="ghost"
@@ -210,20 +241,17 @@ function DeviceButton({
   isOn,
   icon,
   label,
-  disabled,
   onClick,
 }: {
   isOn: boolean;
   icon: ReactNode;
   label: string;
-  disabled?: boolean;
   onClick: (anchor: HTMLElement) => void;
 }) {
   return (
     <Button
       variant={isOn ? "selected" : "ghost"}
       size="pill"
-      disabled={disabled}
       onClick={(event) => onClick(event.currentTarget)}
     >
       {icon}

@@ -14,6 +14,7 @@ import {
   exportRings,
   type RingEvent,
 } from "./cursor";
+import { exportBadges } from "./keys";
 import { blurOf, outputAt, type Region, sameKind } from "./regions";
 import { DEFAULT_SOUND, type SoundSettings } from "./sound";
 import { FRAME_MS } from "./timeline";
@@ -114,6 +115,7 @@ export function exportLayout(
       };
     }),
     rings: exportRings(rings, regions, scale),
+    badges: exportBadges(regions, appearance.keys, recording, height),
     cursor: cursor
       ? exportCursor(
           cursor,
@@ -140,18 +142,21 @@ export function exportResolution({
   return format === "gif" ? gifResolution : resolution;
 }
 
-/** Bits per pixel of each frame: Balanced is about 6 Mbps at 1080p60. */
+/**
+ * How close every MP4 frame stays to the original, 0 to 1. The file's size follows what's on
+ * screen: a still screen costs almost nothing, so there's no size to promise up front.
+ */
 export const QUALITIES = {
   best: {
-    bitsPerPixel: 0.1,
+    quality: 0.9,
     hint: "Largest file, closest to the original.",
   },
   balanced: {
-    bitsPerPixel: 0.05,
+    quality: 0.8,
     hint: "Good for sharing.",
   },
   small: {
-    bitsPerPixel: 0.025,
+    quality: 0.6,
     hint: "Smallest file, for messages and chat.",
   },
 };
@@ -159,7 +164,8 @@ export const QUALITIES = {
 export type ExportSettings = {
   format: ExportFormat;
   frameRate: 30 | 60;
-  gifFrameRate: 30 | 50;
+  /** 15 keeps files small, 25 is smooth, 50 is smoothest and largest. */
+  gifFrameRate: 15 | 25 | 50;
   resolution: Resolution;
   gifResolution: "720p" | "1080p";
   quality: keyof typeof QUALITIES;
@@ -175,7 +181,7 @@ export type ExportState =
 export const DEFAULT_EXPORT: ExportSettings = {
   format: "mp4",
   frameRate: 60,
-  gifFrameRate: 30,
+  gifFrameRate: 25,
   resolution: "1080p",
   gifResolution: "720p",
   quality: "balanced",
@@ -187,7 +193,10 @@ export function readExport(saved: unknown): ExportSettings {
   return {
     format: known.format === "gif" ? "gif" : "mp4",
     frameRate: known.frameRate === 30 ? 30 : 60,
-    gifFrameRate: known.gifFrameRate === 50 ? 50 : 30,
+    gifFrameRate:
+      known.gifFrameRate === 15 || known.gifFrameRate === 50
+        ? known.gifFrameRate
+        : 25,
     resolution:
       known.resolution in RESOLUTIONS
         ? known.resolution
@@ -208,26 +217,9 @@ export function exportOptions(
     format: settings.format,
     frameRate:
       settings.format === "gif" ? settings.gifFrameRate : settings.frameRate,
-    bitsPerPixel: QUALITIES[settings.quality].bitsPerPixel,
+    quality: QUALITIES[settings.quality].quality,
     toClipboard: settings.to === "clipboard",
   };
-}
-
-export function aboutMegabytes(
-  layout: ExportLayout,
-  durationMs: number,
-  settings: ExportSettings,
-): number | null {
-  if (settings.format === "gif") return null;
-  const { bitsPerPixel } = QUALITIES[settings.quality];
-  const bits =
-    (layout.width *
-      layout.height *
-      settings.frameRate *
-      bitsPerPixel *
-      durationMs) /
-    1000;
-  return Math.round(bits / 8e5) / 10;
 }
 
 function even(value: number): number {

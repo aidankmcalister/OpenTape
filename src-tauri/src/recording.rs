@@ -14,6 +14,7 @@ use ts_rs::TS;
 use crate::capture::{self, Inputs, RunningRecording, Target};
 use crate::current_recording::CurrentRecording;
 use crate::macos::{self, Alert, Choice};
+use crate::settings::AppSettings;
 use crate::util::{CmdResult, lock, run_blocking};
 use crate::windows::bar;
 use crate::{KeySet, PageEvent, picker, tray};
@@ -284,14 +285,13 @@ pub(crate) fn recording_status(state: State<'_, RecordingState>) -> RecordingSta
 #[tauri::command]
 pub(crate) fn set_capture_inputs(
     state: State<'_, RecordingState>,
-    camera_id: Option<String>,
     microphone_id: Option<String>,
     system_audio: bool,
 ) {
     lock(&state.0).inputs = Inputs {
-        camera_id,
         microphone_id,
         system_audio,
+        records_keys: false,
     };
 }
 
@@ -423,7 +423,10 @@ async fn open_capture(app: &AppHandle, target: Target) -> Result<RunningRecordin
     let folder = app.state::<CurrentRecording>().new_folder()?;
     let state = app.state::<RecordingState>();
     let recording_number = state.next_recording_number();
-    let inputs = lock(&state.0).inputs.clone();
+    let inputs = Inputs {
+        records_keys: app.state::<AppSettings>().current().records_keys,
+        ..lock(&state.0).inputs.clone()
+    };
     let app = app.clone();
     let on_stop = move |reason| {
         tauri::async_runtime::spawn(capture_stopped(app.clone(), recording_number, reason));

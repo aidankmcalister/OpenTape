@@ -5,7 +5,9 @@ import { type Box, msAtX } from "@/lib/editor/timeline";
 export function useScrub(durationMs: number, seek: (ms: number) => void) {
   return {
     onPointerDown: (event: PointerEvent<HTMLElement>) => {
-      const { left, width } = event.currentTarget.getBoundingClientRect();
+      const track = event.currentTarget.closest("[data-track]");
+      if (!track) return;
+      const { left, width } = track.getBoundingClientRect();
       const seekAt = (x: number) => seek(msAtX(x - left, width, durationMs));
       seekAt(event.clientX);
       followPointer((moved) => seekAt(moved.clientX));
@@ -41,7 +43,8 @@ export function useSkim(durationMs: number, skim: (ms: number | null) => void) {
 }
 
 export function useMarquee(
-  onBox: (box: Box, width: number) => void,
+  /** `isAdding`: ⇧ was held, so the box adds to the selection. */
+  onBox: (box: Box, width: number, isAdding: boolean) => void,
   onClick: (x: number, width: number) => void,
 ) {
   const [box, setBox] = useState<Box | null>(null);
@@ -63,7 +66,7 @@ export function useMarquee(
               y1: moved.clientY - top,
             };
             setBox(latest);
-            onBox(latest, width);
+            onBox(latest, width, event.shiftKey);
           },
           () => {
             const travel =

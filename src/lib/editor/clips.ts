@@ -49,6 +49,19 @@ export function removeClip(
   return kept.filter((clip) => clip.id !== id);
 }
 
+/** Joins the clip `afterId` onto the one before it, bringing back the footage between them. */
+export function restoreCut(clips: Clip[], afterId: number): Clip[] {
+  const index = clips.findIndex(({ id }) => id === afterId);
+  if (index < 1) return clips;
+  const before = clips[index - 1];
+  return clips.flatMap((clip, at) => {
+    if (at === index) return [];
+    return at === index - 1
+      ? [{ ...before, endMs: clips[index].endMs }]
+      : [clip];
+  });
+}
+
 export function trimClip(
   clips: Clip[],
   id: number,
@@ -136,6 +149,15 @@ export function timeMap(clips: Clip[], regions: Region[], durationMs: number) {
       startMs,
       endMs: endAt,
     })),
+    cuts: placed.slice(1).map(({ clip, at: atMs }, index) => {
+      const before = placed[index].clip;
+      return {
+        atMs,
+        removedMs: clip.startMs - before.endMs,
+        beforeId: before.id,
+        afterId: clip.id,
+      };
+    }),
     at,
     source,
     shown,
@@ -194,29 +216,35 @@ export function timeMap(clips: Clip[], regions: Region[], durationMs: number) {
   };
 }
 
-const MIN_KEPT_MS = 500;
-
-const ROUNDING_MS = 0.001;
-
-export function fitToClips<T extends Span>(spans: T[], clips: Clip[]): T[] {
-  if (clips.length === 0) return spans;
-  const time = timeMap(clips, [], 0);
-  const fitted = spans.flatMap((span) => {
-    const startMs = time.at(span.startMs);
-    const endMs = time.at(span.endMs);
-    if (endMs - startMs < Math.min(MIN_KEPT_MS, span.endMs - span.startMs))
-      return [];
-    const fit = {
-      startMs: time.source(startMs, "start"),
-      endMs: time.source(endMs, "end"),
-    };
-    const isSame =
-      Math.abs(fit.startMs - span.startMs) < ROUNDING_MS &&
-      Math.abs(fit.endMs - span.endMs) < ROUNDING_MS;
-    return isSame ? [span] : [{ ...span, ...fit }];
+/**
+ * Edits in kept time never see blocks hidden in removed footage, so a block can land on one.
+ * On Restore, a hidden block now overlapping a block of its kind keeps the longest free part
+ * of its span, or goes when that's under the minimum.
+ */
+export function fitHidden(
+  regions: Region[],
+  clips: Clip[],
+  durationMs: number,
+): Region[] {
+  const shown = timeMap(clips, regions, durationMs).shown(regions);
+  const fitted = regions.flatMap((region) => {
+    if (shown.some(({ id }) => id === region.id)) return [region];
+    const blockers = sameKind(regions, region.kind).filter(
+      (other) =>
+        other !== region &&
+        other.startMs < region.endMs &&
+        other.endMs > region.startMs,
+    );
+    if (blockers.length === 0) return [region];
+    const [free] = gapsBetween(blockers, region.startMs, region.endMs).sort(
+      (a, b) => b.endMs - b.startMs - (a.endMs - a.startMs),
+    );
+    return free && free.endMs - free.startMs >= MIN_REGION_MS
+      ? [{ ...region, ...free }]
+      : [];
   });
-  return fitted.every((span, index) => span === spans[index]) &&
-    fitted.length === spans.length
-    ? spans
+  return fitted.length === regions.length &&
+    fitted.every((region, at) => region === regions[at])
+    ? regions
     : fitted;
 }

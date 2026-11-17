@@ -367,3 +367,19 @@ fn the_cursor_log_should_come_with_its_meta_or_not_at_all() {
         .expect("both are there");
     assert_eq!(log.meta, "{}");
 }
+
+#[test]
+fn saving_the_project_just_loaded_should_keep_it_saved() {
+    let shell = FakeShell::answering(Choice::Cancel);
+    let (current, folder) = keeping_one("loaded-then-saved", &shell);
+    std::fs::write(folder.join(PROJECT_FILE), "{}").expect("the project can be written");
+    assert_eq!(
+        current.load_project().expect("it reads").as_deref(),
+        Some("{}")
+    );
+    let saved_to = folder.with_file_name("loaded-then-saved.mp4");
+    std::fs::write(&saved_to, b"").expect("the temp export can be written");
+    lock(&current.kept).as_mut().expect("kept").saved_to = Some(saved_to);
+    current.save_project("{}").expect("unchanged");
+    assert!(current.saved_to().is_some());
+}

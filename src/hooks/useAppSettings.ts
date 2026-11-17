@@ -35,6 +35,12 @@ export function useAppSettings() {
       if (event.key === "Escape" || shortcut) setIsSettingShortcut(false);
       if (shortcut) change({ recordShortcut: shortcut });
     },
+    /** Turning it on asks for Input Monitoring, which naming the keys needs. */
+    setRecordsKeys: (isOn: boolean) => {
+      change({ recordsKeys: isOn });
+      if (isOn)
+        invoke("allow", { permission: "inputMonitoring" }).catch(console.error);
+    },
     chooseSaveFolder: async () => {
       const folder = await invoke<string | null>("choose_save_folder");
       if (folder) change({ saveFolder: folder });

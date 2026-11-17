@@ -50,7 +50,7 @@ export default function CommandPalette({
                     ) : null}
                     {command.label}
                     {command.keys ? (
-                      <CommandShortcut>
+                      <CommandShortcut className="tracking-normal">
                         <Kbd>{command.keys}</Kbd>
                       </CommandShortcut>
                     ) : null}

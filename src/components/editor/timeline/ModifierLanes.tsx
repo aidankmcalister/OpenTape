@@ -1,10 +1,19 @@
 import {
+  Fragment,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
-  type ReactElement,
   type ReactNode,
 } from "react";
-import { Check, ChevronDown, ChevronRight, Eye, X } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Eye,
+  Focus,
+  Trash2,
+  X,
+} from "lucide-react";
 import { Kbd } from "@/components/ui/kbd";
 import { Toggle } from "@/components/ui/toggle";
 import {
@@ -21,118 +30,143 @@ import {
   ALL_KINDS,
   blockValue,
   covers,
+  KEYCAPS_KIND,
   REGIONS,
-  touchingSides,
-  regionAt,
   type Region,
   type RegionDrag,
   type RegionKind,
+  spanOf,
 } from "@/lib/editor/regions";
 import { SUGGESTIONS } from "@/lib/editor/cursor";
 import {
-  blockFit,
+  badgeCaps,
+  keyCounts,
+  pressCount,
+  type Pressed,
+} from "@/lib/editor/keys";
+import {
+  blockSpan,
+  blockTier,
+  keyRuns,
   laneNeighbors,
-  markSpan,
+  dragMarks,
   msAtX,
   percentAt,
   regionsInBox,
   blockOrder,
   nextBlock,
+  RULER_PX,
+  runTier,
+  selectedRun,
   timeLabel,
   TRACKS_TOP_PX,
   type Lane,
 } from "@/lib/editor/timeline";
 import type { Clock } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import { hueOf, REGION_ICONS } from "./kinds";
-import { Named } from "../Panel";
+import { hueOf, REGION_ICONS, RegionValue, useMeasureText } from "./kinds";
 
 export function LaneGutters({
   lanes,
-  regions,
-  clock,
   laneState,
+  hasSkipped,
 }: {
   lanes: Lane[];
-  regions: Region[];
-  clock: Clock;
   laneState: Lanes;
+  hasSkipped: boolean;
 }) {
   return lanes.map((lane) => (
-    <LaneGutter
-      key={lane.kind}
-      lane={lane}
-      regions={regions}
-      clock={clock}
-      laneState={laneState}
-    />
+    <Fragment key={lane.kind}>
+      <LaneGutter
+        lane={lane}
+        laneState={laneState}
+        hasSkipped={hasSkipped && lane.kind === KEYCAPS_KIND}
+      />
+      {lane.skippedTop !== undefined ? (
+        <div
+          className="fade-in absolute inset-x-0 flex h-8 items-center gap-2 pl-3 text-label text-muted-foreground"
+          style={{ top: lane.skippedTop }}
+        >
+          <span className="size-4 shrink-0" />
+          Skipped
+        </div>
+      ) : null}
+    </Fragment>
   ));
 }
 
+/** A lane's name, with Solo, Collapse and (for skipped keys) Show skipped on hover. */
 function LaneGutter({
   lane,
-  regions,
-  clock,
   laneState,
+  hasSkipped,
 }: {
   lane: Lane;
-  regions: Region[];
-  clock: Clock;
   laneState: Lanes;
+  hasSkipped: boolean;
 }) {
   const { kind, isCollapsed } = lane;
   const { label } = REGIONS[kind];
   const Icon = REGION_ICONS[kind];
-  const valueAtPlayhead = useClockValue(clock, (seconds) => {
-    const region = regionAt(regions, kind, seconds * 1000);
-    return region ? blockValue(region) : "";
-  });
-  const count = regions.filter((region) => region.kind === kind).length;
   return (
     <div
       data-solo={laneState.solo === kind}
       data-flow
-      className="group/lane fade-in absolute inset-x-0 flex items-center gap-2 px-3 text-label font-medium text-hue-foreground transition-colors hover:bg-accent/40"
+      className="group/lane fade-in absolute inset-x-0 flex items-center gap-2 pr-1 pl-3 text-label font-medium text-hue-foreground transition-colors hover:bg-accent/40"
       style={{ top: lane.top, height: lane.height, ...hueOf(kind) }}
     >
       <Icon className="size-4 shrink-0 text-hue-foreground" />
-      <span className="truncate">{label}</span>
-      <span className="ml-auto truncate font-mono text-hue-foreground group-has-focus-visible/lane:hidden group-hover/lane:hidden group-data-[solo=true]/lane:hidden">
-        {isCollapsed ? count : valueAtPlayhead}
-      </span>
-      <div className="ml-auto hidden items-center gap-0.5 group-has-focus-visible/lane:flex group-hover/lane:flex group-data-[solo=true]/lane:flex">
+      <span className="whitespace-nowrap">{label}</span>
+      <div
+        className={cn(
+          "ml-auto items-center gap-0.5 group-has-focus-visible/lane:flex group-hover/lane:flex group-data-[solo=true]/lane:flex",
+          // A collapsed lane always shows how to expand it.
+          isCollapsed ? "flex" : "hidden",
+        )}
+      >
         <LaneToggle
           label={`Solo: preview only ${label}`}
           pressed={laneState.solo === kind}
           onPressedChange={() => laneState.toggleSolo(kind)}
-          isSmall={isCollapsed}
+          isCollapsed={isCollapsed}
         >
-          <Eye />
+          <Focus />
         </LaneToggle>
         <LaneToggle
           label={`${isCollapsed ? "Expand" : "Collapse"} ${label.toLowerCase()}`}
           pressed={false}
           onPressedChange={() => laneState.toggleCollapsed(kind)}
-          isSmall={isCollapsed}
+          isCollapsed={isCollapsed}
         >
           {isCollapsed ? <ChevronRight /> : <ChevronDown />}
         </LaneToggle>
+        {hasSkipped && !isCollapsed ? (
+          <LaneToggle
+            label={`${laneState.showsSkipped ? "Hide" : "Show"} skipped keys`}
+            pressed={laneState.showsSkipped}
+            onPressedChange={laneState.toggleSkipped}
+            isCollapsed={isCollapsed}
+          >
+            <Eye />
+          </LaneToggle>
+        ) : null}
       </div>
     </div>
   );
 }
 
+/** Solo and Collapse on a lane header, shown on hover. */
 function LaneToggle({
   label,
   pressed,
   onPressedChange,
-  isSmall,
+  isCollapsed,
   children,
 }: {
   label: string;
   pressed: boolean;
   onPressedChange: () => void;
-  isSmall: boolean;
+  isCollapsed: boolean;
   children: ReactNode;
 }) {
   return (
@@ -145,8 +179,11 @@ function LaneToggle({
             pressed={pressed}
             onPressedChange={onPressedChange}
             className={cn(
-              "aria-pressed:bg-hue-fill aria-pressed:text-hue-foreground",
-              isSmall && "size-5 min-w-5",
+              "rounded-[5px] aria-pressed:bg-hue-fill aria-pressed:text-hue-foreground",
+              // Inset from the row's edges: 4 px in a lane, 2 px in a collapsed one.
+              isCollapsed
+                ? "h-4 w-5 min-w-5 [&_svg:not([class*='size-'])]:size-3"
+                : "size-6 min-w-6 [&_svg:not([class*='size-'])]:size-3.5",
             )}
           />
         }
@@ -167,6 +204,8 @@ export function LaneTracks({
   clock,
   drag,
   solo,
+  pressed,
+  skipped,
   onSeek,
 }: {
   edits: Edits;
@@ -177,39 +216,75 @@ export function LaneTracks({
   clock: Clock;
   drag: TimelineDrag;
   solo: RegionKind | null;
+  pressed: Pressed[];
+  skipped: Pressed[];
   onSeek: (ms: number) => void;
 }) {
-  const { shown: regions, time } = edits;
+  const { shown: regions, time, selectedIds } = edits;
   const { box, marqueeProps } = useMarquee(
-    (box, width) =>
-      edits.select(regionsInBox(regions, box, width, timelineMs, lanes)),
+    (box, width, isAdding) =>
+      edits.select(
+        regionsInBox(
+          regions,
+          box,
+          width,
+          timelineMs,
+          lanes,
+          isAdding ? selectedIds : [],
+        ),
+      ),
     (x, width) => {
       edits.select([]);
       onSeek(msAtX(x, width, timelineMs));
     },
   );
+  const measureText = useMeasureText();
   const order = blockOrder(regions);
-  const focusStop =
-    [...edits.selectedIds]
-      .reverse()
-      .find((id) => regions.some(({ id: at }) => at === id)) ?? order[0]?.id;
-  const focusBlock = (id: number) => {
-    edits.select([id]);
-    document.querySelector<HTMLElement>(`[data-region-id="${id}"]`)?.focus();
-  };
+  const pxAt = (ms: number) => (ms / timelineMs) * trackWidth;
+  // Key presses are in recording time; blocks are in kept time.
+  const inKeptTime = (keys: Pressed[]) =>
+    time
+      .shown(keys.map(({ ms, caps }) => ({ startMs: ms, endMs: ms + 1, caps })))
+      .map(({ startMs, caps }) => ({ ms: startMs, caps }));
+  const keptPressed = inKeptTime(pressed);
+  const keysLane = lanes.find(({ kind }) => kind === KEYCAPS_KIND);
+  const skippedTop = keysLane?.skippedTop;
+  const ticks = skippedTop !== undefined ? inKeptTime(skipped) : [];
+  const runs =
+    keysLane && !keysLane.isCollapsed
+      ? keyRuns(regions, pxAt, measureText)
+      : [];
+  const inRun = new Set(runs.flat());
+  const selected = regions.filter(({ id }) => selectedIds.includes(id));
+  const runSelected = selectedRun(runs, selectedIds);
+  const selection = spanOf(selected);
+  const focusStop = selectedIds[selectedIds.length - 1] ?? order[0]?.id;
+  const isDimmed = (kind: RegionKind) => solo !== null && solo !== kind;
 
-  function onBlockKey(event: KeyboardEvent<HTMLElement>, region: Region) {
+  function onBlockKey(event: KeyboardEvent<HTMLElement>, from: Region[]) {
     if (event.metaKey || event.ctrlKey) return;
     const step = {
       Tab: event.shiftKey ? "previous" : "next",
       ArrowUp: "up",
       ArrowDown: "down",
-    }[event.key] as Parameters<typeof nextBlock>[3] | undefined;
+    }[event.key] as Parameters<typeof nextBlock>[4] | undefined;
+    const [region] = from;
     if (step) {
-      const target = nextBlock(regions, lanes, region, step);
+      const target = nextBlock(regions, lanes, runs, from, step);
       if (!target && event.key === "Tab") return;
       event.preventDefault();
-      if (target) focusBlock(target.id);
+      if (!target) return;
+      // A run draws as one element, under its first block's id.
+      edits.select(target.map(({ id }) => id));
+      document
+        .querySelector<HTMLElement>(`[data-region-id="${target[0].id}"]`)
+        ?.focus();
+    } else if (from.length > 1) {
+      return;
+    } else if (event.key === "Enter" && region.isSuggested) {
+      event.preventDefault();
+      event.stopPropagation();
+      edits.settle(region.id, true);
     } else if (event.key === "Enter" || event.key.toLowerCase() === "e") {
       event.preventDefault();
       event.stopPropagation();
@@ -224,26 +299,55 @@ export function LaneTracks({
       {...marqueeProps}
     >
       {lanes.length === 0 ? <EmptyLanes /> : null}
+      {keysLane &&
+      !keysLane.isCollapsed &&
+      !regions.some(({ kind }) => kind === KEYCAPS_KIND) ? (
+        <div
+          className="absolute inset-x-0 flex h-8 items-center justify-center text-label text-muted-foreground"
+          style={{ top: keysLane.top }}
+        >
+          No shortcuts in this recording
+        </div>
+      ) : null}
+      {runs.map((members) => (
+        <Run
+          key={members[0].id}
+          members={members}
+          lane={keysLane!}
+          regions={regions}
+          pxAt={pxAt}
+          rank={order.indexOf(members[0])}
+          isSelected={members.every(({ id }) => selectedIds.includes(id))}
+          hasPill={runSelected === members}
+          isFocusStop={members.some(({ id }) => id === focusStop)}
+          isDimmed={isDimmed(KEYCAPS_KIND)}
+          counts={keyCounts(keptPressed, members)}
+          clock={clock}
+          at={time.at}
+          drag={drag.region}
+          onKeyDown={(event) => onBlockKey(event, members)}
+        />
+      ))}
       {regions.map((region) => {
         const lane = lanes.find(({ kind }) => kind === region.kind);
-        if (!lane) return null;
+        if (!lane || inRun.has(region)) return null;
         return (
           <Block
             key={region.id}
             region={region}
             lane={lane}
             regions={regions}
-            timelineMs={timelineMs}
-            trackWidth={trackWidth}
+            pxAt={pxAt}
             rank={order.indexOf(region)}
-            isSelected={edits.selectedIds.includes(region.id)}
-            hasPill={
-              edits.selectedIds.length === 1 &&
-              edits.selectedIds[0] === region.id
-            }
+            isSelected={selectedIds.includes(region.id)}
+            hasPill={selectedIds.length === 1 && selectedIds[0] === region.id}
             isFocusStop={region.id === focusStop}
-            touches={touchingSides(regions, region)}
-            isDimmed={solo !== null && solo !== region.kind}
+            isDimmed={isDimmed(region.kind)}
+            count={
+              REGIONS[region.kind].showsKeycaps
+                ? pressCount(keptPressed, region)
+                : 0
+            }
             stretchEdge={
               drag.stretch?.track === "region" &&
               drag.stretch.id === region.id &&
@@ -256,10 +360,52 @@ export function LaneTracks({
             drag={drag.region}
             onOpen={() => edits.openEditor(region.id)}
             onSettle={(isKept) => edits.settle(region.id, isKept)}
-            onKeyDown={(event) => onBlockKey(event, region)}
+            onKeyDown={(event) => onBlockKey(event, [region])}
           />
         );
       })}
+      {skippedTop !== undefined
+        ? ticks.map(({ ms, caps }, at) => (
+            <SkippedKey
+              key={at}
+              text={caps.join("")}
+              left={percentAt(ms, timelineMs)}
+              top={skippedTop}
+              isDimmed={isDimmed(KEYCAPS_KIND)}
+              onShow={() =>
+                edits.add(KEYCAPS_KIND, ms, { text: caps.join("") })
+              }
+            />
+          ))
+        : null}
+      {drag.stretch?.track === "region" ? (
+        <DragMarks
+          edits={edits}
+          lanes={lanes}
+          ids={drag.stretch.ids}
+          id={drag.stretch.id}
+          edge={drag.stretch.edge}
+          heightPx={heightPx}
+          pxAt={pxAt}
+          zIndex={regions.length + 4}
+        />
+      ) : selected.length > 1 && !runSelected ? (
+        <Hovering
+          atPx={pxAt((selection.startMs + selection.endMs) / 2)}
+          zIndex={regions.length + 4}
+          className="pr-1 font-semibold"
+        >
+          {selected.length} blocks
+          <button
+            type="button"
+            className="flex h-5 items-center gap-1 rounded-[5px] bg-foreground/10 px-1.5 text-muted-foreground transition-colors hover:text-foreground"
+            onClick={edits.remove}
+          >
+            <Trash2 className="size-3" />
+            Delete
+          </button>
+        </Hovering>
+      ) : null}
       {box ? (
         <div
           className="pointer-events-none absolute rounded-sm border border-highlight/60 bg-highlight/10"
@@ -278,13 +424,160 @@ export function LaneTracks({
 
 function EmptyLanes() {
   return (
-    <div className="absolute inset-x-3 top-1 flex h-14 items-center justify-center gap-1.5 rounded-lg text-label text-muted-foreground inset-ring inset-ring-hairline">
-      No modifiers yet. Press
-      {ALL_KINDS.map((kind) => (
-        <Kbd key={kind}>{REGIONS[kind].key}</Kbd>
-      ))}
-      or + to place one at the playhead.
+    <div className="absolute inset-x-3 top-1 flex h-14 items-center justify-center rounded-lg text-label text-muted-foreground inset-ring inset-ring-hairline">
+      <p>
+        Press{" "}
+        {ALL_KINDS.map((kind, index) => (
+          <Fragment key={kind}>
+            {index === 0 ? "" : index === ALL_KINDS.length - 1 ? " or " : ", "}
+            <Kbd>{REGIONS[kind].key}</Kbd>
+          </Fragment>
+        ))}{" "}
+        to add a block at the playhead, or <Kbd>/</Kbd> for the menu
+      </p>
     </div>
+  );
+}
+
+/** A label over the ruler, centered at `atPx`: a drag's time or length, or the selection's count. */
+function Hovering({
+  atPx,
+  zIndex,
+  className,
+  children,
+}: {
+  atPx: number;
+  zIndex: number;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "absolute flex h-7 -translate-x-1/2 items-center gap-2 rounded-lg border border-glass-border bg-popover pl-2.5 text-label text-popover-foreground shadow-md",
+        className,
+      )}
+      style={{ left: atPx, top: -TRACKS_TOP_PX, zIndex }}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * While blocks drag: a dashed outline where they started, a guide at the edge they caught,
+ * and the new start (or, resizing, the new length) over the ruler.
+ */
+function DragMarks({
+  edits,
+  lanes,
+  ids,
+  id,
+  edge,
+  heightPx,
+  pxAt,
+  zIndex,
+}: {
+  edits: Edits;
+  lanes: Lane[];
+  ids: number[];
+  id: number;
+  edge: RegionDrag;
+  heightPx: number;
+  pxAt: (ms: number) => number;
+  zIndex: number;
+}) {
+  const marks = dragMarks(
+    edits.shown,
+    edits.time.shown(edits.saved.regions),
+    ids,
+    id,
+    edge,
+    edits.snapEdgesMs(),
+  );
+  if (!marks) return null;
+  return (
+    <>
+      {marks.origins.map((origin) => {
+        const lane = lanes.find(({ kind }) => kind === origin.kind);
+        if (!lane || lane.isCollapsed) return null;
+        return (
+          <div
+            key={origin.id}
+            className="pointer-events-none absolute h-6 rounded-md border border-dashed border-foreground/35"
+            style={{
+              left: pxAt(origin.startMs),
+              width: pxAt(origin.endMs) - pxAt(origin.startMs),
+              top: lane.top + 4,
+              zIndex,
+            }}
+          />
+        );
+      })}
+      {marks.guideMs !== undefined ? (
+        <div
+          className="pointer-events-none absolute w-px bg-foreground"
+          style={{
+            left: pxAt(marks.guideMs),
+            top: RULER_PX - TRACKS_TOP_PX,
+            height: TRACKS_TOP_PX - RULER_PX + heightPx,
+            zIndex,
+          }}
+        />
+      ) : null}
+      <Hovering
+        atPx={pxAt(marks.atMs)}
+        zIndex={zIndex}
+        className="pointer-events-none pr-2.5 font-mono font-medium"
+      >
+        {marks.label}
+      </Hovering>
+    </>
+  );
+}
+
+/** A key that isn't in the video: dashed keycaps in the Skipped row where it was pressed. A click adds it. */
+function SkippedKey({
+  text,
+  left,
+  top,
+  isDimmed,
+  onShow,
+}: {
+  text: string;
+  left: number;
+  top: number;
+  isDimmed: boolean;
+  onShow: () => void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label={`Add ${text} to the video`}
+            className={cn(
+              "group fade-in absolute flex h-6 items-center rounded-md border border-dashed border-hue/55 px-1 transition-colors outline-none hover:border-solid hover:border-hue/85 focus-visible:ring-2 focus-visible:ring-highlight",
+              isDimmed && "opacity-35",
+            )}
+            style={{ ...hueOf(KEYCAPS_KIND), left: `${left}%`, top: top + 4 }}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={onShow}
+          >
+            <RegionValue
+              kind={KEYCAPS_KIND}
+              value={text}
+              capClassName="bg-transparent text-hue-foreground/70 outline-1 outline-dashed -outline-offset-1 outline-hue/55 transition-colors group-hover:text-hue-foreground"
+            />
+          </button>
+        }
+      />
+      <TooltipContent side="top" className="text-label font-medium">
+        Not in the video. Click to add it.
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -292,14 +585,13 @@ function Block({
   region,
   lane,
   regions,
-  timelineMs,
-  trackWidth,
+  pxAt,
   rank,
   isSelected,
   hasPill,
   isFocusStop,
-  touches,
   isDimmed,
+  count,
   stretchEdge,
   clock,
   at,
@@ -311,14 +603,14 @@ function Block({
   region: Region;
   lane: Lane;
   regions: Region[];
-  timelineMs: number;
-  trackWidth: number;
+  pxAt: (ms: number) => number;
   rank: number;
   isSelected: boolean;
   hasPill: boolean;
   isFocusStop: boolean;
-  touches: { start: boolean; end: boolean };
   isDimmed: boolean;
+  /** Presses a keystroke block joins: over 1, its pill says × 3. */
+  count: number;
   stretchEdge: "start" | "end" | null;
   clock: Clock;
   at: (sourceMs: number) => number;
@@ -328,189 +620,308 @@ function Block({
   onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
 }) {
   const [isPillOpen, setIsPillOpen] = useState(false);
-  const Icon = REGION_ICONS[region.kind];
-  const suggestion = region.isSuggested
-    ? (SUGGESTIONS[region.kind] ?? {
-        label: REGIONS[region.kind].label,
-        question: `Keep this ${REGIONS[region.kind].label.toLowerCase()}?`,
-      })
-    : undefined;
-  const label = suggestion?.label ?? REGIONS[region.kind].label;
-  const value = suggestion ? "" : blockValue(region);
-  const lengthMs = region.endMs - region.startMs;
-  const gapsPx = Number(touches.start) + Number(touches.end);
-  const pxAt = (ms: number) => (ms / timelineMs) * trackWidth;
-  const fit = blockFit(pxAt(lengthMs) - gapsPx);
+  const measureText = useMeasureText();
+  const { kind, isSuggested } = region;
+  const Icon = REGION_ICONS[kind];
+  const name = isSuggested
+    ? (SUGGESTIONS[kind]?.label ?? REGIONS[kind].label)
+    : REGIONS[kind].label;
+  const value = blockValue(region);
+  const caps = REGIONS[kind].showsKeycaps ? badgeCaps(value) : undefined;
+  const { beforeMs, afterMs } = laneNeighbors(regions, region);
+  const span = blockSpan(
+    pxAt(region.startMs),
+    pxAt(region.endMs),
+    pxAt(beforeMs),
+    pxAt(afterMs),
+  );
+  const tier = lane.isCollapsed
+    ? "bar"
+    : blockTier(span.widthPx, { name, value, caps }, measureText);
   const isActive = useClockValue(clock, (seconds) =>
     covers(region, at(seconds * 1000)),
   );
-  const span = `${timeLabel(region.startMs)} to ${timeLabel(region.endMs)}`;
-  const left = percentAt(region.startMs, timelineMs);
-  const place = {
-    ...hueOf(region.kind),
-    left: `calc(${left}% + ${touches.start ? 1 : 0}px)`,
-    width: `calc(${percentAt(lengthMs, timelineMs)}% - ${gapsPx}px)`,
-    zIndex: isSelected ? regions.length + 1 : rank + 1,
-  };
-  const shared = {
-    "data-flow": true,
-    "data-region-id": region.id,
-    "data-selected": isSelected,
-    "data-active": isActive && !isSelected,
-    "aria-label": `${label} ${value}, ${span}`,
-    tabIndex: isFocusStop ? 0 : -1,
-    onKeyDown,
-    onDoubleClick: onOpen,
-    ...drag(region.id, "move", region.isSuggested),
-  };
-  const choice = suggestion ? (
-    <span
-      className="flex shrink-0 gap-1"
-      style={hueOf(region.kind)}
-      onPointerDown={(event) => event.stopPropagation()}
-      onDoubleClick={(event) => event.stopPropagation()}
-    >
-      <button
-        type="button"
-        aria-label={`Keep ${label.toLowerCase()}`}
-        className="flex size-4 items-center justify-center rounded-sm bg-hue/25 text-hue-foreground transition-colors hover:bg-hue hover:text-on-hue"
-        onClick={() => onSettle(true)}
-      >
-        <Check className="size-3" />
-      </button>
-      <button
-        type="button"
-        aria-label={`Remove ${label.toLowerCase()}`}
-        className="flex size-4 items-center justify-center rounded-sm bg-foreground/10 text-muted-foreground transition-colors hover:text-foreground"
-        onClick={() => onSettle(false)}
-      >
-        <X className="size-3" />
-      </button>
-    </span>
+  const icon = <Icon className="size-3.5 shrink-0" />;
+  const content = {
+    full: caps ? (
+      <>
+        {icon}
+        <RegionValue kind={kind} value={value} />
+      </>
+    ) : (
+      <>
+        <span className="flex items-center gap-1.5">
+          {icon}
+          {name}
+        </span>
+        <span className="font-mono">{value}</span>
+      </>
+    ),
+    compact: caps ? (
+      <RegionValue kind={kind} value={value} />
+    ) : (
+      <>
+        {icon}
+        <span className="font-mono">{value}</span>
+      </>
+    ),
+    icon,
+    bar: null,
+  }[tier];
+  const isWide = span.widthPx >= 32;
+  const grips = !lane.isCollapsed ? (
+    <>
+      <Grip
+        edge="start"
+        isActive={stretchEdge === "start"}
+        {...drag(region.id, "start")}
+      />
+      <Grip
+        edge="end"
+        isActive={stretchEdge === "end"}
+        {...drag(region.id, "end")}
+      />
+    </>
   ) : null;
-  const withPill = (block: ReactElement) => (
-    <Tooltip open={hasPill || isPillOpen} onOpenChange={setIsPillOpen}>
-      <TooltipTrigger render={block} />
-      <TooltipContent
-        side="top"
-        className="gap-1.5 pr-1 text-label font-semibold text-hue-foreground"
-        style={hueOf(region.kind)}
-      >
-        <Icon className="size-4 shrink-0" />
-        {label}
-        {choice ?? <span className="pr-1 font-mono font-medium">{value}</span>}
-      </TooltipContent>
-    </Tooltip>
-  );
-  const focusRing =
-    "outline-none focus-visible:ring-2 focus-visible:ring-highlight focus-visible:ring-offset-2 focus-visible:ring-offset-background";
-
-  if (lane.isCollapsed) {
-    return (
-      <div
-        {...shared}
-        className={cn(
-          "group absolute flex cursor-grab items-center",
-          isDimmed && "opacity-35",
-        )}
-        style={{ ...place, top: lane.top, height: lane.height }}
-      >
-        <div className="h-1.5 w-full rounded-xs bg-hue/70 group-data-[selected=true]:bg-hue" />
-      </div>
-    );
-  }
-
-  if (fit === "mark") {
-    const { beforeMs, afterMs } = laneNeighbors(regions, region);
-    const startPx = pxAt(region.startMs);
-    const hit = markSpan(
-      startPx,
-      pxAt(region.endMs),
-      pxAt(beforeMs),
-      pxAt(afterMs),
-    );
-    return withPill(
-      <div
-        {...shared}
-        className={cn(
-          "group absolute cursor-grab active:cursor-grabbing",
-          focusRing,
-          isDimmed && "opacity-35",
-        )}
-        style={{
-          ...place,
-          left: `calc(${left}% + ${hit.from - startPx}px)`,
-          width: hit.to - hit.from,
-          top: lane.top,
-          height: lane.height,
-        }}
-      >
-        <div
-          className={cn(
-            "absolute top-2 h-4 rounded-xs transition-colors duration-120",
-            suggestion
-              ? "bg-hue/35 group-hover:bg-hue/55"
-              : "bg-hue/80 group-hover:bg-hue",
-            "group-data-[selected=true]:bg-hue group-data-[selected=true]:ring-1 group-data-[selected=true]:ring-hue-foreground",
-          )}
-          style={{ left: hit.markFrom - hit.from, width: hit.widthPx }}
-        />
-      </div>,
-    );
-  }
-
-  const hasText = fit === "full" || fit === "compact";
   const block = (
     <div
-      {...shared}
+      data-flow
+      data-region-id={region.id}
+      data-selected={isSelected}
+      data-active={isActive && !isSelected}
+      aria-label={`${name} ${value}, ${timeLabel(region.startMs)} to ${timeLabel(region.endMs)}`}
+      tabIndex={isFocusStop ? 0 : -1}
+      onKeyDown={onKeyDown}
+      onDoubleClick={onOpen}
+      {...drag(region.id, "move")}
       className={cn(
-        "group wipe-in absolute flex items-center gap-1.5 overflow-hidden rounded-md text-label font-semibold whitespace-nowrap text-hue-foreground",
-        focusRing,
-        suggestion
-          ? "cursor-default border border-dashed border-hue/70 bg-hue-fill/15 pr-1 pl-2.5 data-[selected=true]:border-solid"
-          : "cursor-grab bg-hue-fill px-2.5 transition-colors duration-120 hover:bg-hue-hover active:cursor-grabbing data-[active=true]:inset-ring data-[active=true]:inset-ring-hue/85 data-[selected=true]:bg-hue data-[selected=true]:text-on-hue",
-        !hasText && "justify-center px-0",
-        !suggestion && touches.start && "rounded-l-none",
-        !suggestion && touches.end && "rounded-r-none",
+        "group absolute z-(--z) outline-none hover:z-(--z-hover)",
+        "cursor-grab active:cursor-grabbing",
         isDimmed && "opacity-35",
       )}
-      style={{ ...place, top: lane.top + 4, height: 24 }}
+      style={
+        {
+          ...hueOf(kind),
+          "--z": isSelected ? regions.length + 2 : rank + 1,
+          "--z-hover": regions.length + (isSelected ? 2 : 1),
+          left: span.hitFrom,
+          width: span.hitTo - span.hitFrom,
+          top: lane.top,
+          height: lane.height,
+        } as CSSProperties
+      }
     >
-      <Icon className="size-4 shrink-0" />
-      {fit === "full" ? (
-        <span className="min-w-0 truncate">{label}</span>
-      ) : null}
-      {hasText && suggestion ? <span className="ml-auto">{choice}</span> : null}
-      {hasText && !suggestion ? (
-        <span
-          className={cn(
-            "min-w-0 truncate font-mono font-medium",
-            fit === "full" && "ml-auto",
-          )}
+      <div
+        className={cn(
+          "absolute flex items-center overflow-hidden text-label font-semibold whitespace-nowrap text-hue-foreground transition-colors duration-120",
+          "group-focus-visible:outline-2 group-focus-visible:outline-offset-2 group-focus-visible:outline-highlight",
+          // A suggestion keeps its dashed edge alone: a ring on top of it reads as a double border.
+          !isSuggested &&
+            "group-data-[active=true]:inset-ring group-data-[active=true]:inset-ring-hue/90 group-data-[selected=true]:inset-ring-[1.5px] group-data-[selected=true]:inset-ring-hue",
+          lane.isCollapsed ? "top-[7px] h-1.5" : "fade-in top-1 h-6",
+          isSuggested
+            ? "border border-dashed border-hue/90 bg-hue/6 group-data-[active=true]:bg-hue/12 group-data-[selected=true]:border-solid group-data-[selected=true]:bg-hue/12"
+            : lane.isCollapsed
+              ? "bg-hue/60 group-data-[selected=true]:bg-hue"
+              : "bg-hue-fill group-hover:bg-hue-hover group-data-[selected=true]:bg-hue-hover",
+          {
+            full: caps ? "gap-2 px-2" : "justify-between px-[11px]",
+            compact: "justify-center gap-1.5",
+            icon: "justify-center",
+            bar: "",
+          }[tier],
+        )}
+        style={{
+          left: span.markFrom - span.hitFrom,
+          width: span.widthPx,
+          borderRadius: Math.min(lane.isCollapsed ? 3 : 6, span.widthPx / 2),
+        }}
+      >
+        {content}
+        {grips && isWide ? grips : null}
+      </div>
+      {grips && !isWide ? (
+        // Too narrow for grips inside: they sit just outside its two ends.
+        <div
+          className="absolute top-1 h-6 text-hue-foreground"
+          style={{
+            left: span.markFrom - span.hitFrom - GRIP_PX,
+            width: span.widthPx + 2 * GRIP_PX,
+          }}
         >
-          {value}
-        </span>
-      ) : null}
-      {hasText && !suggestion ? (
-        <>
-          <Grip
-            edge="start"
-            isActive={stretchEdge === "start"}
-            {...drag(region.id, "start")}
-          />
-          <Grip
-            edge="end"
-            isActive={stretchEdge === "end"}
-            {...drag(region.id, "end")}
-          />
-        </>
+          {grips}
+        </div>
       ) : null}
     </div>
   );
-  if (!hasText) return withPill(block);
-  return suggestion ? <Named name={suggestion.question}>{block}</Named> : block;
+  // Every block keeps the same wrapper, so changing size never rebuilds it and replays its fade.
+  const needsPill = tier !== "full" || !!isSuggested || count > 1;
+  return (
+    <Tooltip
+      open={needsPill && (hasPill || isPillOpen)}
+      onOpenChange={setIsPillOpen}
+    >
+      <TooltipTrigger render={block} />
+      <TooltipContent
+        side="top"
+        className={cn(
+          "h-7 gap-1.5 rounded-lg pl-2 text-label font-semibold text-hue-foreground",
+          isSuggested ? "pr-1" : "pr-2.5",
+        )}
+        style={hueOf(kind)}
+      >
+        <Icon className="size-4 shrink-0" />
+        {name}
+        <RegionValue kind={kind} value={value} />
+        {count > 1 ? <Times count={count} /> : null}
+        {isSuggested ? (
+          <span className="ml-1 flex gap-1">
+            <button
+              type="button"
+              aria-label={`Keep ${name.toLowerCase()}`}
+              className="flex size-5 items-center justify-center rounded-[5px] bg-hue/30 text-hue-foreground transition-colors hover:bg-hue/45"
+              onClick={() => onSettle(true)}
+            >
+              <Check className="size-3" />
+            </button>
+            <button
+              type="button"
+              aria-label={`Remove ${name.toLowerCase()}`}
+              className="flex size-5 items-center justify-center rounded-[5px] bg-foreground/10 text-muted-foreground transition-colors hover:text-foreground"
+              onClick={() => onSettle(false)}
+            >
+              <X className="size-3" />
+            </button>
+          </span>
+        ) : null}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
+/** "× 3" after keycaps in a pill. */
+function Times({ count }: { count: number }) {
+  return <span className="font-medium opacity-90">× {count}</span>;
+}
+
+/**
+ * Keystroke blocks too narrow for their keys, drawn as one block with a count. Only a view:
+ * select, move and delete act on its blocks.
+ */
+function Run({
+  members,
+  lane,
+  regions,
+  pxAt,
+  rank,
+  isSelected,
+  hasPill,
+  isFocusStop,
+  isDimmed,
+  counts,
+  clock,
+  at,
+  drag,
+  onKeyDown,
+}: {
+  members: Region[];
+  lane: Lane;
+  regions: Region[];
+  pxAt: (ms: number) => number;
+  rank: number;
+  isSelected: boolean;
+  /** Open while the run is the whole selection. */
+  hasPill: boolean;
+  isFocusStop: boolean;
+  isDimmed: boolean;
+  counts: { text: string; count: number }[];
+  clock: Clock;
+  at: (sourceMs: number) => number;
+  drag: TimelineDrag["region"];
+  onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
+}) {
+  const [isPillOpen, setIsPillOpen] = useState(false);
+  const first = members[0];
+  const last = members[members.length - 1];
+  const ids = members.map(({ id }) => id);
+  const span = blockSpan(
+    pxAt(first.startMs),
+    pxAt(last.endMs),
+    pxAt(laneNeighbors(regions, first).beforeMs),
+    pxAt(laneNeighbors(regions, last).afterMs),
+  );
+  const tier = runTier(span.widthPx);
+  const isActive = useClockValue(clock, (seconds) =>
+    members.some((member) => covers(member, at(seconds * 1000))),
+  );
+  const Icon = REGION_ICONS[KEYCAPS_KIND];
+  const run = (
+    <div
+      data-flow
+      data-region-id={first.id}
+      data-selected={isSelected}
+      data-active={isActive && !isSelected}
+      aria-label={`${members.length} keystrokes, ${timeLabel(first.startMs)} to ${timeLabel(last.endMs)}`}
+      tabIndex={isFocusStop ? 0 : -1}
+      onKeyDown={onKeyDown}
+      {...drag(first.id, "move", ids)}
+      className={cn(
+        "group absolute z-(--z) cursor-grab outline-none hover:z-(--z-hover) active:cursor-grabbing",
+        isDimmed && "opacity-35",
+      )}
+      style={
+        {
+          ...hueOf(KEYCAPS_KIND),
+          "--z": isSelected ? regions.length + 2 : rank + 1,
+          "--z-hover": regions.length + (isSelected ? 2 : 1),
+          left: span.hitFrom,
+          width: span.hitTo - span.hitFrom,
+          top: lane.top,
+          height: lane.height,
+        } as CSSProperties
+      }
+    >
+      <div
+        className="fade-in absolute top-1 flex h-6 items-center justify-center gap-1.5 overflow-hidden bg-hue-fill text-label font-semibold text-hue-foreground transition-colors duration-120 group-hover:bg-hue-hover group-focus-visible:outline-2 group-focus-visible:outline-offset-2 group-focus-visible:outline-highlight group-data-[active=true]:inset-ring group-data-[active=true]:inset-ring-hue/90 group-data-[selected=true]:bg-hue-hover group-data-[selected=true]:inset-ring-[1.5px] group-data-[selected=true]:inset-ring-hue"
+        style={{
+          left: span.markFrom - span.hitFrom,
+          width: span.widthPx,
+          borderRadius: Math.min(6, span.widthPx / 2),
+        }}
+      >
+        {tier === "full" ? <Icon className="size-3.5 shrink-0" /> : null}
+        {tier === "bar" ? null : (
+          <span className="flex h-4 min-w-4.5 items-center justify-center rounded-full bg-hue/35 px-1 text-caption">
+            {members.length}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+  return (
+    <Tooltip open={hasPill || isPillOpen} onOpenChange={setIsPillOpen}>
+      <TooltipTrigger render={run} />
+      <TooltipContent
+        side="top"
+        className="h-7 gap-1.5 rounded-lg pr-2.5 pl-2 text-label font-semibold text-hue-foreground"
+        style={hueOf(KEYCAPS_KIND)}
+      >
+        <Icon className="size-4 shrink-0" />
+        Run of {members.length}
+        {counts.map(({ text, count }) => (
+          <Fragment key={text}>
+            <RegionValue kind={KEYCAPS_KIND} value={text} />
+            <Times count={count} />
+          </Fragment>
+        ))}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+const GRIP_PX = 10;
+
+/** A resize handle at each end: a 2 by 10 bar 4 px in, shown on hover and when selected. */
 function Grip({
   edge,
   isActive,
@@ -521,15 +932,16 @@ function Grip({
   return (
     <div
       className={cn(
-        "absolute inset-y-0 flex w-2 cursor-ew-resize items-center justify-center",
+        "absolute inset-y-0 w-2.5 cursor-ew-resize",
         edge === "start" ? "left-0" : "right-0",
       )}
       {...dragProps}
     >
       <div
         className={cn(
-          "h-3 w-0.75 rounded-full bg-current opacity-30 group-hover:opacity-100 group-data-[selected=true]:opacity-100",
-          isActive && "opacity-100",
+          "absolute top-1.75 h-2.5 w-0.5 rounded-full bg-current opacity-0 transition-opacity group-hover:opacity-60 group-data-[selected=true]:opacity-60",
+          edge === "start" ? "left-1" : "right-1",
+          isActive && "opacity-60",
         )}
       />
     </div>

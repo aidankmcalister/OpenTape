@@ -112,15 +112,6 @@ function ExportSettings({ exporting }: { exporting: Exporting }) {
             size={output ? `${output.width} × ${output.height}` : null}
           />
         </div>
-        <div className="flex justify-end border-t border-hairline p-3 text-caption text-muted-foreground">
-          {output ? (
-            <span className="font-mono">
-              {output.megabytes === null
-                ? "Size varies"
-                : `About ${output.megabytes} MB`}
-            </span>
-          ) : null}
-        </div>
       </PopoverContent>
     </Popover>
   );
@@ -148,15 +139,17 @@ export function ExportChoices({
           options={{ mp4: "MP4", gif: "GIF" }}
           onChange={(format) => change({ format })}
         />
-        <Choice<"30" | "50" | "60">
+        <Choice<"15" | "25" | "30" | "50" | "60">
           label="Frame rate"
           inRows={inRows}
           value={`${isGif ? settings.gifFrameRate : settings.frameRate}`}
-          options={isGif ? { 30: "30", 50: "50" } : { 30: "30", 60: "60" }}
+          options={
+            isGif ? { 15: "15", 25: "25", 50: "50" } : { 30: "30", 60: "60" }
+          }
           onChange={(rate) =>
             change(
               isGif
-                ? { gifFrameRate: rate === "50" ? 50 : 30 }
+                ? { gifFrameRate: rate === "15" ? 15 : rate === "50" ? 50 : 25 }
                 : { frameRate: rate === "60" ? 60 : 30 },
             )
           }

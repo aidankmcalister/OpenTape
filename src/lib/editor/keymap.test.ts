@@ -140,4 +140,12 @@ describe("command palette", () => {
     const labels = commands.map(({ label }) => label);
     expect(new Set(labels).size).toBe(labels.length);
   });
+
+  test("Keep all and Dismiss all suggestions live only here, with no shortcut", () => {
+    for (const label of ["Keep all suggestions", "Dismiss all suggestions"]) {
+      expect(commands.find((command) => command.label === label)?.keys).toBe(
+        "",
+      );
+    }
+  });
 });

@@ -1,4 +1,4 @@
-import { type Point, clamp } from "@/lib/geometry";
+import { type Point, clamp, lerpPoint, meanOf } from "@/lib/geometry";
 import { EASE } from "@/lib/time";
 import type { ExportZoom } from "@/lib/bindings";
 import { FRAME_MS, STEP_MS } from "./timeline";
@@ -147,11 +147,7 @@ function followed(
   return (ms: number) => {
     const index = clamp((ms - startMs) / STEP_MS, 0, steps.length - 1);
     const [from, to] = [steps[Math.floor(index)], steps[Math.ceil(index)]];
-    const share = index - Math.floor(index);
-    return {
-      x: from.x + (to.x - from.x) * share,
-      y: from.y + (to.y - from.y) * share,
-    };
+    return lerpPoint(from, to, index - Math.floor(index));
   };
 }
 
@@ -212,13 +208,9 @@ function aims(
 }
 
 function steadyAt(moves: CursorMove[], ms: number): Point {
-  const points = [-100, -50, 0, 50, 100].map((back) =>
-    positionAt(moves, ms - back),
+  return meanOf(
+    [-100, -50, 0, 50, 100].map((back) => positionAt(moves, ms - back)),
   );
-  return {
-    x: points.reduce((sum, { x }) => sum + x, 0) / points.length,
-    y: points.reduce((sum, { y }) => sum + y, 0) / points.length,
-  };
 }
 
 function grouped(

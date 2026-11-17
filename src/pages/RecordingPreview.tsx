@@ -2,14 +2,13 @@ import type { ReactNode } from "react";
 import { Check, CircleAlert, Copy, Download, Pencil, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Kbd } from "@/components/ui/kbd";
 import { Spinner } from "@/components/ui/spinner";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { MorphPill, PillDivider, PillMessage } from "@/components/Pill";
+  MorphPill,
+  PillDivider,
+  PillMessage,
+  PillTip,
+} from "@/components/Pill";
 import { useClockValue } from "@/hooks/editor/usePlayback";
 import { formatClock, type Clock } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -102,7 +101,6 @@ function Preview({
             actions: (
               <>
                 <Action
-                  name="save"
                   label="Save"
                   shortcut="⌘S"
                   variant="ghost"
@@ -112,7 +110,6 @@ function Preview({
                   <Download />
                 </Action>
                 <Action
-                  name="copy"
                   label="Copy"
                   shortcut="⌘C"
                   variant="ghost"
@@ -123,7 +120,6 @@ function Preview({
                 </Action>
                 <PillDivider />
                 <Action
-                  name="edit"
                   label="Edit"
                   shortcut="E"
                   variant="default"
@@ -216,7 +212,6 @@ function LoopProgress({
 }
 
 function Action({
-  name,
   label,
   shortcut,
   variant,
@@ -224,7 +219,6 @@ function Action({
   onClick,
   children,
 }: {
-  name: string;
   label: string;
   shortcut: string;
   variant: "ghost" | "default";
@@ -233,24 +227,15 @@ function Action({
   children: ReactNode;
 }) {
   return (
-    <Tooltip open={hoveredName === name}>
-      <TooltipTrigger
-        render={
-          <Button
-            data-hover={name}
-            variant={variant}
-            size="icon-round"
-            aria-label={label}
-            onClick={onClick}
-          />
-        }
+    <PillTip label={label} shortcut={shortcut} hovered={hoveredName}>
+      <Button
+        variant={variant}
+        size="icon-round"
+        aria-label={label}
+        onClick={onClick}
       >
         {children}
-      </TooltipTrigger>
-      <TooltipContent sideOffset={8}>
-        {label}
-        <Kbd>{shortcut}</Kbd>
-      </TooltipContent>
-    </Tooltip>
+      </Button>
+    </PillTip>
   );
 }

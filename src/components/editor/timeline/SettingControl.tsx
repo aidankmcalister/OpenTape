@@ -1,4 +1,16 @@
 import type { ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Kbd } from "@/components/ui/kbd";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -13,6 +25,7 @@ import {
   type SettingValue,
 } from "@/lib/editor/regions";
 import { MARK_COLORS, type MarkColor } from "@/lib/editor/appearance";
+import { badgeCaps, MODIFIER_CAPS } from "@/lib/editor/keys";
 import { focusBox, focusCenter } from "@/lib/editor/zoom";
 import { clamp, percentStyle, type Point } from "@/lib/geometry";
 import { ColorSwatches } from "../ColorPicker";
@@ -117,6 +130,56 @@ export default function SettingControl({
           onChange={(checked) => onChange(setting.key, checked)}
         />
       );
+    case "shortcut":
+      return (
+        <div className="flex flex-col gap-1.5">
+          <LabeledRow label={setting.label}>
+            <ShortcutField
+              label={setting.label}
+              value={String(value)}
+              onChange={(next, isPreview) =>
+                onChange(setting.key, next, isPreview)
+              }
+              onCommit={onCommit}
+            />
+          </LabeledRow>
+          <p className="text-label text-muted-foreground">
+            Pick the modifiers, then type the key, like <Kbd>K</Kbd> or{" "}
+            <Kbd>Esc</Kbd>.
+          </p>
+        </div>
+      );
+    case "menu":
+      return (
+        <LabeledRow label={setting.label}>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full justify-between font-normal"
+                />
+              }
+            >
+              {String(value)}
+              <ChevronDown />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuRadioGroup
+                value={String(value)}
+                onValueChange={(next) => onChange(setting.key, String(next))}
+              >
+                {setting.options.map((option) => (
+                  <DropdownMenuRadioItem key={option} value={option}>
+                    {option}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </LabeledRow>
+      );
     case "focus":
       return region && onCenter ? (
         <Dim when={values.focus === "Follow cursor"}>
@@ -134,7 +197,64 @@ export default function SettingControl({
   }
 }
 
-export function Help({ text, children }: { text?: string; children: string }) {
+/** Toggles for ⌃ ⌥ ⇧ ⌘, which are hard to type, and a box for the key itself. */
+function ShortcutField({
+  label,
+  value,
+  onChange,
+  onCommit,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string, isPreview?: boolean) => void;
+  onCommit: () => void;
+}) {
+  const caps = badgeCaps(value);
+  const held = caps.filter((cap) => MODIFIER_CAPS.includes(cap));
+  const key = caps.filter((cap) => !MODIFIER_CAPS.includes(cap)).join("");
+  const join = (modifiers: string[], typed: string) =>
+    MODIFIER_CAPS.filter((cap) => modifiers.includes(cap)).join("") + typed;
+  return (
+    <div className="flex items-center gap-1">
+      <ToggleGroup
+        multiple
+        spacing={0.5}
+        aria-label="Modifiers"
+        value={held}
+        onValueChange={(next) => onChange(join(next, key))}
+      >
+        {MODIFIER_CAPS.map((cap) => (
+          <ToggleGroupItem
+            key={cap}
+            value={cap}
+            size="icon-sm"
+            aria-label={cap}
+          >
+            {cap}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+      <Input
+        value={key}
+        aria-label={`${label} key`}
+        className="h-7 min-w-0 flex-1"
+        onChange={(event) => onChange(join(held, event.target.value), true)}
+        onBlur={onCommit}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") event.currentTarget.blur();
+        }}
+      />
+    </div>
+  );
+}
+
+export function Help({
+  text,
+  children,
+}: {
+  text?: ReactNode;
+  children: string;
+}) {
   if (!text) return <span>{children}</span>;
   return (
     <Tooltip>

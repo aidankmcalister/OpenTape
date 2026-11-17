@@ -175,6 +175,7 @@ fn exports_a_recording_in_the_default_appearance() {
         rings: std::env::var("EXPORT_TEST_RINGS").map_or(vec![], |path| {
             serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
         }),
+        badges: vec![],
         cursor: std::env::var("EXPORT_TEST_CURSOR")
             .ok()
             .map(|path| serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()),
@@ -188,7 +189,7 @@ fn exports_a_recording_in_the_default_appearance() {
             ExportFormat::Mp4
         },
         frame_rate: var("EXPORT_TEST_FPS", "60").parse().unwrap(),
-        bits_per_pixel: var("EXPORT_TEST_BITS", "0.05").parse().unwrap(),
+        quality: var("EXPORT_TEST_QUALITY", "0.8").parse().unwrap(),
         to_clipboard: false,
         name: None,
     };

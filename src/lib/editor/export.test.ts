@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { addRegion, type Region } from "./regions";
 import { DEFAULT_APPEARANCE, frameLayout } from "./appearance";
 import {
-  aboutMegabytes,
   DEFAULT_EXPORT,
   exportLayout,
   exportOptions,
@@ -66,24 +65,6 @@ describe("export", () => {
     expect(at("Auto").height).toBe(1080);
   });
 
-  test("aboutMegabytes estimates from the size, frame rate, length and quality, to a tenth", () => {
-    const full = exportLayout(DEFAULT_APPEARANCE, {
-      width: 1920,
-      height: 1080,
-    });
-    const hd = { ...full, width: 1920, height: 1080 };
-    expect(aboutMegabytes(hd, 10_000, DEFAULT_EXPORT)).toBe(7.8);
-    expect(
-      aboutMegabytes(hd, 10_000, { ...DEFAULT_EXPORT, quality: "small" }),
-    ).toBe(3.9);
-    expect(
-      aboutMegabytes(hd, 10_000, { ...DEFAULT_EXPORT, frameRate: 30 }),
-    ).toBe(3.9);
-    expect(
-      aboutMegabytes(hd, 10_000, { ...DEFAULT_EXPORT, format: "gif" }),
-    ).toBeNull();
-  });
-
   test("exportOptions turns the settings into what Rust needs", () => {
     expect(
       exportOptions(
@@ -92,8 +73,8 @@ describe("export", () => {
       ),
     ).toEqual({
       format: "gif",
-      frameRate: 30,
-      bitsPerPixel: 0.05,
+      frameRate: 25,
+      quality: 0.8,
       toClipboard: true,
       name: "Launch demo",
     });
@@ -145,6 +126,26 @@ test("exportLayout sends the zoom track, and each speed region in seconds", () =
   );
   expect(layout.zoom).toHaveLength(241);
   expect(layout.speed).toEqual([{ start: 2, end: 3.5, amount: 2 }]);
+});
+
+test("exportLayout exports a suggestion exactly like a kept block", () => {
+  const kept: Region[] = [
+    { id: 1, kind: "zoom", startMs: 0, endMs: 1000, amount: 1.5 },
+    { id: 2, kind: "speed", startMs: 2000, endMs: 3500, amount: 2 },
+  ];
+  const suggested = kept.map((region) => ({ ...region, isSuggested: true }));
+  const video = { width: 1920, height: 1080 };
+  expect(
+    exportLayout(DEFAULT_APPEARANCE, video, {
+      regions: suggested,
+      durationMs: 4000,
+    }),
+  ).toEqual(
+    exportLayout(DEFAULT_APPEARANCE, video, {
+      regions: kept,
+      durationMs: 4000,
+    }),
+  );
 });
 
 test("exportLayout sends whether the export is muted", () => {
@@ -363,7 +364,7 @@ test("GIFs keep their own resolution, 720p unless 1080p is picked; MP4 keeps its
 
 test("GIFs keep their own frame rate, 30 unless 50 is picked; MP4 keeps its own", () => {
   const gif = { ...DEFAULT_EXPORT, format: "gif" as const };
-  expect(exportOptions(gif, null).frameRate).toBe(30);
+  expect(exportOptions(gif, null).frameRate).toBe(25);
   expect(exportOptions({ ...gif, gifFrameRate: 50 }, null).frameRate).toBe(50);
   expect(exportOptions(DEFAULT_EXPORT, null).frameRate).toBe(60);
 });

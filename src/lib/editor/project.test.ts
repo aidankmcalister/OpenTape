@@ -46,6 +46,7 @@ describe("project", () => {
       clips: [],
       sound: DEFAULT_SOUND,
       suggestionsMade: false,
+      keysAdded: false,
       title: null,
     });
   });
@@ -200,7 +201,7 @@ describe("history", () => {
   });
 });
 
-test("editClips fits modifiers to the footage that is left", () => {
+test("editClips keeps block times, so a cut hides blocks without editing them", () => {
   const project = {
     ...NEW_PROJECT,
     regions: [
@@ -212,7 +213,7 @@ test("editClips fits modifiers to the footage that is left", () => {
     { id: 1, startMs: 0, endMs: 2000 },
     { id: 3, startMs: 5000, endMs: 10_000 },
   ]);
-  expect(cut.regions).toEqual([{ ...project.regions[0], endMs: 2000 }]);
+  expect(cut.regions).toBe(project.regions);
   expect(editClips(project, (clips) => clips)).toBe(project);
 });
 

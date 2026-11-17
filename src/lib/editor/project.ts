@@ -3,8 +3,9 @@ import {
   DEFAULT_APPEARANCE,
   readAppearance,
 } from "./appearance";
-import { type Clip, fitToClips } from "./clips";
+import type { Clip } from "./clips";
 import { type CursorTrack, withSuggestions } from "./cursor";
+import { withShortcuts } from "./keys";
 import type { Region } from "./regions";
 import { DEFAULT_SOUND, type SoundSettings } from "./sound";
 
@@ -14,6 +15,7 @@ export type Project = {
   clips: Clip[];
   sound: SoundSettings;
   suggestionsMade: boolean;
+  keysAdded: boolean;
   title: string | null;
 };
 
@@ -23,6 +25,7 @@ export const NEW_PROJECT: Project = {
   clips: [],
   sound: DEFAULT_SOUND,
   suggestionsMade: false,
+  keysAdded: false,
   title: null,
 };
 
@@ -35,6 +38,7 @@ export function readProject(json: string | null, fresh = NEW_PROJECT): Project {
     clips: saved.clips ?? [],
     sound: { isMuted: saved.sound?.isMuted ?? false },
     suggestionsMade: saved.suggestionsMade ?? false,
+    keysAdded: saved.keysAdded ?? false,
     title: saved.title ?? null,
   };
 }
@@ -47,14 +51,23 @@ export function editRegions(
   return regions === project.regions ? project : { ...project, regions };
 }
 
+/** Adds suggestions once, if they're on, and the recorded shortcuts once. */
 export function suggest(
   project: Project,
-  track: Pick<CursorTrack, "clicks" | "keys" | "moves" | "typed" | "pauses">,
+  track: Pick<
+    CursorTrack,
+    "clicks" | "keys" | "pressed" | "moves" | "typed" | "pauses"
+  >,
   durationMs: number,
 ): Project {
-  if (project.suggestionsMade) return project;
-  const regions = withSuggestions(track, project.regions, durationMs);
-  return { ...project, regions, suggestionsMade: true };
+  if (project.suggestionsMade && project.keysAdded) return project;
+  const suggested = project.suggestionsMade
+    ? project.regions
+    : withSuggestions(track, project.regions, durationMs);
+  const regions = project.keysAdded
+    ? suggested
+    : withShortcuts(track.pressed, suggested, durationMs);
+  return { ...project, regions, suggestionsMade: true, keysAdded: true };
 }
 
 export function editClips(
@@ -63,7 +76,7 @@ export function editClips(
 ): Project {
   const clips = edit(project.clips);
   if (clips === project.clips) return project;
-  return { ...project, clips, regions: fitToClips(project.regions, clips) };
+  return { ...project, clips };
 }
 
 export function changeProject<Part extends "appearance" | "sound">(

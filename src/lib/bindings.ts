@@ -16,9 +16,14 @@ export type CursorPoint = { t: number, x: number, y: number, angle: number, alph
 
 export type Device = { id: string, name: string, };
 
-export type Devices = { cameras: Array<Device>, microphones: Array<Device>, };
+export type Devices = { microphones: Array<Device>, };
 
 export type DisplayInfo = { id: number, name: string, frame: Frame, size: CaptureSize, scale: number, safeTop: number, };
+
+/**
+ * A key badge, drawn by the editor as a PNG and placed from its top-left corner in pixels.
+ */
+export type ExportBadge = { start: number, end: number, x: number, y: number, png: string, };
 
 export type ExportBlur = { start: number, end: number, x: number, y: number, width: number, height: number, radius: number, };
 
@@ -32,9 +37,13 @@ export type ExportFormat = "mp4" | "gif";
 
 export type ExportGradient = { angle: number, stops: Array<ExportStop>, };
 
-export type ExportLayout = { width: number, height: number, recording: PixelRect, video: PixelRect, radius: number, shadow: ExportShadow, border: ExportBorder | null, background: ExportGradient, backgroundImage: string | null, zoom: Array<ExportZoom>, zoomRate: number, speed: Array<ExportSpeed>, cuts: Array<ExportCut>, blurs: Array<ExportBlur>, rings: Array<ExportRing>, cursor: ExportCursor | null, muted: boolean, };
+export type ExportLayout = { width: number, height: number, recording: PixelRect, video: PixelRect, radius: number, shadow: ExportShadow, border: ExportBorder | null, background: ExportGradient, backgroundImage: string | null, zoom: Array<ExportZoom>, zoomRate: number, speed: Array<ExportSpeed>, cuts: Array<ExportCut>, blurs: Array<ExportBlur>, rings: Array<ExportRing>, badges: Array<ExportBadge>, cursor: ExportCursor | null, muted: boolean, };
 
-export type ExportOptions = { format: ExportFormat, frameRate: number, bitsPerPixel: number, toClipboard: boolean, name: string | null, };
+export type ExportOptions = { format: ExportFormat, frameRate: number, 
+/**
+ * 0 to 1, for MP4: how close every frame stays to the original.
+ */
+quality: number, toClipboard: boolean, name: string | null, };
 
 export type ExportRing = { t: number, x: number, y: number, color: string, size: number, style: RingStyle, };
 
@@ -54,9 +63,9 @@ export type Mode = "display" | "window" | "area";
 
 export type PageEvent = { "event": "picker-session", "payload": Session } | { "event": "picker-cursor", "payload": Point } | { "event": "picker-recording", "payload": Frame | null } | { "event": "picker-key", "payload": PickerKey } | { "event": "picker-closed" } | { "event": "recording-status", "payload": RecordingStatus } | { "event": "current-recording", "payload": ShownRecording | null } | { "event": "bar-pointer", "payload": Point | null } | { "event": "preview-pointer", "payload": Point | null } | { "event": "preview-key", "payload": PreviewKey } | { "event": "export-progress", "payload": number } | { "event": "typing-progress", "payload": number } | { "event": "export-and-close" } | { "event": "new-recording", "payload": Mode | null } | { "event": "settings-changed", "payload": Settings } | { "event": "update-status", "payload": UpdateStatus };
 
-export type Permission = "screenRecording" | "microphone";
+export type Permission = "screenRecording" | "microphone" | "inputMonitoring";
 
-export type Permissions = { screenRecording: Access, microphone: Access, hasFinishedSetup: boolean, };
+export type Permissions = { screenRecording: Access, microphone: Access, inputMonitoring: Access, hasFinishedSetup: boolean, };
 
 export type Phase = "idle" | "starting" | "recording" | "paused" | "stopping";
 
@@ -74,7 +83,11 @@ export type RingStyle = "ring" | "pulse" | "ripple";
 
 export type Session = { mode: Mode, sources: Sources, pinnedWindowId: number | null, areaDisplayId: number | null, };
 
-export type Settings = { saveFolder: string | null, export: unknown, appearance: unknown, suggestsEdits: boolean, recordShortcut: string, countsDown: boolean, hidesDockIcon: boolean, sharesUsage: boolean, hasFinishedSetup: boolean, };
+export type Settings = { saveFolder: string | null, export: unknown, appearance: unknown, suggestsEdits: boolean, 
+/**
+ * Off by default: which keys were pressed is logged only with this on.
+ */
+recordsKeys: boolean, recordShortcut: string, countsDown: boolean, hidesDockIcon: boolean, sharesUsage: boolean, hasFinishedSetup: boolean, };
 
 export type Setup = { session: Session, cursor: Point | null, };
 

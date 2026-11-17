@@ -92,7 +92,7 @@ export function useRecordBar() {
     return () =>
       document.removeEventListener("visibilitychange", followVisibility);
   }, []);
-  const { setPointer } = usePointerHover();
+  const { hoveredName, setPointer } = usePointerHover();
   useTauriEvent("bar-pointer", setPointer, "window");
 
   async function attempt(job: () => Promise<unknown>) {
@@ -117,6 +117,7 @@ export function useRecordBar() {
   }
 
   return {
+    hoveredName,
     pickerMode,
     phase,
     layer,
@@ -167,10 +168,7 @@ export function useRecordBar() {
 }
 
 export function useCaptureOptions() {
-  const [devices, setDevices] = useState<Devices>({
-    cameras: [],
-    microphones: [],
-  });
+  const [devices, setDevices] = useState<Devices>({ microphones: [] });
   const [options, setOptions] = useState(() =>
     parseOptions(localStorage.getItem("capture-options")),
   );
@@ -187,25 +185,26 @@ export function useCaptureOptions() {
   );
   useEffect(() => {
     invoke("set_capture_inputs", {
-      cameraId: null,
       microphoneId,
       systemAudio,
     }).catch(console.error);
   }, [microphoneId, systemAudio]);
 
-  async function chooseDevice(anchor: HTMLElement, kind: keyof Devices) {
-    const key = kind === "cameras" ? "cameraId" : "microphoneId";
-    const none = kind === "cameras" ? "No camera" : "No microphone";
+  async function chooseMicrophone(anchor: HTMLElement) {
     await oneAtATime(async () => {
       const found = await invoke<Devices>("list_devices");
       setDevices(found);
-      const choices = [{ id: null, name: none }, ...found[kind]];
+      const choices = [
+        { id: null, name: "No microphone" },
+        ...found.microphones,
+      ];
       const items = await Promise.all(
         choices.map(({ id, name }) =>
           CheckMenuItem.new({
             text: name,
-            checked: id === options[key],
-            action: () => setOptions((current) => ({ ...current, [key]: id })),
+            checked: id === options.microphoneId,
+            action: () =>
+              setOptions((current) => ({ ...current, microphoneId: id })),
           }),
         ),
       );
@@ -216,8 +215,7 @@ export function useCaptureOptions() {
   return {
     microphone,
     systemAudio,
-    chooseMicrophone: (anchor: HTMLElement) =>
-      void chooseDevice(anchor, "microphones"),
+    chooseMicrophone: (anchor: HTMLElement) => void chooseMicrophone(anchor),
     toggleSystemAudio: () =>
       setOptions((current) => ({
         ...current,

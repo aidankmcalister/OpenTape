@@ -24,6 +24,8 @@ pub(crate) struct Settings {
     #[ts(type = "unknown")]
     pub appearance: Option<serde_json::Value>,
     pub suggests_edits: bool,
+    /// Off by default: which keys were pressed is logged only with this on.
+    pub records_keys: bool,
     pub record_shortcut: String,
     pub counts_down: bool,
     pub hides_dock_icon: bool,
@@ -38,6 +40,7 @@ impl Default for Settings {
             export: None,
             appearance: None,
             suggests_edits: true,
+            records_keys: false,
             record_shortcut: "Alt+Shift+KeyR".into(),
             counts_down: true,
             hides_dock_icon: false,
@@ -163,7 +166,7 @@ pub(crate) async fn open_notices(app: AppHandle) -> CmdResult {
         .resolve("THIRD-PARTY-NOTICES.txt", BaseDirectory::Resource)?;
     run_blocking(move || {
         let status = Command::new("/usr/bin/open")
-            .arg("-t")
+            .args(["-t", "--"])
             .arg(&path)
             .status()?;
         ensure!(status.success(), "could not open {}", path.display());
@@ -211,6 +214,7 @@ mod tests {
         assert!(read(&path).counts_down);
         assert!(!read(&path).hides_dock_icon);
         assert!(!read(&path).shares_usage);
+        assert!(!read(&path).records_keys);
     }
 
     #[test]

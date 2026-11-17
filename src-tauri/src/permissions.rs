@@ -12,10 +12,13 @@ use crate::windows::{self, bar};
 
 pub(crate) const WINDOW: &str = "permissions";
 const SCREEN_CHECK_ARG: &str = "--has-screen-access";
+const KEYS_CHECK_ARG: &str = "--has-input-monitoring";
 const SCREEN_RECORDING_PANE: &str =
     "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
 const MICROPHONE_PANE: &str =
     "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
+const INPUT_MONITORING_PANE: &str =
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -33,6 +36,8 @@ pub(crate) enum Access {
 pub(crate) enum Permission {
     ScreenRecording,
     Microphone,
+    /// Lets the recording log which keys were pressed (Record keystrokes).
+    InputMonitoring,
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
@@ -41,21 +46,31 @@ pub(crate) enum Permission {
 pub(crate) struct Permissions {
     pub screen_recording: Access,
     pub microphone: Access,
+    pub input_monitoring: Access,
     pub has_finished_setup: bool,
 }
 
-pub(crate) fn answer_screen_check() {
-    if std::env::args().any(|arg| arg == SCREEN_CHECK_ARG) {
-        std::process::exit(i32::from(!cg::screen_capture_access::preflight()));
+/// A permission that reaches a running app only after a restart: its check argument and test.
+type RestartCheck = (&'static str, fn() -> bool);
+const SCREEN_RECORDING: RestartCheck = (SCREEN_CHECK_ARG, cg::screen_capture_access::preflight);
+const INPUT_MONITORING: RestartCheck = (KEYS_CHECK_ARG, cg::event::access::listen_preflight);
+
+/// Answers a check from `turned_on`, run as a new process, and quits.
+pub(crate) fn answer_access_checks() {
+    for (arg, is_allowed) in [SCREEN_RECORDING, INPUT_MONITORING] {
+        if std::env::args().any(|given| given == arg) {
+            std::process::exit(i32::from(!is_allowed()));
+        }
     }
 }
 
-fn screen_recording() -> Access {
-    if cg::screen_capture_access::preflight() {
+/// A new process tells "turned on, restart to use it" from "not turned on".
+fn turned_on((check_arg, is_allowed): RestartCheck) -> Access {
+    if is_allowed() {
         return Access::Allowed;
     }
     let is_on_for_a_new_process = std::env::current_exe()
-        .and_then(|exe| Command::new(exe).arg(SCREEN_CHECK_ARG).status())
+        .and_then(|exe| Command::new(exe).arg(check_arg).status())
         .is_ok_and(|status| status.success());
     if is_on_for_a_new_process {
         Access::NeedsRestart
@@ -89,17 +104,24 @@ pub(crate) fn focus_if_open(app: &AppHandle) -> bool {
 fn show(app: &AppHandle) -> tauri::Result<()> {
     bar::hide(app);
     windows::show_dialog(app, WINDOW, |window| {
-        window.title("OpenTape").inner_size(456.0, 460.0)
+        window.title("OpenTape").inner_size(456.0, 524.0)
     })
 }
 
 #[tauri::command]
 pub(crate) async fn permissions(app: AppHandle) -> CmdResult<Permissions> {
-    let has_finished_setup = app.state::<AppSettings>().current().has_finished_setup;
+    let settings = app.state::<AppSettings>().current();
+    let has_finished_setup = settings.has_finished_setup;
     let permissions = run_blocking(move || {
         Ok(Permissions {
-            screen_recording: screen_recording(),
+            screen_recording: turned_on(SCREEN_RECORDING),
             microphone: microphone(),
+            // Checked only when wanted: each check may start a process.
+            input_monitoring: if settings.records_keys {
+                turned_on(INPUT_MONITORING)
+            } else {
+                Access::NotAsked
+            },
             has_finished_setup,
         })
     })
@@ -126,6 +148,11 @@ pub(crate) async fn allow(permission: Permission) -> CmdResult {
             .await?;
         }
         Permission::Microphone => settings::open_url(MICROPHONE_PANE).await?,
+        Permission::InputMonitoring if INPUT_MONITORING.1() => {}
+        Permission::InputMonitoring => {
+            cg::event::access::listen_request();
+            settings::open_url(INPUT_MONITORING_PANE).await?;
+        }
     }
     Ok(())
 }

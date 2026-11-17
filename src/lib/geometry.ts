@@ -32,6 +32,19 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
+/** The point `share` of the way from `from` to `to`. */
+export function lerpPoint(from: Point, to: Point, share: number): Point {
+  return {
+    x: from.x + (to.x - from.x) * share,
+    y: from.y + (to.y - from.y) * share,
+  };
+}
+
+export function meanOf(points: Point[]): Point {
+  const sum = (key: "x" | "y") => points.reduce((all, p) => all + p[key], 0);
+  return { x: sum("x") / points.length, y: sum("y") / points.length };
+}
+
 export function rectStyle(rect: Rect) {
   return { left: rect.x, top: rect.y, width: rect.width, height: rect.height };
 }

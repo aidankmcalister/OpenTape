@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result, ensure};
+use base64::Engine;
 use objc2::rc::Retained;
 use objc2_av_foundation::{
     AVAsset, AVAssetReader, AVAssetReaderAudioMixOutput, AVAssetReaderStatus,
@@ -9,12 +10,13 @@ use objc2_av_foundation::{
     AVURLAsset,
 };
 use objc2_core_foundation::{CGAffineTransform, CGPoint, CGRect, CGSize};
-use objc2_core_image::CIImage;
+use objc2_core_graphics::{CGBitmapContextCreateImage, CGContext, CGImage};
+use objc2_core_image::{CIContext, CIImage};
 use objc2_core_media::{
     CMAudioFormatDescriptionGetStreamBasicDescription, CMFormatDescription, CMTime, CMTimeRange,
     kCMTimeZero,
 };
-use objc2_foundation::{NSArray, NSError, NSString, NSURL};
+use objc2_foundation::{NSArray, NSData, NSError, NSString, NSURL};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -26,7 +28,7 @@ pub(crate) mod typing;
 mod writers;
 
 pub(crate) use cursor::ExportCursor;
-use cutout::cutout;
+use cutout::{canvas, cutout, moved};
 pub(crate) use rings::ExportRing;
 use rings::RingPictures;
 use writers::{compression, write_gif, write_mp4};
@@ -62,6 +64,7 @@ pub(crate) struct ExportLayout {
     cuts: Vec<ExportCut>,
     blurs: Vec<ExportBlur>,
     rings: Vec<ExportRing>,
+    badges: Vec<ExportBadge>,
     cursor: Option<ExportCursor>,
     muted: bool,
 }
@@ -105,6 +108,60 @@ impl ExportBlur {
     }
 }
 
+/// A key badge, drawn by the editor as a PNG and placed from its top-left corner in pixels.
+#[derive(Debug, Clone, Deserialize, TS)]
+#[ts(export, export_to = "bindings.ts")]
+pub(crate) struct ExportBadge {
+    start: f64,
+    end: f64,
+    x: f64,
+    y: f64,
+    png: String,
+}
+
+/// Matches BADGE_FADE_MS in keys.ts.
+const BADGE_FADE_SECONDS: f64 = 0.1;
+const BADGE_FADE_STEPS: usize = 10;
+
+impl ExportBadge {
+    /// The badge at each fade step, faintest first, placed in the frame.
+    fn pictures(&self, height: u32) -> Result<Vec<Retained<CIImage>>> {
+        let png = base64::engine::general_purpose::STANDARD.decode(&self.png)?;
+        let source = unsafe { CIImage::imageWithData(&NSData::with_bytes(&png)) }
+            .context("could not read a key badge")?;
+        let drawn =
+            unsafe { CIContext::context().createCGImage_fromRect(&source, source.extent()) }
+                .context("could not draw a key badge")?;
+        let (width, tall) = (CGImage::width(Some(&drawn)), CGImage::height(Some(&drawn)));
+        let whole = CGRect::new(
+            CGPoint::new(0.0, 0.0),
+            CGSize::new(width as f64, tall as f64),
+        );
+        let top = f64::from(height) - self.y - tall as f64;
+        (1..=BADGE_FADE_STEPS)
+            .map(|step| {
+                let (_, context) = canvas(width, tall, None)?;
+                let context = Some(&*context);
+                CGContext::set_alpha(context, step as f64 / BADGE_FADE_STEPS as f64);
+                CGContext::draw_image(context, whole, Some(&drawn));
+                let faded =
+                    CGBitmapContextCreateImage(context).context("could not fade a key badge")?;
+                Ok(moved(
+                    &*unsafe { CIImage::imageWithCGImage(&faded) },
+                    self.x,
+                    top,
+                ))
+            })
+            .collect()
+    }
+
+    /// Which fade step shows at `now`, if any: it fades in at the start and out at the end.
+    fn step(&self, now: f64) -> Option<usize> {
+        let alpha = ((now - self.start).min(self.end - now) / BADGE_FADE_SECONDS).min(1.0);
+        (alpha > 0.0).then(|| ((alpha * BADGE_FADE_STEPS as f64).ceil() as usize).max(1) - 1)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize, TS)]
 #[ts(export, export_to = "bindings.ts")]
 pub(crate) struct ExportSpeed {
@@ -141,7 +198,8 @@ pub(crate) struct ExportBorder {
 pub(crate) struct ExportOptions {
     format: ExportFormat,
     frame_rate: u32,
-    bits_per_pixel: f64,
+    /// 0 to 1, for MP4: how close every frame stays to the original.
+    quality: f64,
     pub(crate) to_clipboard: bool,
     pub(crate) name: Option<String>,
 }
@@ -216,6 +274,9 @@ pub(crate) fn export(
         .map(ExportCursor::pictures)
         .transpose()?;
     let ring_pictures = RingPictures::default();
+    let badges = (layout.badges.iter())
+        .map(|badge| Ok((badge.clone(), badge.pictures(layout.height)?)))
+        .collect::<Result<Vec<_>>>()?;
     let mut scene = layout.clone();
     scene.cuts.sort_by(|a, b| a.start.total_cmp(&b.start));
     let picture = CGRect::new(
@@ -246,6 +307,11 @@ pub(crate) fn export(
             }
         }
         let mut image = cutout.imageByCompositingOverImage(&frame);
+        for (badge, pictures) in &badges {
+            if let Some(step) = badge.step(now) {
+                image = pictures[step].imageByCompositingOverImage(&image);
+            }
+        }
         if let Some(Ok(Some(drawn))) = scene
             .cursor
             .as_ref()
@@ -301,12 +367,7 @@ pub(crate) fn export(
     };
     read_all(&reader, || match options.format {
         ExportFormat::Mp4 => {
-            let settings = compression(
-                layout.width,
-                layout.height,
-                options.frame_rate,
-                options.bits_per_pixel,
-            )?;
+            let settings = compression(layout.width, layout.height, options.quality)?;
             write_mp4(&frames, sound.as_deref(), output, &settings, progress_at)
         }
         ExportFormat::Gif => write_gif(

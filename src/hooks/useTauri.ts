@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -13,15 +13,12 @@ export function useTauriEvent<E extends EventName>(
   handler: (payload: Payload<E>) => void,
   scope: "any" | "window" = "any",
 ) {
-  const latest = useRef(handler);
-  useLayoutEffect(() => {
-    latest.current = handler;
-  });
+  const onPayload = useEffectEvent(handler);
 
   useEffect(() => {
     let isMounted = true;
     const onEvent = ({ payload }: { payload: Payload<E> }) => {
-      if (isMounted) latest.current(payload);
+      if (isMounted) onPayload(payload);
     };
     const unlisten =
       scope === "window"
@@ -45,16 +42,13 @@ export function useInvokeOnMount<T>(
   command: string,
   onResult: (result: T) => void,
 ) {
-  const latest = useRef(onResult);
-  useLayoutEffect(() => {
-    latest.current = onResult;
-  });
+  const onAnswer = useEffectEvent(onResult);
 
   useEffect(() => {
     let isMounted = true;
     invoke<T>(command)
       .then((result) => {
-        if (isMounted) latest.current(result);
+        if (isMounted) onAnswer(result);
       })
       .catch(console.error);
     return () => {

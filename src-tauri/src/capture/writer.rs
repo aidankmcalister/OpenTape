@@ -13,7 +13,6 @@ use anyhow::{Result, anyhow, bail};
 use cidre::{
     arc, av,
     av::AssetWriterStatus as Status,
-    av::capture::{VideoDataOutputSampleBufDelegate, VideoDataOutputSampleBufDelegateImpl},
     blocks, cf, cm, define_obj_type, ns, objc, os,
     sc::{
         self,
@@ -111,22 +110,21 @@ unsafe extern "C" {
 }
 
 impl RecorderState {
-    fn add_frame(&mut self, sample_buf: &cm::SampleBuf, is_camera: bool) {
+    fn add_frame(&mut self, sample_buf: &cm::SampleBuf) {
         let Some(image) = sample_buf.image_buf() else {
             return;
         };
         if self.writer.status() != Status::Writing {
             return;
         }
-        let source = if is_camera { "camera" } else { "screen" };
         let captured = sample_buf.pts();
         let mut timeline = lock(&self.timeline);
         let Some(video_time) = timeline.video_time(captured.as_secs()) else {
             return;
         };
-        if !timeline.accept_frame(video_time, is_camera) {
+        if !timeline.accept_frame(video_time) {
             log::warn!(
-                "skipped a {source} frame whose time did not move forward ({:.6} s)",
+                "skipped a screen frame whose time did not move forward ({:.6} s)",
                 captured.as_secs()
             );
             return;
@@ -134,9 +132,7 @@ impl RecorderState {
         let first_frame_time = match self.first_frame_time {
             Some(time) => time,
             None => {
-                let Some(start) = timeline.session_start(video_time, is_camera) else {
-                    return;
-                };
+                let start = timeline.session_start(video_time);
                 self.writer
                     .start_session_at_src_time(cm::Time::with_secs(start, captured.scale));
                 *self.first_frame_time.insert(captured.as_secs())
@@ -147,7 +143,7 @@ impl RecorderState {
             let _ = self.adaptor.append_pixel_buf_with_pts(image, pts);
             if self.writer.status() == Status::Failed {
                 log::warn!(
-                    "the {source} file failed at the frame {:.3} s in: {:#}",
+                    "the screen file failed at the frame {:.3} s in: {:#}",
                     captured.as_secs() - first_frame_time,
                     write_error(&self.writer)
                 );
@@ -157,27 +153,12 @@ impl RecorderState {
 }
 
 define_obj_type!(
-    pub Recorder + OutputImpl + VideoDataOutputSampleBufDelegateImpl,
+    pub Recorder + OutputImpl,
     RecorderState,
     RECORDER
 );
 
 impl Output for Recorder {}
-
-impl VideoDataOutputSampleBufDelegate for Recorder {}
-
-#[objc::add_methods]
-impl VideoDataOutputSampleBufDelegateImpl for Recorder {
-    extern "C" fn impl_capture_output_did_output_sample_buf_from_connection(
-        &mut self,
-        _cmd: Option<&objc::Sel>,
-        _output: &av::CaptureOutput,
-        sample_buf: &cm::SampleBuf,
-        _connection: &av::CaptureConnection,
-    ) {
-        self.inner_mut().add_frame(sample_buf, true);
-    }
-}
 
 #[objc::add_methods]
 impl OutputImpl for Recorder {
@@ -202,7 +183,7 @@ impl OutputImpl for Recorder {
             }
             return;
         }
-        state.add_frame(sample_buf, false);
+        state.add_frame(sample_buf);
     }
 }
 

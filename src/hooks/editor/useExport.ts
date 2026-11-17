@@ -3,7 +3,6 @@ import type { AppSettings } from "@/hooks/useAppSettings";
 import { invoke } from "@tauri-apps/api/core";
 import { useTauriEvent } from "@/hooks/useTauri";
 import {
-  aboutMegabytes,
   exportLayout,
   exportOptions,
   exportResolution,
@@ -118,13 +117,10 @@ export function useExport(
     output: output && {
       width: output.width,
       height: output.height,
-      megabytes: aboutMegabytes(output, durationMs, settings),
     },
     showInFinder: () => {
       if (state.stage !== "done") return;
-      invoke("show_export_in_finder", { path: state.path }).catch(
-        console.error,
-      );
+      invoke("show_export_in_finder").catch(console.error);
     },
   };
 }

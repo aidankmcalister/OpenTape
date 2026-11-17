@@ -33,7 +33,6 @@ import {
   changeRegion,
   dragRegions,
   nextId,
-  removeRegionAt,
   removeRegions,
   settleAll,
   settleSuggestion,
@@ -43,8 +42,10 @@ import {
 } from "@/lib/editor/regions";
 import {
   type Clip,
+  fitHidden,
   timeMap,
   removeClip,
+  restoreCut,
   splitClip,
   trimClip,
 } from "@/lib/editor/clips";
@@ -62,6 +63,7 @@ import {
   undo,
 } from "@/lib/editor/project";
 import type { SoundSettings } from "@/lib/editor/sound";
+import { pickedIds } from "@/lib/editor/timeline";
 import type { Clock } from "@/lib/time";
 
 export function useProject(
@@ -71,7 +73,8 @@ export function useProject(
 ) {
   const [history, setHistory] = useState(() => historyOf(NEW_PROJECT));
   const canSuggest = cursor.moves.length > 0 && durationMs > 0;
-  if (canSuggest && !history.present.suggestionsMade) {
+  const { suggestionsMade, keysAdded } = history.present;
+  if (canSuggest && !(suggestionsMade && keysAdded)) {
     setHistory((current) => ({
       ...current,
       present: suggest(current.present, cursor, durationMs),
@@ -109,6 +112,13 @@ export function useProject(
   const project = draft ?? history.present;
   const time = timeMap(project.clips, project.regions, durationMs);
   const shown = time.shown(project.regions);
+  // Blocks hidden in removed footage are never selected, so Delete can't reach them.
+  const selected = selectedIds.filter((id) => shown.some((at) => at.id === id));
+  /** Kept-time edges a drag catches besides other blocks: the playhead and every clip edge. */
+  const snapEdgesMs = () => [
+    time.at(playheadMs()),
+    ...time.clips.flatMap(({ startMs, endMs }) => [startMs, endMs]),
+  ];
   const selectOnly = (ids: number[], clipId: number | null = null) => {
     setSelectedIds(ids);
     setSelectedClipId(clipId);
@@ -126,39 +136,45 @@ export function useProject(
       setEditingId(id);
     },
     closeEditor: () => setEditingId(null),
-    selectedIds,
+    selectedIds: selected,
     selectedClipId,
     select: (ids: number[]) => selectOnly(ids),
-    pick: (id: number, isAdding: boolean) => {
-      if (!isAdding && selectedIds.includes(id)) return;
-      if (!isAdding) return selectOnly([id]);
-      selectOnly(
-        selectedIds.includes(id)
-          ? selectedIds.filter((other) => other !== id)
-          : [...selectedIds, id],
-      );
+    /** A click on a block or a run (`ids`); `isToggling` with ⌘ or ⇧. */
+    pick: (ids: number[], isToggling: boolean) => {
+      const next = pickedIds(selected, ids, isToggling);
+      if (next !== selected) selectOnly(next);
     },
-    selectAll: () => selectOnly(project.regions.map((region) => region.id)),
+    selectAll: () => selectOnly(shown.map((region) => region.id)),
     selectClip: (id: number) => selectOnly([], id),
     change,
-    add: (kind: RegionKind) => {
-      const atMs = time.at(playheadMs());
+    add: (
+      kind: RegionKind,
+      atMs = time.at(playheadMs()),
+      settings?: Region["settings"],
+    ) => {
       change(
-        inKeptTime((regions, lengthMs) =>
-          addRegion(regions, kind, atMs, lengthMs),
-        ),
+        inKeptTime((regions, lengthMs) => {
+          const added = addRegion(regions, kind, atMs, lengthMs);
+          if (!settings || added === regions) return added;
+          return [...regions, { ...added[added.length - 1], settings }];
+        }),
       );
       selectOnly([nextId(project.regions)]);
     },
+    snapEdgesMs,
+    /** `withinMs`: how near an edge a drag must come to catch it. */
     retime: (
       ids: number[],
       drag: RegionDrag,
       deltaMs: number,
-      isPreview = false,
+      { isPreview = false, withinMs = 0 } = {},
     ) =>
       apply(
         inKeptTime((regions, lengthMs) =>
-          dragRegions(regions, ids, drag, deltaMs, lengthMs),
+          dragRegions(regions, ids, drag, deltaMs, lengthMs, {
+            edgesMs: snapEdgesMs(),
+            withinMs,
+          }),
         ),
         isPreview,
       ),
@@ -198,18 +214,21 @@ export function useProject(
     setCutting: setIsCutting,
     split: (atMs: number) =>
       changeClips((clips) => splitClip(clips, atMs, durationMs)),
+    restore: (afterId: number) =>
+      change((project) => {
+        const clips = restoreCut(project.clips, afterId);
+        if (clips === project.clips) return project;
+        const regions = fitHidden(project.regions, project.clips, durationMs);
+        return { ...project, clips, regions };
+      }),
     remove: () => {
       if (selectedClipId !== null) {
         changeClips((clips) => removeClip(clips, selectedClipId, durationMs));
         setSelectedClipId(null);
         return;
       }
-      const atMs = playheadMs();
-      changeRegions((regions) =>
-        selectedIds.length === 0
-          ? removeRegionAt(regions, atMs)
-          : removeRegions(regions, selectedIds),
-      );
+      if (selected.length === 0) return;
+      changeRegions((regions) => removeRegions(regions, selected));
       setSelectedIds([]);
     },
     commit: () => {
@@ -371,13 +390,19 @@ export function useVisibleBox(src: string) {
   return box;
 }
 
-export function useLanes(kinds: RegionKind[]) {
+/** `opensSkipped`: the Skipped row starts open, for a recording with only skipped keys. */
+export function useLanes(kinds: RegionKind[], opensSkipped: boolean) {
   const [solo, setSolo] = useState<RegionKind | null>(null);
   const [collapsed, setCollapsed] = useState<RegionKind[]>([]);
+  const [showsSkippedChoice, setShowsSkipped] = useState<boolean | null>(null);
+  const showsSkipped = showsSkippedChoice ?? opensSkipped;
   const isAllCollapsed = kinds.every((kind) => collapsed.includes(kind));
   return {
+    kinds,
     solo,
     collapsed,
+    showsSkipped,
+    toggleSkipped: () => setShowsSkipped(!showsSkipped),
     hasLanes: kinds.length > 0,
     isAllCollapsed,
     toggleAll: () => setCollapsed(isAllCollapsed ? [] : kinds),

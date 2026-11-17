@@ -13,6 +13,7 @@ use std::{
 use anyhow::{Context, Result, anyhow};
 use cidre::cg;
 
+use super::key_log::{KeyTap, Pressed};
 use super::timeline::host_time_now;
 use crate::macos::cursor::KindReader;
 
@@ -21,20 +22,25 @@ const KIND_EVERY: u32 = 24;
 pub(super) struct CursorLogger {
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<Result<()>>>,
+    pub records_keys: bool,
 }
 
 impl CursorLogger {
-    pub(super) fn start(path: &Path) -> Result<Self> {
+    /// Logs the pointer and keys; `wants_keys` adds which keys were pressed, when allowed.
+    pub(super) fn start(path: &Path, wants_keys: bool) -> Result<Self> {
         let file =
             File::create(path).with_context(|| format!("could not create {}", path.display()))?;
+        let keys = wants_keys.then(KeyTap::start).flatten();
+        let records_keys = keys.is_some();
         let stop = Arc::new(AtomicBool::new(false));
         let thread = {
             let stop = Arc::clone(&stop);
-            thread::spawn(move || poll_until_stopped(BufWriter::new(file), &stop))
+            thread::spawn(move || poll_until_stopped(BufWriter::new(file), &stop, keys.as_ref()))
         };
         Ok(Self {
             stop,
             thread: Some(thread),
+            records_keys,
         })
     }
 
@@ -64,7 +70,11 @@ struct Sample {
     right: bool,
 }
 
-fn poll_until_stopped(mut out: BufWriter<File>, stop: &AtomicBool) -> Result<()> {
+fn poll_until_stopped(
+    mut out: BufWriter<File>,
+    stop: &AtomicBool,
+    keys: Option<&KeyTap>,
+) -> Result<()> {
     let interval = Duration::from_secs_f64(1.0 / 240.0);
     let mut next_poll = Instant::now();
     let mut last_flush = Instant::now();
@@ -72,7 +82,7 @@ fn poll_until_stopped(mut out: BufWriter<File>, stop: &AtomicBool) -> Result<()>
     let kinds = KindReader::new();
     let mut kind = "";
     let state = cg::EventSrcState::CombinedSession;
-    let mut keys = state.counter_for_event_type(cg::EventType::KEY_DOWN);
+    let mut key_count = state.counter_for_event_type(cg::EventType::KEY_DOWN);
     let mut polls: u32 = 0;
     while !stop.load(Ordering::Relaxed) {
         if let Some(event) = cg::Event::with_src(None) {
@@ -98,10 +108,13 @@ fn poll_until_stopped(mut out: BufWriter<File>, stop: &AtomicBool) -> Result<()>
                     )?;
                 }
                 let typed = state.counter_for_event_type(cg::EventType::KEY_DOWN);
-                if typed != keys {
-                    keys = typed;
+                if typed != key_count && keys.is_none() {
                     writeln!(out, r#"{{"type":"key","t":{:.6}}}"#, sample.t)?;
                 }
+                key_count = typed;
+            }
+            for pressed in keys.iter().flat_map(|keys| keys.pressed.try_iter()) {
+                writeln!(out, "{}", key_line(&pressed))?;
             }
             polls += 1;
             previous = Some(sample);
@@ -118,6 +131,14 @@ fn poll_until_stopped(mut out: BufWriter<File>, stop: &AtomicBool) -> Result<()>
     }
     out.flush()?;
     Ok(())
+}
+
+fn key_line(pressed: &Pressed) -> String {
+    if pressed.caps.is_empty() {
+        return format!(r#"{{"type":"key","t":{:.6}}}"#, pressed.t);
+    }
+    let caps = serde_json::to_string(&pressed.caps).unwrap_or_else(|_| "[]".into());
+    format!(r#"{{"type":"key","t":{:.6},"keys":{caps}}}"#, pressed.t)
 }
 
 fn lines_between(previous: Option<&Sample>, now: &Sample) -> Vec<String> {
@@ -210,9 +231,30 @@ mod tests {
     }
 
     #[test]
+    fn a_key_line_should_hold_its_caps_as_json() {
+        let pressed = Pressed {
+            t: 1.5,
+            caps: vec!["⌘".into(), "\\".into()],
+        };
+        assert_eq!(
+            key_line(&pressed),
+            r#"{"type":"key","t":1.500000,"keys":["⌘","\\"]}"#
+        );
+    }
+
+    #[test]
+    fn a_typed_key_should_be_logged_as_a_time_alone() {
+        let typed = Pressed {
+            t: 2.0,
+            caps: Vec::new(),
+        };
+        assert_eq!(key_line(&typed), r#"{"type":"key","t":2.000000}"#);
+    }
+
+    #[test]
     fn dropping_a_logger_should_tell_its_thread_to_end() {
         let path = std::env::temp_dir().join(format!("cursor-log-{}.jsonl", std::process::id()));
-        let logger = CursorLogger::start(&path).expect("a temp file can be created");
+        let logger = CursorLogger::start(&path, false).expect("a temp file can be created");
         let stop = Arc::clone(&logger.stop);
         drop(logger);
         assert!(stop.load(Ordering::Relaxed));

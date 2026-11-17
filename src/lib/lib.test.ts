@@ -8,7 +8,7 @@ import {
   relativeTo,
 } from "./geometry";
 import { shortcutFromKey, shortcutLabel } from "./shortcut";
-import { createClock, formatClock, formatTime, twoDigits } from "./time";
+import { createClock, formatClock, twoDigits } from "./time";
 
 describe("geometry", () => {
   const rect = (x: number, y: number, width: number, height: number) => ({
@@ -62,15 +62,6 @@ describe("geometry", () => {
 });
 
 describe("time", () => {
-  test.each([
-    [0, "00:00.00"],
-    [6350, "00:06.35"],
-    [125_000, "02:05.00"],
-    [999, "00:00.99"],
-  ])("formatTime(%p) rounds down to %p", (ms, text) => {
-    expect(formatTime(ms)).toBe(text);
-  });
-
   test.each([
     [12_900, "00:12"],
     [605_000, "10:05"],

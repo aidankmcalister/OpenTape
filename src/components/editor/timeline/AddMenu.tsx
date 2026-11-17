@@ -64,7 +64,7 @@ export default function AddMenu({
                 >
                   <KindTile kind={kind} />
                   {REGIONS[kind].label}
-                  <CommandShortcut>
+                  <CommandShortcut className="tracking-normal">
                     <Kbd>{REGIONS[kind].key}</Kbd>
                   </CommandShortcut>
                 </CommandItem>

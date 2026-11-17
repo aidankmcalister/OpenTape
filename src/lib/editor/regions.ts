@@ -1,7 +1,7 @@
 import { type Point, type Rect, clamp } from "@/lib/geometry";
 import type { MarkColor } from "./appearance";
 
-export type RegionKind = "zoom" | "speed" | "blur";
+export type RegionKind = "zoom" | "speed" | "blur" | "keys";
 
 export type Region = {
   id: number;
@@ -43,6 +43,13 @@ export type Setting =
     }
   | { kind: "color"; key: string; label: string; initial: MarkColor }
   | {
+      kind: "shortcut";
+      key: string;
+      label: string;
+      initial: string;
+    }
+  | { kind: "menu"; key: string; label: string; options: readonly string[] }
+  | {
       kind: "switch";
       key: string;
       label: string;
@@ -61,17 +68,23 @@ export const REGIONS: Record<
   {
     label: string;
     key: string;
+    /** "r g b" for fills, rings and bars. */
     hue: string;
+    /** "r g b" for the icon, name, value and keycaps, wherever the kind shows. */
+    text: string;
     amount: number;
     lengthMs: number;
     settings: Setting[];
     shows: (value: Value) => string;
+    /** Its blocks show the value as keycaps, without the icon and label. */
+    showsKeycaps?: boolean;
   }
 > = {
   zoom: {
     label: "Zoom",
     key: "Z",
     hue: "255 122 26",
+    text: "255 165 102",
     amount: 1.5,
     lengthMs: 2000,
     settings: [
@@ -97,6 +110,7 @@ export const REGIONS: Record<
     label: "Speed",
     key: "S",
     hue: "61 155 255",
+    text: "140 196 255",
     amount: 2,
     lengthMs: 2000,
     settings: [
@@ -127,6 +141,7 @@ export const REGIONS: Record<
     label: "Blur",
     key: "B",
     hue: "34 211 238",
+    text: "103 232 249",
     amount: 0,
     lengthMs: 2000,
     settings: [
@@ -139,6 +154,24 @@ export const REGIONS: Record<
       },
     ],
     shows: (value) => String(value("strength")),
+  },
+  keys: {
+    label: "Keystrokes",
+    key: "K",
+    hue: "163 230 53",
+    text: "190 242 100",
+    amount: 0,
+    lengthMs: 1500,
+    settings: [
+      {
+        kind: "shortcut",
+        key: "text",
+        label: "Text",
+        initial: "⌘K",
+      },
+    ],
+    shows: (value) => String(value("text")),
+    showsKeycaps: true,
   },
 };
 
@@ -202,7 +235,10 @@ export function initialOf(setting: Setting): SettingValue {
       return setting.initial ?? setting.min;
     case "choice":
       return setting.initial ?? setting.options[0];
+    case "menu":
+      return setting.options[0];
     case "color":
+    case "shortcut":
       return setting.initial;
     case "switch":
       return setting.initial ?? false;
@@ -217,6 +253,11 @@ function seconds(ms: number): string {
 
 export const ALL_KINDS = Object.keys(REGIONS) as RegionKind[];
 
+/** The kind whose blocks show keycaps: the recorded keys, with a Skipped row for the rest. */
+export const KEYCAPS_KIND = ALL_KINDS.find(
+  (kind) => REGIONS[kind].showsKeycaps,
+) as RegionKind;
+
 export const MIN_REGION_MS = 200;
 
 const SNAP_MS = 100;
@@ -230,6 +271,8 @@ export function addRegion(
   durationMs: number,
   minMs = MIN_REGION_MS,
 ): Region[] {
+  // Inside a block of its kind, it goes to the next gap.
+  atMs = regionAt(regions, kind, atMs)?.endMs ?? atMs;
   const [gap] = gapsBetween(sameKind(regions, kind), 0, durationMs)
     .filter(({ startMs, endMs }) => endMs - startMs >= minMs)
     .sort(
@@ -252,12 +295,28 @@ export function dragRegions(
   drag: RegionDrag,
   deltaMs: number,
   durationMs: number,
-  minMs = MIN_REGION_MS,
+  {
+    minMs = MIN_REGION_MS,
+    edgesMs = [],
+    withinMs = 0,
+  }: {
+    minMs?: number;
+    /** Times it catches besides the grid and the other blocks' edges, within `withinMs`. */
+    edgesMs?: number[];
+    withinMs?: number;
+  } = {},
 ): Region[] {
   const dragged = regions.filter((region) => ids.includes(region.id));
   if (dragged.length === 0) return regions;
+  const edges = snapEdges(regions, ids, edgesMs);
+  const catches = (ms: number) =>
+    edges
+      .filter((edge) => Math.abs(edge - ms) <= withinMs)
+      .sort((a, b) => Math.abs(a - ms) - Math.abs(b - ms))[0];
   const shift =
-    drag === "move" ? movedBy(regions, dragged, deltaMs, durationMs) : 0;
+    drag === "move"
+      ? movedBy(regions, dragged, deltaMs, durationMs, catches)
+      : 0;
   const changed = regions.map((region) => {
     if (!dragged.includes(region)) return region;
     const span =
@@ -270,10 +329,10 @@ export function dragRegions(
             deltaMs,
             durationMs,
             minMs,
-            snap,
+            (ms) => catches(ms) ?? snap(ms),
           );
     return span.startMs !== region.startMs || span.endMs !== region.endMs
-      ? { ...region, ...span }
+      ? { ...region, ...span, isSuggested: undefined }
       : region;
   });
   return changed.every((region, index) => region === regions[index])
@@ -286,10 +345,16 @@ function movedBy(
   group: Region[],
   deltaMs: number,
   durationMs: number,
+  catches: (ms: number) => number | undefined,
 ): number {
-  const first = Math.min(...group.map(({ startMs }) => startMs));
-  const last = Math.max(...group.map(({ endMs }) => endMs));
-  const wanted = snap(first + deltaMs) - first;
+  const { startMs: first, endMs: last } = spanOf(group);
+  // The start or the end catches the nearest edge; else the start goes to the grid.
+  const [wanted = snap(first + deltaMs) - first] = [first, last]
+    .flatMap((edge) => {
+      const at = catches(edge + deltaMs);
+      return at === undefined ? [] : [at - edge];
+    })
+    .sort((a, b) => Math.abs(a - deltaMs) - Math.abs(b - deltaMs));
   const others = regions.filter((region) => !group.includes(region));
   const blockers = group.flatMap((moving) =>
     sameKind(others, moving.kind).map((other) => ({ moving, other })),
@@ -315,6 +380,28 @@ function movedBy(
     .filter(fits)
     .sort((a, b) => Math.abs(a - wanted) - Math.abs(b - wanted));
   return best;
+}
+
+/** Edges a drag of `ids` catches: `edgesMs` and the other blocks' starts and ends. */
+export function snapEdges(
+  regions: Region[],
+  ids: number[],
+  edgesMs: number[],
+): number[] {
+  return [
+    ...edgesMs,
+    ...regions
+      .filter(({ id }) => !ids.includes(id))
+      .flatMap(({ startMs, endMs }) => [startMs, endMs]),
+  ];
+}
+
+/** From the first start to the last end. */
+export function spanOf(spans: Span[]): Span {
+  return {
+    startMs: Math.min(...spans.map(({ startMs }) => startMs)),
+    endMs: Math.max(...spans.map(({ endMs }) => endMs)),
+  };
 }
 
 export function stretched(
@@ -378,8 +465,14 @@ function snap(ms: number): number {
   return Math.round(ms / SNAP_MS) * SNAP_MS;
 }
 
-export function laneKinds(regions: Region[]): RegionKind[] {
-  return ALL_KINDS.filter((kind) => sameKind(regions, kind).length > 0);
+/** Kinds with blocks, plus `alsoShown` lanes that have something else to show. */
+export function laneKinds(
+  regions: Region[],
+  alsoShown: RegionKind[] = [],
+): RegionKind[] {
+  return ALL_KINDS.filter(
+    (kind) => alsoShown.includes(kind) || sameKind(regions, kind).length > 0,
+  );
 }
 
 export function regionAt(
@@ -427,10 +520,6 @@ export function settleAll(regions: Region[], isKept: boolean): Region[] {
   );
 }
 
-export function removeRegionAt(regions: Region[], ms: number): Region[] {
-  return regions.filter((region) => !covers(region, ms));
-}
-
 export function amountAt(
   regions: Region[],
   kind: RegionKind,
@@ -475,14 +564,4 @@ export function regionsAt(regions: Region[], ms: number): Region[] {
   return laneKinds(regions).flatMap(
     (kind) => regionAt(regions, kind, ms) ?? [],
   );
-}
-
-export function touchingSides(regions: Region[], region: Region) {
-  const others = sameKind(regions, region.kind).filter(
-    (other) => other !== region,
-  );
-  return {
-    start: others.some(({ endMs }) => endMs === region.startMs),
-    end: others.some(({ startMs }) => startMs === region.endMs),
-  };
 }

@@ -69,6 +69,10 @@ struct Kept {
     video_path: PathBuf,
     name: String,
     saved_to: Option<PathBuf>,
+    /// The last export, also one made to the clipboard or with edits made since.
+    exported: Option<PathBuf>,
+    /// The project JSON last loaded or saved, so an unchanged save writes nothing.
+    project: Option<String>,
     window: Window,
 }
 
@@ -129,6 +133,8 @@ impl CurrentRecording {
                 video_path: video_path.clone(),
                 name,
                 saved_to: None,
+                exported: None,
+                project: None,
                 window: Window::Preview,
             })
             .shown()
@@ -200,6 +206,13 @@ impl CurrentRecording {
             .map(|kept| (kept.window, kept.shown()))
     }
 
+    /// The last export, or the one saved before the editor opened.
+    fn exported(&self) -> Option<PathBuf> {
+        let kept = lock(&self.kept);
+        let kept = kept.as_ref()?;
+        kept.exported.clone().or_else(|| kept.saved_to.clone())
+    }
+
     fn saved_to(&self) -> Option<PathBuf> {
         let saved_to = lock(&self.kept).as_ref()?.saved_to.clone()?;
         saved_to.exists().then_some(saved_to)
@@ -236,7 +249,12 @@ impl CurrentRecording {
     fn load_project(&self) -> Result<Option<String>> {
         let path = self.project_path()?;
         match std::fs::read_to_string(&path) {
-            Ok(json) => Ok(Some(json)),
+            Ok(json) => {
+                if let Some(kept) = lock(&self.kept).as_mut() {
+                    kept.project = Some(json.clone());
+                }
+                Ok(Some(json))
+            }
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(err) => Err(err).with_context(|| format!("could not read {}", path.display())),
         }
@@ -245,16 +263,23 @@ impl CurrentRecording {
     /// Saves the edits; a change since the last Copy or Save makes closing ask again.
     fn save_project(&self, json: &str) -> Result<()> {
         let path = self.project_path()?;
-        if std::fs::read_to_string(&path).is_ok_and(|saved| saved == json) {
-            return Ok(());
-        }
-        if let Some(kept) = lock(&self.kept).as_mut() {
+        {
+            let mut kept = lock(&self.kept);
+            let kept = kept.as_mut().context("there's no recording")?;
+            if kept.project.as_deref() == Some(json) {
+                return Ok(());
+            }
             kept.saved_to = None;
         }
         let draft = path.with_extension("json.part");
         std::fs::write(&draft, json)
             .with_context(|| format!("could not write {}", draft.display()))?;
-        std::fs::rename(&draft, &path).with_context(|| format!("could not save {}", path.display()))
+        std::fs::rename(&draft, &path)
+            .with_context(|| format!("could not save {}", path.display()))?;
+        if let Some(kept) = lock(&self.kept).as_mut() {
+            kept.project = Some(json.to_owned());
+        }
+        Ok(())
     }
 
     fn add_background(&self, picture: &Path) -> Result<String> {
@@ -278,6 +303,9 @@ impl CurrentRecording {
         let _running = lock(&self.exporting);
         self.cancels_export.store(false, Ordering::Relaxed);
         let (video, export_name) = self.video(options.name.as_deref())?;
+        let edits_at_start = lock(&self.kept)
+            .as_ref()
+            .and_then(|kept| kept.project.clone());
         let extension = options.extension();
         let output = if options.to_clipboard {
             std::fs::create_dir_all(&self.folders.copies)?;
@@ -296,7 +324,11 @@ impl CurrentRecording {
             return Err(err);
         }
         if let Some(kept) = lock(&self.kept).as_mut() {
-            kept.saved_to = Some(output.clone());
+            kept.exported = Some(output.clone());
+            // Edits made while it ran aren't in this export, so closing should still ask.
+            if kept.project == edits_at_start {
+                kept.saved_to = Some(output.clone());
+            }
         }
         Ok(Some(output))
     }

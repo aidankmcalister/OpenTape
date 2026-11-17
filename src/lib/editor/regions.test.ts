@@ -8,14 +8,12 @@ import {
   changeSetting,
   dragRegions,
   nextId,
-  touchingSides,
   regionsAt,
   laneKinds,
   type Region,
   type RegionDrag,
   regionKindForKey,
   removeRegions,
-  removeRegionAt,
   REGIONS,
   regionAt,
   settleAll,
@@ -103,17 +101,42 @@ describe("regions", () => {
     },
   );
 
+  test.each([
+    ["move", 1000, 100, "2030-4030", "its end catches another kind's start"],
+    ["move", 1000, 0, "2000-4000", "out of range, it keeps to the grid"],
+    ["move", 1450, 100, "2460-4460", "its start catches the playhead"],
+    ["end", 1020, 100, "1000-4030", "a resized end catches an edge too"],
+  ] as const)(
+    "dragging %p by %p within %p gives %p: %s",
+    (edge, deltaMs, withinMs, expected) => {
+      const speed: Region = {
+        id: 3,
+        kind: "speed",
+        startMs: 4030,
+        endMs: 6000,
+        amount: 2,
+      };
+      const [zoom] = dragRegions(
+        [ZOOM_1_TO_3, speed],
+        [1],
+        edge,
+        deltaMs,
+        10_000,
+        {
+          edgesMs: [2460],
+          withinMs,
+        },
+      );
+      expect(spans([zoom])).toBe(expected);
+    },
+  );
+
   test("a drag that changes nothing, or a removal of nothing, returns the same regions", () => {
     const regions = [ZOOM_1_TO_3];
     expect(dragRegions(regions, [1], "move", 0, 10_000)).toBe(regions);
     expect(dragRegions(regions, [9], "move", 500, 10_000)).toBe(regions);
     expect(removeRegions(regions, [9])).toBe(regions);
     expect(removeRegions(regions, [1, 9])).toEqual([]);
-  });
-
-  test("removeRegionAt removes the region under the playhead, and nothing elsewhere", () => {
-    expect(removeRegionAt([ZOOM_1_TO_3], 2999)).toEqual([]);
-    expect(removeRegionAt([ZOOM_1_TO_3], 3000)).toEqual([ZOOM_1_TO_3]);
   });
 
   test.each([
@@ -158,12 +181,12 @@ test("changeRegion changes one region, and nothing when nothing changes", () => 
 });
 
 test.each(Object.entries(REGIONS))(
-  "%s reads at 4.5:1 or more at rest, on hover and selected",
-  (_, { hue }) => {
-    const { rest, hover, text, onHue } = hueColors(rgbOf(hue));
-    expect(contrastRatio(text, rest)).toBeGreaterThanOrEqual(4.5);
-    expect(contrastRatio(text, hover)).toBeGreaterThanOrEqual(4.5);
-    expect(contrastRatio(onHue, rgbOf(hue))).toBeGreaterThanOrEqual(4.5);
+  "%s reads at 4.5:1 or more at rest, and on hover or selected",
+  (_, { hue, text }) => {
+    const { rest, hover } = hueColors(rgbOf(hue));
+    const color = rgbOf(text);
+    expect(contrastRatio(color, rest)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(color, hover)).toBeGreaterThanOrEqual(4.5);
   },
 );
 
@@ -179,6 +202,7 @@ test("a setting change reads back, and amount stays on the region", () => {
 
 test.each([
   [2000, "1000-3000 3000-5000", "lands right after the block it's on"],
+  [1200, "1000-3000 3000-5000", "goes to the next gap, even near the start"],
   [500, "1000-3000 500-1000", "ends where the next block of its type starts"],
 ])("adding a zoom at %p gives %p: %s", (atMs, expected) => {
   const zoom: Region = {
@@ -218,8 +242,6 @@ function hueColors(hue: Rgb) {
   return {
     rest: mixRgb(hue, track, 0.18),
     hover: mixRgb(hue, track, 0.3),
-    text: mixRgb(hue, [255, 255, 255], 0.65),
-    onHue: [13, 13, 15] as Rgb,
   };
 }
 
@@ -252,20 +274,24 @@ describe("block length rules", () => {
 
   test("a block shorter than the minimum can grow from its start but never onto its neighbor", () => {
     const regions = [zoom(1, 0, 2000), zoom(2, 2000, 2300)];
-    const nudged = dragRegions(regions, [2], "start", 100, 10_000, 800);
+    const nudged = dragRegions(regions, [2], "start", 100, 10_000, {
+      minMs: 800,
+    });
     expect(nudged[1]).toMatchObject({ startMs: 2000, endMs: 2300 });
-    const pulled = dragRegions(regions, [2], "start", -500, 10_000, 800);
+    const pulled = dragRegions(regions, [2], "start", -500, 10_000, {
+      minMs: 800,
+    });
     expect(pulled[1].startMs).toBe(2000);
   });
 
   test("a block shorter than the minimum can grow from its end but not shrink", () => {
     const regions = [zoom(1, 1000, 1300)];
-    expect(dragRegions(regions, [1], "end", -100, 10_000, 800)[0].endMs).toBe(
-      1300,
-    );
-    expect(dragRegions(regions, [1], "end", 400, 10_000, 800)[0].endMs).toBe(
-      1700,
-    );
+    expect(
+      dragRegions(regions, [1], "end", -100, 10_000, { minMs: 800 })[0].endMs,
+    ).toBe(1300);
+    expect(
+      dragRegions(regions, [1], "end", 400, 10_000, { minMs: 800 })[0].endMs,
+    ).toBe(1700);
   });
 
   test("a new block needs a gap of at least the minimum", () => {
@@ -292,21 +318,6 @@ describe("who wins and who touches", () => {
   test("regionsAt gives one modifier per type at a moment", () => {
     expect(regionsAt(regions, 1200).map(({ id }) => id)).toEqual([2, 3]);
     expect(regionsAt(regions, 2500)).toEqual([]);
-  });
-
-  test("touchingSides finds same-type neighbors that share an edge", () => {
-    expect(touchingSides(regions, regions[0])).toEqual({
-      start: false,
-      end: true,
-    });
-    expect(touchingSides(regions, regions[1])).toEqual({
-      start: true,
-      end: false,
-    });
-    expect(touchingSides(regions, regions[2])).toEqual({
-      start: false,
-      end: false,
-    });
   });
 
   test("nextId is one past the highest id", () => {
@@ -359,4 +370,27 @@ test("Keep all and Dismiss all settle every suggestion of every kind at once and
   );
   expect(settleAll(regions, true)[2]).toBe(regions[2]);
   expect(settleAll(regions, false)).toEqual([regions[2]]);
+});
+
+test("moving or resizing a suggestion keeps it, and a drag that goes nowhere leaves it a suggestion", () => {
+  const suggested = {
+    id: 1,
+    kind: "zoom" as const,
+    startMs: 1000,
+    endMs: 2000,
+    amount: 1.5,
+    isSuggested: true,
+  };
+  const [moved] = dragRegions([suggested], [1], "move", 500, 10_000);
+  expect(moved).toEqual({
+    id: 1,
+    kind: "zoom",
+    startMs: 1500,
+    endMs: 2500,
+    amount: 1.5,
+  });
+  const [resized] = dragRegions([suggested], [1], "end", 1000, 10_000);
+  expect(resized.isSuggested).toBeUndefined();
+  expect(resized.endMs).toBe(3000);
+  expect(dragRegions([suggested], [1], "move", 0, 10_000)[0]).toBe(suggested);
 });

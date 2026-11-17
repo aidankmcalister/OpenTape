@@ -7,7 +7,12 @@ function permissions(
   microphone: Access,
   hasFinishedSetup = false,
 ): Permissions {
-  return { screenRecording, microphone, hasFinishedSetup };
+  return {
+    screenRecording,
+    microphone,
+    inputMonitoring: "notAsked",
+    hasFinishedSetup,
+  };
 }
 
 test("nothing allowed on first launch can't continue yet", () => {
@@ -44,4 +49,15 @@ test("Screen Recording off after setup is a reminder", () => {
   expect(
     setupProgress(permissions("allowed", "notAsked", true)).isReminder,
   ).toBe(false);
+});
+
+test("Input Monitoring counts only when recording keys", () => {
+  const keysOff = permissions("allowed", "allowed");
+  expect(setupProgress(keysOff).action).toBe("done");
+  expect(setupProgress(keysOff, true).action).toBe("continue");
+  const restart = { ...keysOff, inputMonitoring: "needsRestart" as const };
+  expect(setupProgress(restart).action).toBe("done");
+  expect(setupProgress(restart, true).action).toBe("restart");
+  const allowed = { ...keysOff, inputMonitoring: "allowed" as const };
+  expect(setupProgress(allowed, true).action).toBe("done");
 });

@@ -37,6 +37,27 @@ export type Appearance = {
   borderOpacity: number;
   borderColor: string;
   cursor: CursorSettings;
+  keys: KeySettings;
+};
+
+export const KEY_POSITIONS = [
+  "Top left",
+  "Top center",
+  "Top right",
+  "Bottom left",
+  "Bottom center",
+  "Bottom right",
+] as const;
+
+/** How every key badge in a recording looks. */
+export type KeySettings = {
+  size: "Small" | "Medium" | "Large";
+  position: (typeof KEY_POSITIONS)[number];
+};
+
+export const DEFAULT_KEYS: KeySettings = {
+  size: "Medium",
+  position: "Bottom left",
 };
 
 export type CursorMode = "Hidden" | "Native" | "Styled";
@@ -155,6 +176,7 @@ export const DEFAULT_APPEARANCE: Appearance = {
   borderOpacity: 100,
   borderColor: COLORS[6],
   cursor: DEFAULT_CURSOR,
+  keys: DEFAULT_KEYS,
 };
 
 export function readAppearance(saved: Partial<Appearance> = {}): Appearance {
@@ -163,6 +185,7 @@ export function readAppearance(saved: Partial<Appearance> = {}): Appearance {
     ...saved,
     fill: { ...DEFAULT_APPEARANCE.fill, ...saved.fill },
     cursor: { ...DEFAULT_CURSOR, ...saved.cursor },
+    keys: { ...DEFAULT_KEYS, ...saved.keys },
   };
 }
 

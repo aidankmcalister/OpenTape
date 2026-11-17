@@ -26,7 +26,12 @@ import {
 import { frameCrop } from "@/lib/editor/appearance";
 import { timeMap } from "@/lib/editor/clips";
 import ModifierEditor from "@/components/editor/timeline/ModifierEditor";
-import { laneKinds, regionKindForKey } from "@/lib/editor/regions";
+import { hasCaps, opensSkipped, skippedKeys } from "@/lib/editor/keys";
+import {
+  KEYCAPS_KIND,
+  laneKinds,
+  regionKindForKey,
+} from "@/lib/editor/regions";
 import type { EditorAction } from "@/lib/editor/keymap";
 
 export default function Editor() {
@@ -61,12 +66,19 @@ function Workspace({
     useFinishedRecording(videoSrc, false);
   const soundTracks = useSoundTracks();
   const hasSound = soundTracks === null || soundTracks.length > 0;
-  const lanes = useLanes(laneKinds(edits.shown));
+  const lanes = useLanes(
+    laneKinds(edits.shown, hasCaps(cursor.pressed) ? [KEYCAPS_KIND] : []),
+    opensSkipped(cursor.pressed),
+  );
   const editing =
     edits.selectedIds.length === 1
       ? edits.project.regions.find(({ id }) => id === edits.editingId)
       : undefined;
   const { appearance, regions, clips } = edits.project;
+  const skipped = useMemo(
+    () => skippedKeys(cursor.pressed, regions),
+    [cursor.pressed, regions],
+  );
   const soloed = useMemo(
     () =>
       lanes.solo ? regions.filter(({ kind }) => kind === lanes.solo) : regions,
@@ -92,23 +104,24 @@ function Workspace({
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [panel, setPanel] = useState<SidebarPanel>("background");
   const [dialog, setDialog] = useState<EditorDialog | null>(null);
-  const nudgeOr =
-    (drag: "move" | "end", deltaMs: number, step: () => void) => () =>
-      edits.selectedIds.length > 0
-        ? edits.retime(edits.selectedIds, drag, deltaMs)
-        : step();
+  const nudgeOr = (deltaMs: number, step: () => void) => () =>
+    edits.selectedIds.length > 0
+      ? edits.retime(edits.selectedIds, "move", deltaMs)
+      : step();
   const actions: Record<EditorAction, () => void> = {
     togglePlay: moves.togglePlay,
-    stepBack: nudgeOr("move", -100, () => moves.step(-1)),
-    stepForward: nudgeOr("move", 100, () => moves.step(1)),
-    leapBack: nudgeOr("move", -1000, () => moves.leap(-1000)),
-    leapForward: nudgeOr("move", 1000, () => moves.leap(1000)),
-    toStart: nudgeOr("end", -100, moves.toStart),
-    toEnd: nudgeOr("end", 100, moves.toEnd),
+    stepBack: nudgeOr(-100, () => moves.step(-1)),
+    stepForward: nudgeOr(100, () => moves.step(1)),
+    leapBack: nudgeOr(-1000, () => moves.leap(-1000)),
+    leapForward: nudgeOr(1000, () => moves.leap(1000)),
+    // A move past either end stops there.
+    toStart: nudgeOr(-edits.time.lengthMs, moves.toStart),
+    toEnd: nudgeOr(edits.time.lengthMs, moves.toEnd),
     toggleLoop: playback.toggleLoop,
     toggleSound: playback.toggleSound,
     export: () => exporting.start?.(),
     toggleCut: () => edits.setCutting(!edits.isCutting),
+    cutAtPlayhead: () => edits.split(playback.clock.seconds() * 1000),
     openAdd: () => setIsAddOpen(true),
     remove: edits.remove,
     selectAll: edits.selectAll,
@@ -235,6 +248,8 @@ function Workspace({
               heldMs={playback.heldMs}
               onSkim={playback.skim}
               lanes={lanes}
+              pressed={cursor.pressed}
+              skipped={skipped}
               trackRef={trackRef}
               trackWidth={track.width}
               viewportRef={timelineZoom.viewportRef}

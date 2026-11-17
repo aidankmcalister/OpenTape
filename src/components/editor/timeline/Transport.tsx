@@ -31,7 +31,8 @@ import {
   type useTimeMap,
 } from "@/hooks/editor/usePlayback";
 import type { Edits, Lanes } from "@/hooks/editor/useProject";
-import { formatTime, type Clock } from "@/lib/time";
+import { rulerLabel, timeLabel } from "@/lib/editor/timeline";
+import type { Clock } from "@/lib/time";
 import AddMenu from "./AddMenu";
 
 const SPEEDS = [0.5, 1, 1.5, 2];
@@ -54,7 +55,7 @@ export default function Transport({
   onAddOpenChange: (isOpen: boolean) => void;
 }) {
   return (
-    <div className="grid h-10.25 grid-cols-[1fr_auto_1fr] items-start px-1 pt-1 hairline-b">
+    <div className="grid h-10 grid-cols-[1fr_auto_1fr] items-start px-1 pt-1 hairline-b">
       <div className="flex items-center gap-1">
         <Toggle
           size="icon"
@@ -160,7 +161,11 @@ export default function Transport({
           <TooltipContent>This recording has no sound</TooltipContent>
         </Tooltip>
         <Separator orientation="vertical" className="mx-2 my-3" />
-        <TimeReadout clock={playback.clock} at={edits.time.at} />
+        <TimeReadout
+          clock={playback.clock}
+          at={edits.time.at}
+          lengthMs={edits.time.lengthMs}
+        />
       </div>
     </div>
   );
@@ -169,16 +174,17 @@ export default function Transport({
 function TimeReadout({
   clock,
   at,
+  lengthMs,
 }: {
   clock: Clock;
   at: (sourceMs: number) => number;
+  lengthMs: number;
 }) {
-  const time = useClockValue(clock, (seconds) =>
-    formatTime(at(seconds * 1000)),
-  );
+  const time = useClockValue(clock, (seconds) => timeLabel(at(seconds * 1000)));
   return (
-    <span className="mr-2 font-mono text-ui text-muted-foreground tabular-nums">
-      {time}
+    <span className="mr-2 font-mono text-label text-foreground tabular-nums">
+      {time}{" "}
+      <span className="text-muted-foreground">/ {rulerLabel(lengthMs)}</span>
     </span>
   );
 }

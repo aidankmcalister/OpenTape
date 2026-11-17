@@ -12,6 +12,7 @@ export type EditorAction =
   | "toggleSound"
   | "export"
   | "toggleCut"
+  | "cutAtPlayhead"
   | "remove"
   | "openAdd"
   | "selectAll"
@@ -76,6 +77,7 @@ export const ACTION_NAMES: Record<EditorAction, string> = {
   toggleLoop: "Loop",
   toggleSound: "Mute",
   toggleCut: "Cut tool",
+  cutAtPlayhead: "Cut at the playhead",
   remove: "Delete selected",
   openAdd: "Search modifiers to add",
   selectAll: "Select every modifier",
@@ -146,7 +148,7 @@ export const SHORTCUTS: {
         actions: ["leapBack", "leapForward"],
       },
       {
-        label: "Jump to start or end, or move the selection's end",
+        label: "Jump to start or end, or move the selection there",
         actions: ["toStart", "toEnd"],
       },
       { actions: ["toggleLoop"] },

@@ -171,8 +171,14 @@ impl Floating {
                 if change.clicked && lock(&self.spot).is_none() {
                     follow_pointer(ns_window, self.anchor());
                 }
-                if change.released && self.window.snaps_to_corners {
-                    self.snap(ns_window);
+                let dropped = change.released.then(|| lock(&self.drag).take()).flatten();
+                if let Some(drag) = dropped {
+                    if self.window.snaps_to_corners {
+                        self.snap(ns_window, drag);
+                    }
+                    if self.window.keeps_its_spot {
+                        self.note_spot(ns_window);
+                    }
                 }
                 (self.window.on_pointer)(ns_window);
                 let on_page = if ns_window.isVisible() {
@@ -202,23 +208,25 @@ impl Floating {
         }
     }
 
-    /// A move with the mouse held down is a drag; anything else is the app placing the window.
+    /// A move with the mouse held down is a drag; anything else, like macOS moving the window
+    /// off a display that went away, is the app placing it and changes nothing remembered.
+    /// The pointer must be over the window too: the app moving it to the display just clicked
+    /// happens with the mouse held, but away from the pointer.
     fn note_move(&self, ns_window: &NSWindow) {
-        if self.window.keeps_its_spot {
-            self.note_spot(ns_window);
-        }
-        if !self.window.snaps_to_corners || NSEvent::pressedMouseButtons() & 1 == 0 {
+        let frame = ns_window.frame();
+        let is_held = NSEvent::pressedMouseButtons() & 1 != 0;
+        if !is_held || !Frame::from(frame).contains(Point::from(NSEvent::mouseLocation())) {
             return;
         }
-        let now = (Instant::now(), ns_window.frame().origin);
+        let now = (Instant::now(), frame.origin);
         let mut drag = lock(&self.drag);
         let before = drag.map_or(now, |drag| drag.last);
         *drag = Some(Drag { before, last: now });
     }
 
     /// Glides a dropped window into the corner it was dropped or thrown toward.
-    fn snap(&self, ns_window: &NSWindow) {
-        let (Some(drag), Some(screen)) = (lock(&self.drag).take(), ns_window.screen()) else {
+    fn snap(&self, ns_window: &NSWindow, drag: Drag) {
+        let Some(screen) = ns_window.screen() else {
             return;
         };
         let frame = ns_window.frame();

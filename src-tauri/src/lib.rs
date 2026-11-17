@@ -113,7 +113,7 @@ fn relaunch(app: AppHandle) -> util::CmdResult {
 }
 
 pub fn run() -> tauri::Result<()> {
-    permissions::answer_screen_check();
+    permissions::answer_access_checks();
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         log::error!("{info}");

@@ -1,17 +1,19 @@
-import React from "react";
+import React, { lazy, Suspense } from "react";
 import ReactDOM from "react-dom/client";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import "@fontsource-variable/space-grotesk";
-import "@fontsource/ibm-plex-mono/400.css";
-import "@fontsource/ibm-plex-mono/500.css";
+import "@fontsource/ibm-plex-mono/latin-400.css";
+import "@fontsource/ibm-plex-mono/latin-500.css";
 import "./index.css";
-import RecordBar from "@/pages/RecordBar";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import Editor from "@/pages/Editor";
-import Permissions from "@/pages/Permissions";
-import Picker from "@/pages/Picker";
-import RecordingPreview from "@/pages/RecordingPreview";
-import Settings from "@/pages/Settings";
+
+// Each window loads only its own page, so the bar and pickers skip the editor's code.
+const Editor = lazy(() => import("@/pages/Editor"));
+const Permissions = lazy(() => import("@/pages/Permissions"));
+const Picker = lazy(() => import("@/pages/Picker"));
+const RecordBar = lazy(() => import("@/pages/RecordBar"));
+const RecordingPreview = lazy(() => import("@/pages/RecordingPreview"));
+const Settings = lazy(() => import("@/pages/Settings"));
 
 function WindowContent({ label }: { label: string }) {
   if (label === "editor") return <Editor />;
@@ -27,7 +29,9 @@ function WindowContent({ label }: { label: string }) {
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <TooltipProvider>
-      <WindowContent label={getCurrentWindow().label} />
+      <Suspense>
+        <WindowContent label={getCurrentWindow().label} />
+      </Suspense>
     </TooltipProvider>
   </React.StrictMode>,
 );

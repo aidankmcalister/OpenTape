@@ -51,12 +51,13 @@ export default tseslint.config(
       ],
     },
   },
-  // The one place cn is configured, and the editor's appearance presets and color maths, which are user-facing colors.
+  // The one place cn is configured, and the editor's appearance presets, color maths and key badges, which are colors drawn into the video.
   { files: ["src/lib/utils.ts"], rules: { "no-restricted-imports": "off" } },
   {
     files: [
       "src/lib/editor/appearance.ts",
       "src/lib/editor/color.ts",
+      "src/lib/editor/keys.ts",
       "src/lib/editor/*.test.ts",
     ],
     rules: { "no-restricted-syntax": "off" },

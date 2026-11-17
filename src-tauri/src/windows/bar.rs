@@ -33,6 +33,7 @@ pub(crate) static WINDOW: Floating = Floating::new(Behavior {
     }),
 });
 static PILL_WIDTH: AtomicU64 = AtomicU64::new(0);
+static PILL_HEIGHT: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Serialize, TS)]
 #[ts(export, export_to = "bindings.ts")]
@@ -44,20 +45,12 @@ pub(crate) struct Device {
 #[derive(Debug, Clone, Serialize, TS)]
 #[ts(export, export_to = "bindings.ts")]
 pub(crate) struct Devices {
-    pub cameras: Vec<Device>,
     pub microphones: Vec<Device>,
 }
 
 #[tauri::command]
 pub(crate) fn list_devices() -> Devices {
     Devices {
-        cameras: discover_devices(
-            &[
-                av::CaptureDeviceType::built_in_wide_angle_camera(),
-                av::CaptureDeviceType::external(),
-            ],
-            av::MediaType::video(),
-        ),
         microphones: discover_devices(
             &[av::CaptureDeviceType::microphone()],
             av::MediaType::audio(),
@@ -89,6 +82,7 @@ pub(crate) fn shape_bar(
     animation: Option<Animation>,
 ) -> CmdResult {
     PILL_WIDTH.store(width.to_bits(), Ordering::Relaxed);
+    PILL_HEIGHT.store(height.to_bits(), Ordering::Relaxed);
     macos::with_ns_window(&window, move |ns_window| {
         let frame = ns_window.frame();
         if width > frame.size.width {
@@ -127,11 +121,16 @@ pub(crate) fn setup(bar: &WebviewWindow) -> tauri::Result<()> {
     macos::with_ns_window(bar, |ns_window| glass::add(ns_window, ns_window.mtm()))
 }
 
+/// The window is wider than the pill and taller (room for tooltips above it), so clicks
+/// anywhere but the pill reach whatever is behind it.
 fn let_clicks_through(ns_window: &NSWindow) {
     let width = f64::from_bits(PILL_WIDTH.load(Ordering::Relaxed));
+    let height = f64::from_bits(PILL_HEIGHT.load(Ordering::Relaxed));
+    // Window coordinates start at the bottom left, where the pill sits.
     let pointer = ns_window.mouseLocationOutsideOfEventStream();
     let window_width = ns_window.frame().size.width;
-    let is_over_pill = (pointer.x - window_width / 2.0).abs() <= width / 2.0;
+    let is_over_pill = (pointer.x - window_width / 2.0).abs() <= width / 2.0
+        && (0.0..=height).contains(&pointer.y);
     if ns_window.ignoresMouseEvents() == is_over_pill {
         ns_window.setIgnoresMouseEvents(!is_over_pill);
     }

@@ -2,11 +2,17 @@ import {
   type PointerEvent,
   type RefObject,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useRef,
   useState,
 } from "react";
-import { followScroll, maxZoom, zoomAround } from "@/lib/editor/timeline";
+import {
+  followScroll,
+  maxZoom,
+  revealScroll,
+  zoomAround,
+} from "@/lib/editor/timeline";
 import type { Clock } from "@/lib/time";
 
 const WHEEL_SPEED = 0.01;
@@ -49,10 +55,7 @@ export function useTimelineZoom(
     latest.current = { ...latest.current, zoom: next.zoom };
     setWanted(next.zoom);
   }
-  const zoomAt = useRef(zoomBy);
-  useLayoutEffect(() => {
-    zoomAt.current = zoomBy;
-  });
+  const zoomAt = useEffectEvent(zoomBy);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -62,12 +65,15 @@ export function useTimelineZoom(
     const anchor = (clientX: number) =>
       clientX - viewport.getBoundingClientRect().left;
     const onWheel = (event: WheelEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || isPinching) return;
+      if (isPinching) return;
+      if (!(event.ctrlKey || event.metaKey)) {
+        if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+        event.preventDefault();
+        viewport.scrollLeft += event.deltaY;
+        return;
+      }
       event.preventDefault();
-      zoomAt.current(
-        Math.exp(-event.deltaY * WHEEL_SPEED),
-        anchor(event.clientX),
-      );
+      zoomAt(Math.exp(-event.deltaY * WHEEL_SPEED), anchor(event.clientX));
     };
     const onPinchStart = (event: Event) => {
       event.preventDefault();
@@ -77,7 +83,7 @@ export function useTimelineZoom(
     const onPinch = (event: Event) => {
       const { scale, clientX } = event as Gesture;
       event.preventDefault();
-      zoomAt.current(scale / pinched, anchor(clientX));
+      zoomAt(scale / pinched, anchor(clientX));
       pinched = scale;
     };
     const onPinchEnd = () => {
@@ -131,7 +137,7 @@ export function useTimelineZoom(
       reveal: (ms: number) => {
         const viewport = viewportRef.current;
         if (!viewport || lengthMs <= 0) return;
-        viewport.scrollLeft = followScroll(
+        viewport.scrollLeft = revealScroll(
           (ms / lengthMs) * viewport.scrollWidth,
           viewport.scrollLeft,
           viewport.clientWidth,

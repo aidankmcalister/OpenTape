@@ -1,4 +1,5 @@
 mod cursor_log;
+mod key_log;
 mod plan;
 mod timeline;
 mod writer;
@@ -13,7 +14,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Context, Result, anyhow, bail, ensure};
+use anyhow::{Context, Result, anyhow, bail};
 use cidre::{arc, av, cg, dispatch, ns, sc};
 
 pub(crate) use plan::{
@@ -28,25 +29,20 @@ use crate::util::{lock, wait};
 
 const CAPTURE_LIMIT: Duration = Duration::from_secs(10);
 pub(crate) const VIDEO_FILE: &str = "recording.mov";
-const CAMERA_SIZE: CaptureSize = CaptureSize {
-    width: 1280,
-    height: 720,
-};
-pub(crate) const CAMERA_FILE: &str = "camera.mov";
 pub(crate) const EVENTS_FILE: &str = "events.jsonl";
 pub(crate) const META_FILE: &str = "meta.json";
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Inputs {
-    pub camera_id: Option<String>,
     pub microphone_id: Option<String>,
     pub system_audio: bool,
+    /// Record which keys were pressed, not only when (Record keystrokes).
+    pub records_keys: bool,
 }
 
 impl Inputs {
     fn with_allowed_devices(self) -> Self {
         Self {
-            camera_id: (self.camera_id).filter(|_| is_allowed(av::MediaType::video(), "camera")),
             microphone_id: (self.microphone_id)
                 .filter(|_| is_allowed(av::MediaType::audio(), "microphone")),
             ..self
@@ -180,7 +176,6 @@ struct ActiveCapture {
     _stop_watcher: arc::R<StopWatcher>,
     queue: arc::R<dispatch::Queue>,
     recorder: arc::R<Recorder>,
-    camera: Option<Camera>,
     cursor: CursorLogger,
     timeline: Arc<Mutex<Timeline>>,
     plan: CapturePlan,
@@ -227,12 +222,7 @@ impl ActiveCapture {
                 .add_stream_output(recorder.as_ref(), sc::OutputType::Mic, Some(&queue))
                 .map_err(|err| anyhow!("could not add microphone output: {err:?}"))?;
         }
-        let camera = inputs.camera_id.as_deref().and_then(|camera_id| {
-            Camera::start(camera_id, folder, Arc::clone(&timeline))
-                .inspect_err(|err| log::warn!("recording without the camera: {err:#}"))
-                .ok()
-        });
-        let cursor = CursorLogger::start(&folder.join(EVENTS_FILE))?;
+        let cursor = CursorLogger::start(&folder.join(EVENTS_FILE), inputs.records_keys)?;
         wait("starting the capture", CAPTURE_LIMIT, stream.start())?
             .map_err(|err| anyhow!("could not start capture: {err:?}"))?;
         lock(&timeline).started = host_time_now();
@@ -241,7 +231,6 @@ impl ActiveCapture {
             _stop_watcher: stop_watcher,
             queue,
             recorder,
-            camera,
             cursor,
             timeline,
             plan,
@@ -259,12 +248,7 @@ impl ActiveCapture {
             Err(err) => log::warn!("could not stop the capture, keeping what it recorded: {err:#}"),
         }
         self.queue.sync(|| {});
-        let camera = self.camera.take().and_then(|camera| {
-            (camera.finish(video_end))
-                .inspect_err(|err| log::warn!("could not keep the camera recording: {err:#}"))
-                .ok()
-                .map(|()| CAMERA_FILE)
-        });
+        let records_keys = self.cursor.records_keys;
         let cursor = self.cursor.stop();
         let first_frame_time = finish_writing(&mut self.recorder, video_end)?;
         cursor?;
@@ -274,7 +258,7 @@ impl ActiveCapture {
             self.plan.screen_rect,
             first_frame_time,
             &pauses,
-            camera,
+            records_keys,
         );
         std::fs::write(self.folder.join(META_FILE), meta).context("could not write meta.json")?;
         Ok(SavedRecording {
@@ -288,76 +272,18 @@ fn meta_json(
     rect: cg::Rect,
     first_frame_time: f64,
     pauses: &[[f64; 2]],
-    camera: Option<&str>,
+    records_keys: bool,
 ) -> String {
-    let pauses = serde_json::to_string(pauses).unwrap_or_else(|_| "[]".to_string());
-    let camera = serde_json::to_string(&camera).unwrap_or_else(|_| "null".to_string());
-    format!(
-        r#"{{
-  "video_width": {},
-  "video_height": {},
-  "screen_rect": {{ "x": {:.1}, "y": {:.1}, "width": {:.1}, "height": {:.1} }},
-  "first_frame_time": {first_frame_time:.6},
-  "pauses": {pauses},
-  "camera": {camera},
-  "clock": "host time in seconds, same as the t values in events.jsonl; pauses are cut from the video and the camera, which start and end together"
-}}
-"#,
-        size.width, size.height, rect.origin.x, rect.origin.y, rect.size.width, rect.size.height
-    )
-}
-
-struct Camera {
-    session: arc::R<av::CaptureSession>,
-    queue: arc::R<dispatch::Queue>,
-    recorder: arc::R<Recorder>,
-}
-
-impl Camera {
-    fn start(camera_id: &str, folder: &Path, timeline: Arc<Mutex<Timeline>>) -> Result<Self> {
-        let device = av::CaptureDevice::with_unique_id(&ns::String::with_str(camera_id))
-            .context("the camera is gone")?;
-        let input = av::CaptureDeviceInput::with_device(&device)
-            .map_err(|err| anyhow!("could not open the camera: {err:?}"))?;
-        let path = folder.join(CAMERA_FILE);
-        let recorder = create_recorder(&path, CAMERA_SIZE, &Inputs::default(), timeline)?;
-        let queue = dispatch::Queue::serial_with_ar_pool();
-        let mut output = av::CaptureVideoDataOutput::new();
-        output.set_always_discard_late_video_frames(true);
-        output.set_sample_buf_delegate(Some(recorder.as_ref()), Some(&queue));
-        let mut session = av::CaptureSession::new();
-        ensure!(
-            session.can_add_input(&input) && session.can_add_output(&output),
-            "the camera is busy"
-        );
-        let preset = av::CaptureSessionPreset::_1280x720();
-        session.configure(|session| {
-            if session.can_set_session_preset(preset) {
-                let _ = session.set_session_preset(preset);
-            }
-            session.add_input(&input);
-            session.add_output(&output);
-        });
-        session.start_running();
-        Ok(Self {
-            session,
-            queue,
-            recorder,
-        })
-    }
-
-    fn finish(mut self, video_end: f64) -> Result<()> {
-        self.session.stop_running();
-        self.queue.sync(|| {});
-        finish_writing(&mut self.recorder, video_end).context("the camera")?;
-        Ok(())
-    }
-}
-
-impl Drop for Camera {
-    fn drop(&mut self) {
-        self.session.stop_running();
-    }
+    let meta = serde_json::json!({
+        "video_width": size.width,
+        "video_height": size.height,
+        "screen_rect": { "x": rect.origin.x, "y": rect.origin.y, "width": rect.size.width, "height": rect.size.height },
+        "first_frame_time": first_frame_time,
+        "pauses": pauses,
+        "records_keys": records_keys,
+        "clock": "host time in seconds, same as the t values in events.jsonl; pauses are cut from the video",
+    });
+    serde_json::to_string_pretty(&meta).unwrap_or_default() + "\n"
 }
 
 #[cfg(test)]
@@ -389,22 +315,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn meta_should_name_the_camera_file_only_when_there_is_one() {
+    fn meta_should_hold_the_size_rect_first_frame_and_pauses() {
         let size = CaptureSize {
             width: 1920,
             height: 1080,
         };
         let rect = cg::Rect::new(0.0, 25.0, 960.0, 540.0);
-        let meta = |camera| {
-            let json = meta_json(size, rect, 100.5, &[[101.0, 102.0]], camera);
-            serde_json::from_str::<Value>(&json).expect("meta.json is JSON")
-        };
-        let with_camera = meta(Some(CAMERA_FILE));
-        assert_eq!(with_camera["camera"], "camera.mov");
-        assert_eq!(with_camera["video_width"], 1920);
-        assert_eq!(with_camera["screen_rect"]["y"], 25.0);
-        assert_eq!(with_camera["first_frame_time"], 100.5);
-        assert_eq!(with_camera["pauses"], json!([[101.0, 102.0]]));
-        assert_eq!(meta(None)["camera"], Value::Null);
+        let json = meta_json(size, rect, 100.5, &[[101.0, 102.0]], true);
+        let meta = serde_json::from_str::<Value>(&json).expect("meta.json is JSON");
+        assert_eq!(meta["video_width"], 1920);
+        assert_eq!(meta["screen_rect"]["y"], 25.0);
+        assert_eq!(meta["first_frame_time"], 100.5);
+        assert_eq!(meta["pauses"], json!([[101.0, 102.0]]));
+        assert_eq!(meta["records_keys"], true);
     }
 }

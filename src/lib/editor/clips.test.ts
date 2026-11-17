@@ -2,10 +2,11 @@ import { describe, expect, test } from "bun:test";
 import {
   type Clip,
   cutSpans,
-  fitToClips,
+  fitHidden,
   keptClips,
   timeMap,
   removeClip,
+  restoreCut,
   splitClip,
   trimClip,
 } from "./clips";
@@ -30,6 +31,33 @@ describe("clips", () => {
     expect(removeClip(SPLIT, 1, 10000)).toEqual([SPLIT[1]]);
     const whole: Clip[] = [];
     expect(removeClip(whole, 1, 10000)).toBe(whole);
+  });
+
+  test("restoreCut joins the clips around a cut and brings back what it removed", () => {
+    const gap: Clip[] = [
+      { id: 1, startMs: 0, endMs: 2000 },
+      { id: 3, startMs: 5000, endMs: 7000 },
+      { id: 4, startMs: 8000, endMs: 10000 },
+    ];
+    expect(restoreCut(gap, 3)).toEqual([
+      { id: 1, startMs: 0, endMs: 7000 },
+      gap[2],
+    ]);
+    expect(restoreCut(SPLIT, 2)).toEqual([{ id: 1, startMs: 0, endMs: 10000 }]);
+    expect(restoreCut(gap, 1)).toBe(gap);
+    expect(restoreCut(gap, 9)).toBe(gap);
+  });
+
+  test("an inner edge brings back removed footage or trims more, keeping 200 ms", () => {
+    const gap: Clip[] = [
+      { id: 1, startMs: 0, endMs: 2000 },
+      { id: 3, startMs: 5000, endMs: 10000 },
+    ];
+    expect(trimClip(gap, 1, "end", 1000, 10000)[0].endMs).toBe(3000);
+    expect(trimClip(gap, 1, "end", 9000, 10000)[0].endMs).toBe(5000);
+    expect(trimClip(gap, 3, "start", -1000, 10000)[1].startMs).toBe(4000);
+    expect(trimClip(gap, 1, "end", -5000, 10000)[0].endMs).toBe(200);
+    expect(trimClip(gap, 3, "start", 9000, 10000)[1].startMs).toBe(9800);
   });
 
   test("trimClip moves an edge, but not past the next clip", () => {
@@ -75,6 +103,16 @@ describe("time map", () => {
     expect(time.source(3000)).toBe(6000);
     expect(time.source(2000, "start")).toBe(5000);
     expect(time.source(2000, "end")).toBe(2000);
+  });
+
+  test("each cut sits between two clips and knows the footage it removed", () => {
+    expect(time.cuts).toEqual([
+      { atMs: 2000, removedMs: 3000, beforeId: 1, afterId: 3 },
+    ]);
+    expect(timeMap(SPLIT, [], 10000).cuts).toEqual([
+      { atMs: 4000, removedMs: 0, beforeId: 1, afterId: 2 },
+    ]);
+    expect(timeMap([], [], 10000).cuts).toEqual([]);
   });
 
   test("a modifier keeps its moment, and one inside a deleted stretch hides", () => {
@@ -135,53 +173,6 @@ describe("time map", () => {
   });
 });
 
-describe("fitToClips", () => {
-  const KEPT: Clip[] = [
-    { id: 1, startMs: 0, endMs: 2000 },
-    { id: 3, startMs: 5000, endMs: 10000 },
-  ];
-
-  test("a modifier shrinks to the footage that is left", () => {
-    expect(fitToClips([{ id: 1, startMs: 1000, endMs: 3000 }], KEPT)).toEqual([
-      { id: 1, startMs: 1000, endMs: 2000 },
-    ]);
-    expect(fitToClips([{ id: 1, startMs: 4000, endMs: 7000 }], KEPT)).toEqual([
-      { id: 1, startMs: 5000, endMs: 7000 },
-    ]);
-  });
-
-  test("one with little or nothing left is removed", () => {
-    expect(fitToClips([{ id: 1, startMs: 1800, endMs: 4500 }], KEPT)).toEqual(
-      [],
-    );
-    expect(fitToClips([{ id: 1, startMs: 2500, endMs: 4500 }], KEPT)).toEqual(
-      [],
-    );
-  });
-
-  test("one spanning the join keeps both sides, and untouched ones stay the same", () => {
-    const spans = [
-      { id: 1, startMs: 1000, endMs: 6000 },
-      { id: 2, startMs: 6000, endMs: 8000 },
-    ];
-    expect(fitToClips(spans, KEPT)).toBe(spans);
-  });
-
-  test("splitting a long recording leaves every modifier as it was, despite rounding", () => {
-    const durationMs = 867_391;
-    const clips = [0.21, 0.37, 0.52].reduce(
-      (clips: Clip[], share) =>
-        splitClip(clips, share * 867_391.6666, durationMs),
-      [],
-    );
-    const spans = [
-      { id: 1, startMs: 593_753.4939999809, endMs: 600_361.8089999945 },
-      { id: 2, startMs: 626_356.5000000002, endMs: 629_690.208999993 },
-    ];
-    expect(fitToClips(spans, clips)).toBe(spans);
-  });
-});
-
 test("output time skips cuts and runs faster inside a speed region", () => {
   const time = timeMap(
     [
@@ -204,4 +195,30 @@ test("output time skips cuts and runs faster inside a speed region", () => {
   expect([0, 1250, 1500, 3750, 4000].map(time.sourceAt)).toEqual([
     1000, 3000, 6000, 9000, 9000,
   ]);
+});
+
+test("on Restore, a block hidden in removed footage gives way to a block of its kind now on its spot", () => {
+  const clips: Clip[] = [
+    { id: 1, startMs: 0, endMs: 2000 },
+    { id: 2, startMs: 6000, endMs: 10000 },
+  ];
+  const block = (id: number, startMs: number, endMs: number) =>
+    ({ id, kind: "zoom", startMs, endMs, amount: 1.5 }) as const;
+  // Hidden 2.5–5 s; a zoom added in kept time landed at 4.9–6.5 s, and one at 1–2.6 s.
+  const regions = [
+    block(1, 2500, 5000),
+    block(2, 4900, 6500),
+    block(3, 1000, 2600),
+  ];
+  expect(fitHidden(regions, clips, 10000)).toEqual([
+    block(1, 2600, 4900),
+    block(2, 4900, 6500),
+    block(3, 1000, 2600),
+  ]);
+  // Less than the minimum left: it goes.
+  expect(
+    fitHidden([block(1, 2500, 2800), block(2, 2650, 6500)], clips, 10000),
+  ).toEqual([block(2, 2650, 6500)]);
+  const apart = [block(1, 2700, 4800), block(3, 1000, 2600)];
+  expect(fitHidden(apart, clips, 10000)).toBe(apart);
 });
