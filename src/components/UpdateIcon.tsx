@@ -17,7 +17,7 @@ export default function UpdateIcon({
   return (
     <span
       className={cn(
-        "grid shrink-0 place-items-center rounded-full [&_svg]:size-4",
+        "grid shrink-0 place-items-center rounded-full",
         news === "failed"
           ? "bg-destructive/16 text-destructive"
           : "bg-primary-tint text-primary-tint-foreground",
@@ -27,7 +27,7 @@ export default function UpdateIcon({
       {news === "downloading" ? (
         <ProgressRing fraction={percent / 100} className="size-5" />
       ) : (
-        <Icon />
+        <Icon className="size-4" />
       )}
     </span>
   );

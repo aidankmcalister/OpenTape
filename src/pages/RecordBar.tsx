@@ -319,17 +319,19 @@ function UpdateLayer({ bar, news }: { bar: Bar; news: News }) {
           {detail}
         </span>
       </span>
-      <Button variant="ghost" size="pill" onClick={bar.hideUpdate}>
-        {news === "downloading" ? "Hide" : "Later"}
-      </Button>
       {news === "downloading" ? null : (
-        <Button size="pill" onClick={news === "ready" ? restart : install}>
-          {news === "ready"
-            ? "Restart"
-            : news === "failed"
-              ? "Try again"
-              : "Update"}
-        </Button>
+        <>
+          <Button variant="ghost" size="pill" onClick={bar.hideUpdate}>
+            Later
+          </Button>
+          <Button size="pill" onClick={news === "ready" ? restart : install}>
+            {news === "ready"
+              ? "Restart"
+              : news === "failed"
+                ? "Try again"
+                : "Update"}
+          </Button>
+        </>
       )}
     </>
   );

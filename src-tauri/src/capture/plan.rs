@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow};
-use cidre::{arc, cg, cm, ns, sc, sys};
+use cidre::{arc, cf, cg, cm, ns, sc, sys};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -37,6 +37,36 @@ pub(super) struct CapturePlan {
     pub config: arc::R<sc::StreamCfg>,
     pub size: CaptureSize,
     pub screen_rect: cg::Rect,
+    /// A recorded window, which the crop follows when it moves.
+    pub follows: Option<Follow>,
+}
+
+pub(super) struct Follow {
+    pub window_id: u32,
+    pub display: cg::Rect,
+}
+
+/// Where a window is now, in screen points; `None` once it's closed.
+pub(super) fn window_frame(window_id: u32) -> Option<cg::Rect> {
+    let list = cg::WindowList::info(cg::WindowListOpt::INCLUDING_WINDOW, window_id)?;
+    let info = list.iter().next()?;
+    let bounds = info.get(cg::window_keys::bounds())?;
+    if bounds.get_type_id() != cf::Dictionary::type_id() {
+        return None;
+    }
+    // SAFETY: checked just above that `bounds` is a CFDictionary.
+    let bounds: &cf::Dictionary = unsafe { std::mem::transmute(bounds) };
+    cg::Rect::from_dictionary_representation(bounds)
+}
+
+/// Moves a crop of `size` to `origin`, kept inside the display so it never records past its edge.
+pub(super) fn kept_inside(origin: cg::Point, size: cg::Size, display: cg::Rect) -> cg::Point {
+    let clamp =
+        |at: f64, length: f64, start: f64, room: f64| at.min(start + room - length).max(start);
+    cg::Point {
+        x: clamp(origin.x, size.width, display.origin.x, display.size.width),
+        y: clamp(origin.y, size.height, display.origin.y, display.size.height),
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
@@ -102,7 +132,13 @@ pub(super) fn plan_capture(target: &Target) -> Result<CapturePlan> {
             let hidden = hidden_windows(&content, Some(app.process_id()));
             let filter = sc::ContentFilter::with_display_excluding_windows(&display, &hidden);
             let src_rect = to_display_relative(window.frame(), display.frame());
-            Ok(plan(filter, &display, window.frame(), Some(src_rect)))
+            Ok(CapturePlan {
+                follows: Some(Follow {
+                    window_id,
+                    display: display.frame(),
+                }),
+                ..plan(filter, &display, window.frame(), Some(src_rect))
+            })
         }
         Target::Area {
             display_id,
@@ -153,6 +189,7 @@ fn plan(
         config,
         size,
         screen_rect,
+        follows: None,
     }
 }
 
@@ -258,6 +295,35 @@ mod tests {
             );
         }
         assert_eq!(own_pid(), std::process::id() as sys::Pid);
+    }
+
+    #[test]
+    fn kept_inside_should_follow_a_window_but_stop_at_the_display_edge() {
+        let display = cg::Rect::new(0.0, 0.0, 1000.0, 800.0);
+        let size = cg::Size {
+            width: 400.0,
+            height: 300.0,
+        };
+        let at = |x, y| kept_inside(cg::Point { x, y }, size, display);
+        assert_eq!(at(100.0, 50.0), cg::Point { x: 100.0, y: 50.0 });
+        assert_eq!(at(900.0, 700.0), cg::Point { x: 600.0, y: 500.0 });
+        assert_eq!(at(-50.0, -20.0), cg::Point { x: 0.0, y: 0.0 });
+        let second = cg::Rect::new(1000.0, 0.0, 1000.0, 800.0);
+        let moved = kept_inside(
+            cg::Point {
+                x: 1200.0,
+                y: 100.0,
+            },
+            size,
+            second,
+        );
+        assert_eq!(
+            moved,
+            cg::Point {
+                x: 1200.0,
+                y: 100.0
+            }
+        );
     }
 
     #[test]

@@ -8,7 +8,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
-        mpsc::{self, Receiver, Sender},
+        mpsc::{self, Receiver, RecvTimeoutError, Sender},
     },
     thread,
     time::Duration,
@@ -22,12 +22,15 @@ pub(crate) use plan::{
 };
 
 use self::cursor_log::CursorLogger;
-use self::plan::{CapturePlan, plan_capture};
+use self::plan::{CapturePlan, kept_inside, plan_capture, window_frame};
 use self::timeline::{Timeline, host_time_now};
 use self::writer::{OnStop, Recorder, StopWatcher, create_recorder, finish_writing};
+use crate::geometry::to_display_relative;
 use crate::util::{lock, wait};
 
 const CAPTURE_LIMIT: Duration = Duration::from_secs(10);
+/// How often a recorded window's position is checked, so the crop follows it when it moves.
+const FOLLOW_EVERY: Duration = Duration::from_millis(33);
 pub(crate) const VIDEO_FILE: &str = "recording.mov";
 pub(crate) const EVENTS_FILE: &str = "events.jsonl";
 pub(crate) const META_FILE: &str = "meta.json";
@@ -167,7 +170,10 @@ fn record_until_stopped(
         }
     };
     let _ = started_tx.send(Ok(()));
-    let _ = stop_rx.recv();
+    let mut capture = capture;
+    while let Err(RecvTimeoutError::Timeout) = stop_rx.recv_timeout(FOLLOW_EVERY) {
+        capture.follow_window();
+    }
     capture.finish()
 }
 
@@ -180,6 +186,9 @@ struct ActiveCapture {
     timeline: Arc<Mutex<Timeline>>,
     plan: CapturePlan,
     folder: PathBuf,
+    /// Where the crop is now, and each time it moved: `[host time, x, y]` in screen points.
+    origin: cg::Point,
+    window_moves: Vec<[f64; 3]>,
 }
 
 impl ActiveCapture {
@@ -233,9 +242,38 @@ impl ActiveCapture {
             recorder,
             cursor,
             timeline,
+            origin: plan.screen_rect.origin,
             plan,
             folder: folder.to_path_buf(),
+            window_moves: Vec::new(),
         })
+    }
+
+    /// Moves the crop to where the recorded window is now, if it moved, and notes when.
+    fn follow_window(&mut self) {
+        let Some(follow) = &self.plan.follows else {
+            return;
+        };
+        let Some(frame) = window_frame(follow.window_id) else {
+            return;
+        };
+        let size = self.plan.screen_rect.size;
+        let origin = kept_inside(frame.origin, size, follow.display);
+        if origin == self.origin {
+            return;
+        }
+        self.origin = origin;
+        let rect = cg::Rect { origin, size };
+        self.plan
+            .config
+            .set_src_rect(to_display_relative(rect, follow.display));
+        self.stream.update_cfg_ch(&self.plan.config, |err| {
+            if let Some(err) = err {
+                log::warn!("could not move the window crop: {err:?}");
+            }
+        });
+        self.window_moves
+            .push([host_time_now(), origin.x, origin.y]);
     }
 
     fn finish(mut self) -> Result<SavedRecording> {
@@ -258,6 +296,7 @@ impl ActiveCapture {
             self.plan.screen_rect,
             first_frame_time,
             &pauses,
+            &self.window_moves,
             records_keys,
         );
         std::fs::write(self.folder.join(META_FILE), meta).context("could not write meta.json")?;
@@ -272,6 +311,7 @@ fn meta_json(
     rect: cg::Rect,
     first_frame_time: f64,
     pauses: &[[f64; 2]],
+    window_moves: &[[f64; 3]],
     records_keys: bool,
 ) -> String {
     let meta = serde_json::json!({
@@ -280,8 +320,9 @@ fn meta_json(
         "screen_rect": { "x": rect.origin.x, "y": rect.origin.y, "width": rect.size.width, "height": rect.size.height },
         "first_frame_time": first_frame_time,
         "pauses": pauses,
+        "window_moves": window_moves,
         "records_keys": records_keys,
-        "clock": "host time in seconds, same as the t values in events.jsonl; pauses are cut from the video",
+        "clock": "host time in seconds, same as the t values in events.jsonl; pauses are cut from the video; window_moves are [t, x, y] where the recorded window's crop moved to",
     });
     serde_json::to_string_pretty(&meta).unwrap_or_default() + "\n"
 }
@@ -321,12 +362,14 @@ mod tests {
             height: 1080,
         };
         let rect = cg::Rect::new(0.0, 25.0, 960.0, 540.0);
-        let json = meta_json(size, rect, 100.5, &[[101.0, 102.0]], true);
+        let moves = [[103.0, 40.0, 60.0]];
+        let json = meta_json(size, rect, 100.5, &[[101.0, 102.0]], &moves, true);
         let meta = serde_json::from_str::<Value>(&json).expect("meta.json is JSON");
         assert_eq!(meta["video_width"], 1920);
         assert_eq!(meta["screen_rect"]["y"], 25.0);
         assert_eq!(meta["first_frame_time"], 100.5);
         assert_eq!(meta["pauses"], json!([[101.0, 102.0]]));
         assert_eq!(meta["records_keys"], true);
+        assert_eq!(meta["window_moves"], json!([[103.0, 40.0, 60.0]]));
     }
 }

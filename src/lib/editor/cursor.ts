@@ -48,6 +48,8 @@ type Meta = {
   first_frame_time: number;
   screen_rect: { x: number; y: number; width: number; height: number };
   pauses: [number, number][];
+  /** `[t, x, y]`: each time a recorded window's crop moved, and where to. */
+  window_moves?: [number, number, number][];
 };
 
 type Event = {
@@ -172,7 +174,21 @@ export const CURSOR_SECTIONS: { title: string; settings: Setting[] }[] = [
 ];
 
 export function readCursor(meta: string, events: string): CursorTrack {
-  const { first_frame_time, screen_rect, pauses }: Meta = JSON.parse(meta);
+  const {
+    first_frame_time,
+    screen_rect,
+    pauses,
+    window_moves = [],
+  }: Meta = JSON.parse(meta);
+  /** A recorded window's crop follows it, so a point is placed against where the crop was then. */
+  const originAt = (t: number) => {
+    const [, x, y] = window_moves.filter(([at]) => at <= t).pop() ?? [
+      0,
+      screen_rect.x,
+      screen_rect.y,
+    ];
+    return { x, y };
+  };
   const videoMs = (t: number) => {
     const paused = pauses
       .filter(([start]) => start < t)
@@ -186,15 +202,18 @@ export function readCursor(meta: string, events: string): CursorTrack {
     .filter((line) => line.trim())
     .map((line): Event => JSON.parse(line))
     .filter(({ t }) => t >= first_frame_time && !isPaused(t))
-    .map(({ type, t, x, y, button = "left", kind = "arrow", keys = [] }) => ({
-      type,
-      ms: videoMs(t),
-      x: (x - screen_rect.x) / screen_rect.width,
-      y: (y - screen_rect.y) / screen_rect.height,
-      button,
-      kind,
-      caps: keys,
-    }));
+    .map(({ type, t, x, y, button = "left", kind = "arrow", keys = [] }) => {
+      const origin = originAt(t);
+      return {
+        type,
+        ms: videoMs(t),
+        x: (x - origin.x) / screen_rect.width,
+        y: (y - origin.y) / screen_rect.height,
+        button,
+        kind,
+        caps: keys,
+      };
+    });
   const lefts = logged.filter(({ button }) => button === "left");
   return {
     moves: logged
@@ -584,7 +603,10 @@ const ZOOM_LEAD_MS = 900;
 const ZOOM_HOLD_MS = 1500;
 const STOP_CLICK_MS = 1000;
 const TYPING_GAP_MS = 1500;
-const TYPING_MIN_MS = 3000;
+/** Shorter than this is a shortcut or two, not typing. */
+const TYPING_MIN_MS = 1000;
+/** Only typing this long is worth speeding up. */
+const SPEED_MIN_MS = 3000;
 const TYPING_LEAD_MS = 300;
 /** A spot inside the middle 60% of the zoomed view needs no pan. */
 const INNER_SHARE = 0.6;
@@ -660,6 +682,7 @@ export function suggestedSpeeds(
 ): Region[] {
   const added: Region[] = [];
   for (const typed of typingStretches(keys)) {
+    if (typed.endMs - typed.startMs < SPEED_MIN_MS) continue;
     const span = { ...typed, endMs: Math.min(durationMs, typed.endMs) };
     if (!isFree(regions, "speed", span)) continue;
     added.push({

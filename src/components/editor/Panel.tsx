@@ -241,7 +241,7 @@ export function DialogSection({
   className,
   children,
 }: {
-  title: string;
+  title?: string;
   className?: string;
   children: ReactNode;
 }) {
@@ -252,7 +252,9 @@ export function DialogSection({
         className,
       )}
     >
-      <h3 className="flex h-6 items-center font-semibold">{title}</h3>
+      {title ? (
+        <h3 className="flex h-6 items-center font-semibold">{title}</h3>
+      ) : null}
       {children}
     </section>
   );

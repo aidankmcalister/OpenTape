@@ -42,6 +42,17 @@ test("clicks land in video time and video space, skipping pauses and anything be
   ]);
 });
 
+test("a click after a recorded window moved lands where it is in the moved window", () => {
+  const moved = JSON.stringify({
+    ...JSON.parse(META),
+    window_moves: [[101.5, 500, 140]],
+  });
+  expect(readCursor(moved, EVENTS).clicks).toEqual([
+    { ms: 1000, x: 0.25, y: 0.5, button: "left" },
+    { ms: 4000, x: 0.5, y: 0.15, button: "right" },
+  ]);
+});
+
 const CLICKS: CursorClick[] = [
   { ms: 1000, x: 0.25, y: 0.5, button: "left" },
   { ms: 4000, x: 0.75, y: 0.25, button: "right" },
@@ -527,6 +538,22 @@ test("typing gets an auto zoom aimed at the last click before it, joining a zoom
   );
   expect(joined).toMatchObject({ startMs: 3100, endMs: 11_500 });
   expect(joined.path).toEqual([]);
+});
+
+test("a short burst of typing between two clicks keeps one zoom going, but a lone shortcut doesn't count as typing", () => {
+  const clicks = [
+    { ms: 4000, x: 0.5, y: 0.5, button: "left" as const },
+    { ms: 8500, x: 0.5, y: 0.5, button: "left" as const },
+  ];
+  const keys = Array.from({ length: 11 }, (_, i) => 4400 + i * 250);
+  const track = { clicks, moves: [], typed: [], pauses: [] };
+  expect(suggestedZooms({ ...track, keys }, [], 20_000)).toMatchObject([
+    { startMs: 3100, endMs: 10_000 },
+  ]);
+  expect(suggestedZooms({ ...track, keys: [6000] }, [], 20_000)).toHaveLength(
+    2,
+  );
+  expect(suggestedSpeeds({ keys }, [], 20_000)).toEqual([]);
 });
 
 test("a typing zoom aims at the middle of the text and pans when it moves away, not for small steps", () => {

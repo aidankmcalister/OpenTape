@@ -251,7 +251,15 @@ function Choice<Value extends string>({
       </TabsList>
     </Tabs>
   );
-  if (inRows) return <Row label={label}>{tabs}</Row>;
+  if (inRows)
+    return (
+      <>
+        <Row label={label}>{tabs}</Row>
+        {hints && !disabled ? (
+          <p className="text-label text-muted-foreground">{hints[value]}</p>
+        ) : null}
+      </>
+    );
   return (
     <div className="flex flex-col gap-2">
       <div className="flex h-6 items-center justify-between">

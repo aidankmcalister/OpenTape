@@ -64,7 +64,10 @@ export function useRecordBar() {
     isCountingDown: timer.status.countdown !== null,
     screenRecording,
     error,
-    update: isUpdateHidden || pickerMode ? null : newsOf(update.status),
+    update:
+      (isUpdateHidden && update.status.state !== "downloading") || pickerMode
+        ? null
+        : newsOf(update.status),
   });
 
   function applyStatus(status: RecordingStatus) {

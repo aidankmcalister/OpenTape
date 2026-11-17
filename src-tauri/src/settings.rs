@@ -138,7 +138,7 @@ pub(crate) async fn open_settings(app: AppHandle) -> CmdResult {
 
 pub(crate) fn show_window(app: &AppHandle) -> tauri::Result<()> {
     windows::show_dialog(app, WINDOW, |window| {
-        window.title("Settings").inner_size(520.0, 640.0)
+        window.title("Settings").inner_size(720.0, 448.0)
     })
 }
 
