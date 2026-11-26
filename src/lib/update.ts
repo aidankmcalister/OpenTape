@@ -1,6 +1,13 @@
 import type { UpdateStatus } from "@/lib/bindings";
 
-export type News = "available" | "downloading" | "ready" | "failed";
+export type News =
+  | "available"
+  | "downloading"
+  | "ready"
+  | "failed"
+  | "checking"
+  | "upToDate"
+  | "checkFailed";
 
 export function newsOf(status: UpdateStatus): News | null {
   if (status.state === "failed")
@@ -8,6 +15,14 @@ export function newsOf(status: UpdateStatus): News | null {
   return status.state === "upToDate" || status.state === "checking"
     ? null
     : status.state;
+}
+
+/** What to show after someone asked to check: every result, not only the ones that need a choice. */
+export function checkedNews(status: UpdateStatus): News {
+  if (status.state === "checking") return "checking";
+  if (status.state === "failed" && status.version === null)
+    return "checkFailed";
+  return newsOf(status) ?? "upToDate";
 }
 
 export function downloadProgress(status: UpdateStatus) {

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { UpdateStatus } from "@/lib/bindings";
-import { downloadProgress, newsOf, whatIsNew } from "./update";
+import { checkedNews, downloadProgress, newsOf, whatIsNew } from "./update";
 import type { News } from "./update";
 
 test.each<[UpdateStatus, News | null]>([
@@ -48,4 +48,14 @@ test("whatIsNew keeps only the bullet lines of the release notes", () => {
     "Click effects in the Cursor panel",
     "Faster export",
   ]);
+});
+
+test("checkedNews shows every result of a check someone asked for", () => {
+  expect(checkedNews({ state: "checking" })).toBe("checking");
+  expect(checkedNews({ state: "upToDate" })).toBe("upToDate");
+  expect(checkedNews({ state: "failed", version: null })).toBe("checkFailed");
+  expect(checkedNews({ state: "failed", version: "0.2.0" })).toBe("failed");
+  expect(checkedNews({ state: "available", version: "0.2.0", notes: "" })).toBe(
+    "available",
+  );
 });

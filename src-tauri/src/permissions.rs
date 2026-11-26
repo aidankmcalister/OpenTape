@@ -129,12 +129,21 @@ pub(crate) async fn permissions(app: AppHandle) -> CmdResult<Permissions> {
     Ok(permissions)
 }
 
+/// The first ask shows macOS's own alert, which has its own Open System Settings button, so
+/// System Settings opens only on later asks. That way each ask shows one window. Asking again
+/// is silent and keeps the app listed in System Settings.
 #[tauri::command]
-pub(crate) async fn allow(permission: Permission) -> CmdResult {
+pub(crate) async fn allow(app: AppHandle, permission: Permission) -> CmdResult {
     match permission {
         Permission::ScreenRecording => {
+            // macOS can't tell "never asked" from "turned off", so the first ask is remembered.
+            let asked = app.path().app_config_dir()?.join("asked-screen-recording");
             cg::screen_capture_access::request();
-            settings::open_url(SCREEN_RECORDING_PANE).await?;
+            if asked.exists() {
+                settings::open_url(SCREEN_RECORDING_PANE).await?;
+            } else {
+                std::fs::write(asked, "")?;
+            }
         }
         Permission::Microphone if microphone() == Access::NotAsked => {
             run_blocking(|| {
@@ -150,11 +159,22 @@ pub(crate) async fn allow(permission: Permission) -> CmdResult {
         Permission::Microphone => settings::open_url(MICROPHONE_PANE).await?,
         Permission::InputMonitoring if INPUT_MONITORING.1() => {}
         Permission::InputMonitoring => {
+            let was_asked = unsafe { IOHIDCheckAccess(LISTEN_EVENT) } != NEVER_ASKED;
             cg::event::access::listen_request();
-            settings::open_url(INPUT_MONITORING_PANE).await?;
+            if was_asked {
+                settings::open_url(INPUT_MONITORING_PANE).await?;
+            }
         }
     }
     Ok(())
+}
+
+const LISTEN_EVENT: u32 = 1; // kIOHIDRequestTypeListenEvent
+const NEVER_ASKED: u32 = 2; // kIOHIDAccessTypeUnknown
+
+#[link(name = "IOKit", kind = "framework")]
+unsafe extern "C" {
+    fn IOHIDCheckAccess(request_type: u32) -> u32;
 }
 
 #[tauri::command]

@@ -33,6 +33,8 @@ export default function Permissions() {
   const recordsKeys = settings?.recordsKeys ?? false;
   const progress = permissions && setupProgress(permissions, recordsKeys);
   const keysAccess = permissions?.inputMonitoring ?? null;
+  const needsKeysAccess =
+    recordsKeys && keysAccess !== null && !isOn(keysAccess);
   const title = progress?.isAllSet
     ? "You are all set"
     : progress?.isReminder
@@ -84,10 +86,10 @@ export default function Permissions() {
           <span className="flex min-w-0 flex-1 flex-col text-ui font-medium">
             Record keystrokes
             <span className="text-micro font-normal text-muted-foreground">
-              Saved on this Mac with each recording, never from password fields.
+              Shows the shortcuts you press in your videos.
             </span>
           </span>
-          {recordsKeys && keysAccess !== null && !isOn(keysAccess) ? (
+          {needsKeysAccess ? (
             <Button
               variant="secondary"
               size="pill-sm"
@@ -105,13 +107,18 @@ export default function Permissions() {
           />
         </div>
         <div className="flex h-14 items-center gap-3 rounded-xl bg-muted px-2 ring-1 ring-hairline">
-          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-accent text-muted-foreground [&_svg]:size-4">
+          <span
+            className={cn(
+              "grid size-10 shrink-0 place-items-center rounded-full bg-accent text-muted-foreground [&_svg]:size-4",
+              settings?.sharesUsage && "bg-success-tint text-success",
+            )}
+          >
             <ChartNoAxesColumn />
           </span>
           <span className="flex min-w-0 flex-1 flex-col text-ui font-medium">
             Share anonymous usage
             <span className="text-micro font-normal text-muted-foreground">
-              Counts launches, recordings and exports. Never what you record.
+              Counts app use, never what you record.
             </span>
           </span>
           <Switch

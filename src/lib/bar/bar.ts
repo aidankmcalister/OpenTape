@@ -6,6 +6,9 @@ const UPDATE_LAYERS = {
   downloading: "updateDownloading",
   ready: "updateReady",
   failed: "updateFailed",
+  checking: "updateChecking",
+  upToDate: "updateUpToDate",
+  checkFailed: "updateCheckFailed",
 } as const;
 
 type SavedOptions = {

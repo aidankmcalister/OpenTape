@@ -26,7 +26,7 @@ import type {
 } from "@/lib/bindings";
 import type { Size } from "@/lib/geometry";
 import { barLayer, elapsedMsAt, parseOptions } from "@/lib/bar/bar";
-import { newsOf } from "@/lib/update";
+import { checkedNews, newsOf } from "@/lib/update";
 
 type Timer = { status: RecordingStatus; receivedAt: number };
 
@@ -35,6 +35,8 @@ export function useRecordBar() {
   const [error, setError] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<Countdown | null>(null);
   const [isUpdateHidden, setIsUpdateHidden] = useState(false);
+  /** Asked to check from the bar's menu, so every result shows, not only an update. */
+  const [isCheckingByHand, setIsCheckingByHand] = useState(false);
   const [hasCheckedOnce, setHasCheckedOnce] = useState(false);
   const [isVisible, setIsVisible] = useState(!document.hidden);
   const {
@@ -64,10 +66,13 @@ export function useRecordBar() {
     isCountingDown: timer.status.countdown !== null,
     screenRecording,
     error,
-    update:
-      (isUpdateHidden && update.status.state !== "downloading") || pickerMode
-        ? null
-        : newsOf(update.status),
+    update: pickerMode
+      ? null
+      : isCheckingByHand
+        ? checkedNews(update.status)
+        : isUpdateHidden && update.status.state !== "downloading"
+          ? null
+          : newsOf(update.status),
   });
 
   function applyStatus(status: RecordingStatus) {
@@ -83,6 +88,12 @@ export function useRecordBar() {
       void chooseMode(mode ?? lastMode.current);
     else showPermissions();
   });
+  const showsUpToDate = isCheckingByHand && update.status.state === "upToDate";
+  useEffect(() => {
+    if (!showsUpToDate) return;
+    const backToBar = setTimeout(() => setIsCheckingByHand(false), 4000);
+    return () => clearTimeout(backToBar);
+  }, [showsUpToDate]);
   useEffect(() => {
     if (hasCheckedOnce) invoke("bar_ready").catch(console.error);
   }, [hasCheckedOnce]);
@@ -132,7 +143,15 @@ export function useRecordBar() {
     update,
     chooseMode,
     showPermissions,
-    hideUpdate: () => setIsUpdateHidden(true),
+    hideUpdate: () => {
+      setIsUpdateHidden(true);
+      setIsCheckingByHand(false);
+    },
+    checkForUpdate: () => {
+      setIsCheckingByHand(true);
+      update.check();
+    },
+    doneChecking: () => setIsCheckingByHand(false),
     relaunch,
     togglePause: () =>
       attempt(() => invoke("pause_recording", { paused: phase !== "paused" })),
@@ -155,8 +174,16 @@ export function useRecordBar() {
           }),
           await MenuItem.new({
             ...(await invoke<MenuChoice>("update_menu")),
-            action: () =>
-              void invoke("choose_update_menu").catch(console.error),
+            action: () => {
+              const { status } = update;
+              const canCheck =
+                status.state === "upToDate" ||
+                (status.state === "failed" && status.version === null);
+              if (canCheck) {
+                setIsCheckingByHand(true);
+                update.check();
+              } else void invoke("choose_update_menu").catch(console.error);
+            },
           }),
           await PredefinedMenuItem.new({ item: "Separator" }),
           await MenuItem.new({ text: "Quit OpenTape", action: quit }),

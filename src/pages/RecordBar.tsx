@@ -104,6 +104,9 @@ export default function RecordBar() {
           updateDownloading: <UpdateLayer bar={bar} news="downloading" />,
           updateReady: <UpdateLayer bar={bar} news="ready" />,
           updateFailed: <UpdateLayer bar={bar} news="failed" />,
+          updateChecking: <UpdateLayer bar={bar} news="checking" />,
+          updateUpToDate: <UpdateLayer bar={bar} news="upToDate" />,
+          updateCheckFailed: <UpdateLayer bar={bar} news="checkFailed" />,
           countdown: bar.countdown ? (
             <CountingDown
               countdown={bar.countdown}
@@ -301,14 +304,24 @@ function UpdateLayer({ bar, news }: { bar: Bar; news: News }) {
   const { status, currentVersion, install, restart } = bar.update;
   const version = "version" in status ? status.version : null;
   const progress = downloadProgress(status) ?? { percent: 0, detail: "" };
-  const [title, detail] =
-    news === "downloading"
-      ? [`Downloading ${version}`, `${progress.percent}%, ${progress.detail}`]
-      : news === "ready"
-        ? [`OpenTape ${version} is ready`, "Restart to finish updating"]
-        : news === "failed"
-          ? ["Could not update", "Check your connection and try again"]
-          : [`OpenTape ${version} is available`, `You have ${currentVersion}`];
+  const [title, detail] = {
+    downloading: [
+      `Downloading ${version}`,
+      `${progress.percent}%, ${progress.detail}`,
+    ],
+    ready: [`OpenTape ${version} is ready`, "Restart to finish updating"],
+    failed: ["Could not update", "Check your connection and try again"],
+    available: [
+      `OpenTape ${version} is available`,
+      `You have ${currentVersion}`,
+    ],
+    checking: ["Checking for updates", `You have ${currentVersion}`],
+    upToDate: ["OpenTape is up to date", `Version ${currentVersion}`],
+    checkFailed: [
+      "Could not check for updates",
+      "Check your connection and try again",
+    ],
+  }[news];
   return (
     <>
       <UpdateIcon
@@ -322,15 +335,29 @@ function UpdateLayer({ bar, news }: { bar: Bar; news: News }) {
           {detail}
         </span>
       </span>
-      {news === "downloading" ? null : (
+      {news === "downloading" ? null : news === "checking" ||
+        news === "upToDate" ? (
+        <Button variant="ghost" size="pill" onClick={bar.doneChecking}>
+          {news === "checking" ? "Cancel" : "Done"}
+        </Button>
+      ) : (
         <>
           <Button variant="ghost" size="pill" onClick={bar.hideUpdate}>
             Later
           </Button>
-          <Button size="pill" onClick={news === "ready" ? restart : install}>
+          <Button
+            size="pill"
+            onClick={
+              news === "ready"
+                ? restart
+                : news === "checkFailed"
+                  ? bar.checkForUpdate
+                  : install
+            }
+          >
             {news === "ready"
               ? "Restart"
-              : news === "failed"
+              : news === "failed" || news === "checkFailed"
                 ? "Try again"
                 : "Update"}
           </Button>
