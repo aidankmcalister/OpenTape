@@ -359,20 +359,6 @@ test("a run shows the keyboard and its count from 60 px, the count alone from 34
   expect(runTier(33)).toBe("bar");
 });
 
-test("an open Skipped row sits under the Keystrokes lane and pushes the lanes below it down", () => {
-  const { lanes, heightPx } = laneLayout(["zoom", "keys", "blur"], [], true);
-  expect(lanes.map(({ top, height }) => [top, height])).toEqual([
-    [0, 32],
-    [32, 32],
-    [96, 32],
-  ]);
-  expect(lanes[1].skippedTop).toBe(64);
-  expect(heightPx).toBe(128);
-  const collapsed = laneLayout(["keys"], ["keys"], true);
-  expect(collapsed.lanes[0].skippedTop).toBeUndefined();
-  expect(collapsed.heightPx).toBe(20);
-});
-
 test.each([
   [[2030, 4030], "move", [], 4030, "its end on another kind's start"],
   [[2460, 4460], "move", [2460], 2460, "its start on the playhead"],

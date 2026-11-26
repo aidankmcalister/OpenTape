@@ -1,19 +1,24 @@
-import type { PointerEvent } from "react";
-import { Film, Scissors } from "lucide-react";
+import { type PointerEvent, useMemo } from "react";
+import { AudioLines, Film, Mic, Scissors } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import type { LoadedTrack } from "@/hooks/editor/usePlayback";
 import type { Edits } from "@/hooks/editor/useProject";
+import type { SoundTrack } from "@/lib/bindings";
+import { type SoundSettings, SOUND_TRACKS, waveform } from "@/lib/editor/sound";
 import type { TimelineDrag } from "@/hooks/editor/useTimelineDrag";
 import type { Clip, TimeMap } from "@/lib/editor/clips";
 import {
   clipParts,
+  AUDIO_LANE_PX,
   lengthLabel,
   percentAt,
   rulerLabel,
+  TRACKS_TOP_PX,
 } from "@/lib/editor/timeline";
 import { cn } from "@/lib/utils";
 
@@ -209,5 +214,107 @@ function Cut({
         </TooltipContent>
       </Tooltip>
     </>
+  );
+}
+
+const SOUND_ICONS: Record<SoundTrack, typeof Mic> = {
+  systemAudio: AudioLines,
+  microphone: Mic,
+};
+
+/** Each sound track's name, beside its waveform lane. */
+export function SoundGutters({ sounds }: { sounds: LoadedTrack[] }) {
+  return sounds.map(({ track }, index) => {
+    const Icon = SOUND_ICONS[track];
+    return (
+      <div
+        key={track}
+        className="absolute inset-x-0 flex items-center gap-2 px-3 text-label font-medium text-muted-foreground"
+        style={{
+          top: TRACKS_TOP_PX + index * AUDIO_LANE_PX,
+          height: AUDIO_LANE_PX,
+        }}
+      >
+        <Icon className="size-4 shrink-0" />
+        {SOUND_TRACKS.find((sound) => sound.track === track)?.title}
+      </div>
+    );
+  });
+}
+
+/**
+ * A waveform lane under the Recording track for each sound track, following its cuts. Bars
+ * scale with the track's volume; a muted track is drawn flat and dim.
+ */
+export function SoundLanes({
+  sounds,
+  settings,
+  timelineMs,
+  trackWidth,
+  sourceAt,
+}: {
+  sounds: LoadedTrack[];
+  settings: SoundSettings;
+  timelineMs: number;
+  trackWidth: number;
+  sourceAt: (ms: number) => number;
+}) {
+  const columns = Math.min(4000, Math.max(1, Math.round(trackWidth / 3)));
+  return sounds.map(({ track, peaks }, index) => (
+    <Waveform
+      key={track}
+      peaks={peaks}
+      columns={columns}
+      timelineMs={timelineMs}
+      sourceAt={sourceAt}
+      top={TRACKS_TOP_PX + index * AUDIO_LANE_PX}
+      level={settings[track].isMuted ? 0 : settings[track].volume / 100}
+    />
+  ));
+}
+
+function Waveform({
+  peaks,
+  columns,
+  timelineMs,
+  sourceAt,
+  top,
+  level,
+}: {
+  peaks: Float32Array;
+  columns: number;
+  timelineMs: number;
+  sourceAt: (ms: number) => number;
+  top: number;
+  level: number;
+}) {
+  const heights = useMemo(
+    () => waveform(peaks, columns, timelineMs, sourceAt),
+    [peaks, columns, timelineMs, sourceAt],
+  );
+  const bars = heights
+    .map((height, column) => {
+      const half = Math.max(0.04, height * level * 0.9);
+      return `M${column + 0.15} ${1 - half}h0.7v${2 * half}h-0.7z`;
+    })
+    .join("");
+  return (
+    <div
+      data-flow
+      className="pointer-events-none absolute inset-x-0 border-t border-foreground/6"
+      style={{ top, height: AUDIO_LANE_PX }}
+    >
+      <svg
+        className={cn(
+          "absolute inset-x-0 top-1 h-4 w-full",
+          level > 0 ? "text-foreground/35" : "text-foreground/12",
+        )}
+        viewBox={`0 0 ${columns} 2`}
+        preserveAspectRatio="none"
+        aria-hidden
+      >
+        <path d={bars} fill="currentColor" />
+      </svg>
+    </div>
   );
 }

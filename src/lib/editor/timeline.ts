@@ -94,6 +94,7 @@ export function frameStep(
 
 export const GUTTER_PX = 168;
 export const TRACKS_TOP_PX = 64;
+export const AUDIO_LANE_PX = 24;
 export const RULER_PX = 28;
 export const TRACK_INSET_PX = 8;
 
@@ -106,15 +107,9 @@ export type Lane = {
   top: number;
   height: number;
   isCollapsed: boolean;
-  /** Where the Keystrokes lane's Skipped row starts, while it's open. */
-  skippedTop?: number;
 };
 
-export function laneLayout(
-  kinds: RegionKind[],
-  collapsed: RegionKind[],
-  showsSkipped = false,
-) {
+export function laneLayout(kinds: RegionKind[], collapsed: RegionKind[]) {
   let top = 0;
   const lanes = kinds.map((kind): Lane => {
     const isCollapsed = collapsed.includes(kind);
@@ -125,10 +120,6 @@ export function laneLayout(
       isCollapsed,
     };
     top += lane.height;
-    if (kind === KEYCAPS_KIND && showsSkipped && !isCollapsed) {
-      lane.skippedTop = top;
-      top += LANE_PX;
-    }
     return lane;
   });
   const heightPx = lanes.length ? top : EMPTY_LANES_PX;

@@ -15,7 +15,12 @@ import {
   SOUND_RATE,
   soundParts,
 } from "@/lib/editor/playback";
-import type { SoundSettings } from "@/lib/editor/sound";
+import {
+  type SoundSettings,
+  soundPeaks,
+  soundVolumes,
+} from "@/lib/editor/sound";
+import type { SoundTrack } from "@/lib/bindings";
 import type { Size } from "@/lib/geometry";
 import { type Clock, createClock } from "@/lib/time";
 
@@ -140,74 +145,113 @@ export function useTimeMap(playback: Playback, time: TimeMap) {
 
 const DRIFT_MS = 150;
 
+export type LoadedTrack = {
+  track: SoundTrack;
+  buffer: AudioBuffer;
+  gain: GainNode;
+  peaks: Float32Array;
+};
+
+const NO_SOUNDS: LoadedTrack[] = [];
+
+/**
+ * Plays the recording's sound in step with the stage, each track through its own volume. Returns
+ * the tracks it loaded, for drawing their waveforms.
+ */
 export function useStageSound(
   { clock, isPlaying, isMuted, speed }: Playback,
   time: TimeMap,
   sound: SoundSettings,
+  tracks: SoundTrack[] | null,
 ) {
   const [loaded, setLoaded] = useState<{
     context: AudioContext;
-    buffer: AudioBuffer;
+    sounds: LoadedTrack[];
   } | null>(null);
+  const trackList = tracks?.join() ?? "";
   useEffect(() => {
+    if (!trackList) return;
     const context = new AudioContext();
-    invoke<ArrayBuffer>("stage_sound")
-      .then((pcm) => {
+    const load = (track: SoundTrack) =>
+      invoke<ArrayBuffer>("stage_sound", { track }).then((pcm) => {
         const length = pcm.byteLength / 4;
-        if (length === 0 || context.state === "closed") return;
+        if (length === 0 || context.state === "closed") return [];
         const buffer = context.createBuffer(2, length, SOUND_RATE);
         fillChannels(pcm, [buffer.getChannelData(0), buffer.getChannelData(1)]);
-        setLoaded({ context, buffer });
+        const gain = new GainNode(context);
+        gain.connect(context.destination);
+        const channels = [buffer.getChannelData(0), buffer.getChannelData(1)];
+        return [
+          { track, buffer, gain, peaks: soundPeaks(channels, SOUND_RATE) },
+        ];
+      });
+    Promise.all((trackList.split(",") as SoundTrack[]).map(load))
+      .then((sounds) => {
+        if (context.state !== "closed")
+          setLoaded({ context, sounds: sounds.flat() });
       })
       .catch(console.error);
     return () => void context.close();
-  }, []);
+  }, [trackList]);
 
-  const start = useEffectEvent((context: AudioContext, buffer: AudioBuffer) => {
-    const fromMs = time.outputAt(clock.seconds() * 1000);
-    const startedAt = context.currentTime;
-    const nodes = soundParts(time.pieces, fromMs, speed).map((part) => {
-      const node = new AudioBufferSourceNode(context, {
-        buffer,
-        playbackRate: part.rate,
-      });
-      node.connect(context.destination);
-      node.start(
-        startedAt + part.waitMs / 1000,
-        part.offsetMs / 1000,
-        part.lengthMs / 1000,
+  useEffect(() => {
+    if (!loaded) return;
+    const volumes = soundVolumes(sound);
+    for (const { track, gain } of loaded.sounds)
+      gain.gain.setValueAtTime(volumes[track], loaded.context.currentTime);
+  }, [loaded, sound]);
+
+  const start = useEffectEvent(
+    (context: AudioContext, sounds: LoadedTrack[]) => {
+      const fromMs = time.outputAt(clock.seconds() * 1000);
+      const startedAt = context.currentTime;
+      const nodes = soundParts(time.pieces, fromMs, speed).flatMap((part) =>
+        sounds.map(({ buffer, gain }) => {
+          const node = new AudioBufferSourceNode(context, {
+            buffer,
+            playbackRate: part.rate,
+          });
+          node.connect(gain);
+          node.start(
+            startedAt + part.waitMs / 1000,
+            part.offsetMs / 1000,
+            part.lengthMs / 1000,
+          );
+          return node;
+        }),
       );
-      return node;
-    });
-    return {
-      stop: () => nodes.forEach((node) => node.stop()),
-      hasDrifted: () => {
-        const heardMs =
-          fromMs + (context.currentTime - startedAt) * 1000 * speed;
-        const shownMs = time.outputAt(clock.seconds() * 1000);
-        return (
-          context.state === "running" && Math.abs(heardMs - shownMs) > DRIFT_MS
-        );
-      },
-    };
-  });
+      return {
+        stop: () => nodes.forEach((node) => node.stop()),
+        hasDrifted: () => {
+          const heardMs =
+            fromMs + (context.currentTime - startedAt) * 1000 * speed;
+          const shownMs = time.outputAt(clock.seconds() * 1000);
+          return (
+            context.state === "running" &&
+            Math.abs(heardMs - shownMs) > DRIFT_MS
+          );
+        },
+      };
+    },
+  );
   const pieces = JSON.stringify(time.pieces);
-  const isHeard = isPlaying && !isMuted && !sound.isMuted;
+  const isHeard = isPlaying && !isMuted;
   useEffect(() => {
     if (!isHeard || !loaded) return;
-    const { context, buffer } = loaded;
+    const { context, sounds } = loaded;
     void context.resume();
-    let playing = start(context, buffer);
+    let playing = start(context, sounds);
     const unsubscribe = clock.subscribe(() => {
       if (!playing.hasDrifted()) return;
       playing.stop();
-      playing = start(context, buffer);
+      playing = start(context, sounds);
     });
     return () => {
       unsubscribe();
       playing.stop();
     };
   }, [isHeard, loaded, clock, speed, pieces]);
+  return loaded?.sounds ?? NO_SOUNDS;
 }
 
 export function useClockValue<T>(

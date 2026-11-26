@@ -1,7 +1,7 @@
 import type { Edits } from "@/hooks/editor/useProject";
 import { DEFAULT_KEYS } from "@/lib/editor/appearance";
 import type { CursorTrack } from "@/lib/editor/cursor";
-import { hasCaps, KEY_SETTINGS, opensSkipped } from "@/lib/editor/keys";
+import { hasCaps, KEY_SETTINGS } from "@/lib/editor/keys";
 import type { SettingValue } from "@/lib/editor/regions";
 import { PanelHeader, Section } from "../Panel";
 import SettingControl from "../timeline/SettingControl";
@@ -36,11 +36,6 @@ export default function KeysPanel({
           <p className="text-label leading-4 text-muted-foreground">
             This recording has no keystrokes. They're recorded only when Record
             keystrokes is on.
-          </p>
-        ) : opensSkipped(track.pressed) ? (
-          <p className="text-label leading-4 text-muted-foreground">
-            No shortcuts in this recording. Click a dashed key on the Keystrokes
-            lane to add it.
           </p>
         ) : null}
       </Section>

@@ -5,7 +5,10 @@
 
 use std::{
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU32, Ordering},
+    },
     time::Duration,
 };
 
@@ -13,7 +16,7 @@ use anyhow::{Result, anyhow, bail};
 use cidre::{
     arc, av,
     av::AssetWriterStatus as Status,
-    blocks, cf, cm, define_obj_type, ns, objc, os,
+    blocks, cf, cg, cm, cv, define_obj_type, ns, objc, os,
     sc::{
         self,
         stream::{Delegate, DelegateImpl, Output, OutputImpl},
@@ -23,6 +26,13 @@ use cidre::{
 use super::Inputs;
 use super::plan::CaptureSize;
 use super::timeline::Timeline;
+use objc2::rc::Retained;
+use objc2::runtime::AnyObject;
+use objc2_core_foundation::{CGAffineTransform, CGPoint, CGRect, CGSize};
+use objc2_core_image::{CIContext, CIImage, kCIContextWorkingColorSpace};
+use objc2_core_video::CVPixelBuffer;
+use objc2_foundation::{NSDictionary, NSNull, NSString};
+
 use crate::util::{lock, wait};
 
 pub(super) struct RecorderState {
@@ -33,6 +43,151 @@ pub(super) struct RecorderState {
     microphone: Option<SoundTrack>,
     timeline: Arc<Mutex<Timeline>>,
     first_frame_time: Option<f64>,
+    window: Option<WindowFramer>,
+}
+
+/// Where a recorded window was over time: `(host time, frame in screen points)` each time it
+/// moved or resized, added by the capture loop and read by the writer for each frame.
+pub(super) type WindowLog = Arc<Mutex<Vec<(f64, cg::Rect)>>>;
+
+/// Crops each captured frame of the window's display to where the window was when the frame was
+/// captured, so the video follows the window with no lag. The crop keeps the window's starting
+/// shape: a resized window is scaled to fit, and the app's menus and other windows show where
+/// they overlap it.
+pub(super) struct WindowFramer {
+    log: WindowLog,
+    display: cg::Rect,
+    /// The window's size when recording started, in points: the video's shape.
+    start: cg::Size,
+    /// Pixels per point in the captured frames.
+    scale: f64,
+    context: Retained<CIContext>,
+    /// `[host time, x, y, scale]` each time the crop changed: a screen point `p` lands at
+    /// `(p - (x, y)) * scale` in the video, in the points of the starting window.
+    moves: Vec<[f64; 4]>,
+}
+
+impl WindowFramer {
+    pub fn new(log: WindowLog, display: cg::Rect, start: cg::Size, scale: f64) -> Self {
+        // No color management: frames are only moved and scaled, so pixels pass through as is.
+        let options = NSDictionary::<NSString, AnyObject>::from_slices(
+            &[unsafe { kCIContextWorkingColorSpace }],
+            &[&*NSNull::null() as &AnyObject],
+        );
+        Self {
+            log,
+            display,
+            start,
+            scale,
+            context: unsafe { CIContext::contextWithOptions(Some(&options)) },
+            moves: Vec::new(),
+        }
+    }
+
+    /// Draws the window's part of `source`, a frame shown at host time `time`, into `output`.
+    fn frame(&mut self, source: &cv::ImageBuf, output: &mut cv::PixelBuf, time: f64) -> bool {
+        let Some(window) = window_at(&mut lock(&self.log), time - DRAWN_BEFORE) else {
+            return false;
+        };
+        let crop = framed(window, self.start, self.display);
+        let zoom = self.start.width / crop.size.width;
+        let placed = [crop.origin.x, crop.origin.y, zoom];
+        if self.moves.last().is_none_or(|last| last[1..] != placed) {
+            self.moves.push([time, crop.origin.x, crop.origin.y, zoom]);
+        }
+        // Core Image counts from the bottom left, in the captured frame's pixels.
+        let (x, y) = (
+            (crop.origin.x - self.display.origin.x) * self.scale,
+            (crop.origin.y - self.display.origin.y) * self.scale,
+        );
+        let height = crop.size.height * self.scale;
+        let fit = output.width() as f64 / (crop.size.width * self.scale);
+        // A window that only moved is copied pixel for pixel, never resampled.
+        let (fit, x, y) = if (fit - 1.0).abs() < 0.002 {
+            (1.0, x.round(), y.round())
+        } else {
+            (fit, x, y)
+        };
+        let bottom = source.height() as f64 - y - height;
+        // SAFETY: cidre and objc2 wrap the same CoreVideo buffers.
+        let (source_buf, output_buf) = unsafe {
+            (
+                &*(source as *const cv::ImageBuf).cast::<CVPixelBuffer>(),
+                &*(output as *const cv::PixelBuf).cast::<CVPixelBuffer>(),
+            )
+        };
+        let image = unsafe {
+            CIImage::imageWithCVPixelBuffer(source_buf).imageByApplyingTransform(
+                CGAffineTransform {
+                    a: fit,
+                    b: 0.0,
+                    c: 0.0,
+                    d: fit,
+                    tx: -x * fit,
+                    ty: -bottom * fit,
+                },
+            )
+        };
+        let bounds = CGRect::new(
+            CGPoint::new(0.0, 0.0),
+            CGSize::new(output.width() as f64, output.height() as f64),
+        );
+        unsafe {
+            self.context
+                .render_toCVPixelBuffer_bounds_colorSpace(&image, output_buf, bounds, None)
+        };
+        source.propagate_attaches(output);
+        true
+    }
+}
+
+/// How long before a frame's time to look the window up. macOS moves a window once per screen
+/// refresh and shows it in a later frame, and frames arrive up to 12 ms ahead of their own time.
+/// Measured on a 60 Hz display with a window moving at 1200 and 2000 points a second: looking
+/// 8 to 17 ms back put the crop on the window in 98% of frames or more; with no look back it was
+/// a whole frame ahead in over half of them.
+const DRAWN_BEFORE: f64 = 0.012;
+
+/// Where the window was at `time`: the newest sample not after it. Drops the samples before that
+/// one, which no later frame needs.
+fn window_at(log: &mut Vec<(f64, cg::Rect)>, time: f64) -> Option<cg::Rect> {
+    let newest = log.iter().rposition(|(at, _)| *at <= time).unwrap_or(0);
+    log.drain(..newest);
+    log.first().map(|&(_, rect)| rect)
+}
+
+/// The crop for a window: the window's starting shape, just big enough to hold it, centered on it
+/// and kept inside the display.
+fn framed(window: cg::Rect, start: cg::Size, display: cg::Rect) -> cg::Rect {
+    let shape = start.width / start.height;
+    let (width, height) = if window.size.width / window.size.height > shape {
+        (window.size.width, window.size.width / shape)
+    } else {
+        (window.size.height * shape, window.size.height)
+    };
+    let place = |center: f64, length: f64, from: f64, room: f64| {
+        if length >= room {
+            from + (room - length) / 2.0
+        } else {
+            (center - length / 2.0).clamp(from, from + room - length)
+        }
+    };
+    cg::Rect::new(
+        place(
+            window.origin.x + window.size.width / 2.0,
+            width,
+            display.origin.x,
+            display.size.width,
+        ),
+        place(
+            window.origin.y + window.size.height / 2.0,
+            height,
+            display.origin.y,
+            display.size.height,
+        ),
+        width,
+        height,
+    )
 }
 
 struct SoundTrack {
@@ -69,18 +224,19 @@ impl SoundTrack {
         })
     }
 
-    fn add(&mut self, sample_buf: &cm::SampleBuf, timeline: &Mutex<Timeline>) {
+    /// Writes a buffer of sound, unless recording is paused. True when it was written.
+    fn add(&mut self, sample_buf: &cm::SampleBuf, timeline: &Mutex<Timeline>) -> bool {
         let captured = sample_buf.pts();
         let Some(video_time) = lock(timeline).video_time(captured.as_secs()) else {
-            return;
+            return false;
         };
         let cut = ((captured.as_secs() - video_time) * f64::from(captured.scale)).round() as i64;
         let pts = cm::Time::new(captured.value - cut, captured.scale);
         if pts < self.end || !self.input.is_ready_for_more_media_data() {
-            return;
+            return true;
         }
         let Ok(timing) = sample_buf.timing_info(0) else {
-            return;
+            return true;
         };
         let timing = cm::SampleTimingInfo {
             pts,
@@ -96,7 +252,45 @@ impl SoundTrack {
         {
             self.end = pts.add(sample_buf.duration());
         }
+        true
     }
+}
+
+/// The mic's loudest sample since the record bar last asked, from 0 to 1, as `f32` bits.
+static MIC_LEVEL: AtomicU32 = AtomicU32::new(0);
+
+/// The mic's loudest sample since the last call, for the record bar's level. 0 while paused.
+pub(crate) fn take_mic_level() -> f32 {
+    f32::from_bits(MIC_LEVEL.swap(0, Ordering::Relaxed))
+}
+
+/// Raises the mic level to the loudest sample in a buffer of 32-bit float sound (what the mic
+/// sends); any other format leaves it alone.
+fn meter(sample_buf: &cm::SampleBuf) {
+    let Some(format) = sample_buf
+        .format_desc()
+        .and_then(|desc| desc.stream_basic_desc())
+    else {
+        return;
+    };
+    if !format
+        .format_flags
+        .contains(cidre::cat::audio::FormatFlags::IS_FLOAT)
+        || format.bits_per_channel != 32
+    {
+        return;
+    }
+    let Some(Ok(bytes)) = sample_buf.data_buf().map(|data| data.as_slice()) else {
+        return;
+    };
+    let loudest = bytes
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|sample| f32::from_ne_bytes(*sample).abs())
+        .fold(0.0, f32::max);
+    // Bits of positive floats sort like the floats, so the larger bits are the louder sample.
+    MIC_LEVEL.fetch_max(loudest.min(1.0).to_bits(), Ordering::Relaxed);
 }
 
 unsafe extern "C" {
@@ -140,7 +334,22 @@ impl RecorderState {
         };
         if self.input.is_ready_for_more_media_data() {
             let pts = cm::Time::with_secs(video_time, captured.scale);
-            let _ = self.adaptor.append_pixel_buf_with_pts(image, pts);
+            let framed = match &mut self.window {
+                Some(window) => {
+                    let Some(mut output) =
+                        (self.adaptor.pixel_buf_pool()).and_then(|pool| pool.pixel_buf().ok())
+                    else {
+                        return;
+                    };
+                    if !window.frame(image, &mut output, captured.as_secs()) {
+                        return;
+                    }
+                    Some(output)
+                }
+                None => None,
+            };
+            let _ =
+                (self.adaptor).append_pixel_buf_with_pts(framed.as_deref().unwrap_or(image), pts);
             if self.writer.status() == Status::Failed {
                 log::warn!(
                     "the screen file failed at the frame {:.3} s in: {:#}",
@@ -178,8 +387,10 @@ impl OutputImpl for Recorder {
         if let Some(sound) = sound {
             if let Some(track) = sound
                 && state.first_frame_time.is_some()
+                && track.add(sample_buf, &state.timeline)
+                && kind == sc::OutputType::Mic
             {
-                track.add(sample_buf, &state.timeline);
+                meter(sample_buf);
             }
             return;
         }
@@ -222,6 +433,7 @@ pub(super) fn create_recorder(
     size: CaptureSize,
     audio: &Inputs,
     timeline: Arc<Mutex<Timeline>>,
+    window: Option<WindowFramer>,
 ) -> Result<arc::R<Recorder>> {
     let _ = std::fs::remove_file(path);
     let url = ns::Url::with_fs_path_str(&path.display().to_string(), false);
@@ -264,8 +476,26 @@ pub(super) fn create_recorder(
     writer
         .add_input(&input)
         .map_err(|err| anyhow!("could not add video input: {err:?}"))?;
-    let adaptor = av::asset::WriterInputPixelBufAdaptor::with_input_writer(&input, None)
-        .map_err(|err| anyhow!("could not prepare the video input: {err:?}"))?;
+    // A recorded window is drawn into the writer's own buffers, so they're asked for up front.
+    let buffers: arc::R<ns::Dictionary<ns::String, ns::Id>> = ns::Dictionary::with_keys_values(
+        &[
+            cv::pixel_buffer_keys::pixel_format().as_ns(),
+            cv::pixel_buffer_keys::width().as_ns(),
+            cv::pixel_buffer_keys::height().as_ns(),
+            cv::pixel_buffer_keys::io_surf_props().as_ns(),
+        ],
+        &[
+            ns::Number::with_u32(cv::PixelFormat::_32_BGRA.0).as_ref(),
+            ns::Number::with_i64(size.width as i64).as_ref(),
+            ns::Number::with_i64(size.height as i64).as_ref(),
+            ns::Dictionary::<ns::String, ns::Id>::new().as_ref(),
+        ],
+    );
+    let adaptor = av::asset::WriterInputPixelBufAdaptor::with_input_writer(
+        &input,
+        window.is_some().then_some(&*buffers),
+    )
+    .map_err(|err| anyhow!("could not prepare the video input: {err:?}"))?;
     let system_audio = (audio.system_audio)
         .then(|| SoundTrack::new(&mut writer, 2))
         .transpose()?;
@@ -283,6 +513,7 @@ pub(super) fn create_recorder(
         microphone,
         timeline,
         first_frame_time: None,
+        window,
     }))
 }
 
@@ -299,6 +530,11 @@ fn ending(status: Status, first_frame_time: Option<f64>) -> Ending {
         (Status::Writing, None) => Ending::Empty,
         _ => Ending::Failed,
     }
+}
+
+/// Each time a recorded window's crop changed; see `WindowFramer::moves`.
+pub(super) fn window_moves(recorder: &Recorder) -> Vec<[f64; 4]> {
+    (recorder.inner().window.as_ref()).map_or_else(Vec::new, |window| window.moves.clone())
 }
 
 pub(super) fn finish_writing(recorder: &mut Recorder, video_end: f64) -> Result<f64> {
@@ -341,6 +577,48 @@ fn write_error(writer: &av::AssetWriter) -> anyhow::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn framed_should_hold_a_window_in_its_starting_shape_inside_the_display() {
+        let display = cg::Rect::new(0.0, 0.0, 1000.0, 800.0);
+        let start = cg::Size {
+            width: 400.0,
+            height: 300.0,
+        };
+        let at = |x, y, w, h| framed(cg::Rect::new(x, y, w, h), start, display);
+        // Moved: the crop is the window.
+        assert_eq!(
+            at(100.0, 50.0, 400.0, 300.0),
+            cg::Rect::new(100.0, 50.0, 400.0, 300.0)
+        );
+        // Twice as wide: the crop grows to hold it at the starting shape, centered.
+        assert_eq!(
+            at(100.0, 100.0, 800.0, 300.0),
+            cg::Rect::new(100.0, 0.0, 800.0, 600.0)
+        );
+        // Past the display's edge: the crop stops at the edge.
+        assert_eq!(
+            at(900.0, 700.0, 400.0, 300.0),
+            cg::Rect::new(600.0, 500.0, 400.0, 300.0)
+        );
+    }
+
+    #[test]
+    fn window_at_should_give_the_newest_sample_so_far_and_drop_the_ones_behind() {
+        let (first, second) = (
+            cg::Rect::new(0.0, 0.0, 400.0, 300.0),
+            cg::Rect::new(100.0, 50.0, 400.0, 300.0),
+        );
+        let mut log = vec![(1.0, first), (2.0, second), (3.0, first)];
+        assert_eq!(window_at(&mut log, 0.5), Some(first));
+        assert_eq!(window_at(&mut log, 1.9), Some(first));
+        assert_eq!(log.len(), 3);
+        assert_eq!(window_at(&mut log, 2.0), Some(second));
+        assert_eq!(log.len(), 2);
+        assert_eq!(window_at(&mut log, 9.0), Some(first));
+        assert_eq!(log.len(), 1);
+        assert_eq!(window_at(&mut Vec::new(), 1.0), None);
+    }
 
     #[test]
     fn ending_should_finish_only_a_writer_that_is_fine_and_got_frames() {

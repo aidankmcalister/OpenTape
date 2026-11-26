@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use anyhow::{Context, Result, anyhow};
 use cidre::{arc, cf, cg, cm, ns, sc, sys};
 use serde::{Deserialize, Serialize};
@@ -8,6 +10,8 @@ use crate::geometry::{to_display_relative, to_global};
 use crate::util::wait;
 
 pub(crate) const NORMAL_WINDOW_LAYER: isize = 0;
+/// Floating panels and palettes sit above ordinary windows, up to this layer.
+pub(crate) const FLOATING_WINDOW_LAYER: isize = 3;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "bindings.ts")]
@@ -37,17 +41,62 @@ pub(super) struct CapturePlan {
     pub config: arc::R<sc::StreamCfg>,
     pub size: CaptureSize,
     pub screen_rect: cg::Rect,
-    /// A recorded window, which the crop follows when it moves.
+    /// A recorded window, watched so the video and the dimming around it follow it.
     pub follows: Option<Follow>,
+    /// For a window, what its system audio comes from: the whole display minus this app. The
+    /// window's own filter leaves out every other app, and macOS drops their sound with them.
+    pub sound: Option<arc::R<sc::ContentFilter>>,
 }
 
-pub(super) struct Follow {
-    pub window_id: u32,
-    pub display: cg::Rect,
+/// A recorded window and its display, checked many times a second: during the countdown for the
+/// dimming, and while recording for the video's crop (see `writer::WindowFramer`).
+pub(crate) struct Follow {
+    window_id: u32,
+    pub(crate) display_id: u32,
+    pub(crate) display: cg::Rect,
+    /// Where the window is now, in screen points.
+    pub(crate) window: cg::Rect,
+    /// Pixels per point the display is captured at.
+    pub(crate) scale: f64,
+}
+
+impl Follow {
+    fn new(window: &sc::Window, display: &sc::Display, scale: f64) -> Self {
+        Self {
+            window_id: window.id(),
+            display_id: display.display_id().0,
+            display: display.frame(),
+            window: window.frame(),
+            scale,
+        }
+    }
+
+    /// Starts watching a window before its recording starts (during the countdown).
+    pub(crate) fn watch(window_id: u32) -> Result<Self> {
+        let content = shareable_content()?;
+        let window = find_window(&content, window_id)?;
+        let display = display_of(&content, &window)?;
+        Ok(Self::new(&window, &display, display_scale(&display)))
+    }
+
+    /// True when the window moved or resized since last asked.
+    pub(crate) fn moved(&mut self) -> bool {
+        let Some(frame) = window_frame(self.window_id) else {
+            return false;
+        };
+        let moved = frame != self.window;
+        self.window = frame;
+        moved
+    }
+
+    /// The window on its display, for the dimming around it.
+    pub(crate) fn frame(&self) -> cg::Rect {
+        to_display_relative(self.window, self.display)
+    }
 }
 
 /// Where a window is now, in screen points; `None` once it's closed.
-pub(super) fn window_frame(window_id: u32) -> Option<cg::Rect> {
+fn window_frame(window_id: u32) -> Option<cg::Rect> {
     let list = cg::WindowList::info(cg::WindowListOpt::INCLUDING_WINDOW, window_id)?;
     let info = list.iter().next()?;
     let bounds = info.get(cg::window_keys::bounds())?;
@@ -57,16 +106,6 @@ pub(super) fn window_frame(window_id: u32) -> Option<cg::Rect> {
     // SAFETY: checked just above that `bounds` is a CFDictionary.
     let bounds: &cf::Dictionary = unsafe { std::mem::transmute(bounds) };
     cg::Rect::from_dictionary_representation(bounds)
-}
-
-/// Moves a crop of `size` to `origin`, kept inside the display so it never records past its edge.
-pub(super) fn kept_inside(origin: cg::Point, size: cg::Size, display: cg::Rect) -> cg::Point {
-    let clamp =
-        |at: f64, length: f64, start: f64, room: f64| at.min(start + room - length).max(start);
-    cg::Point {
-        x: clamp(origin.x, size.width, display.origin.x, display.size.width),
-        y: clamp(origin.y, size.height, display.origin.y, display.size.height),
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
@@ -82,6 +121,18 @@ impl CaptureSize {
             width: (rect.size.width * scale) as usize / 2 * 2,
             height: (rect.size.height * scale) as usize / 2 * 2,
         }
+    }
+
+    /// The size a recording of `rect` comes out at, on a display with `display_scale`.
+    pub(crate) fn to_record(rect: cg::Rect, display_scale: f64) -> Self {
+        Self::of(rect, capture_scale(rect, display_scale))
+    }
+
+    /// The size a recording of `window` comes out at. A window is cut from a capture of its whole
+    /// `display`, so the display decides the scale: at 2x a 1x display over 1080p would be captured
+    /// at 5K, 60 times a second.
+    pub(crate) fn of_window(window: cg::Rect, display: cg::Rect, display_scale: f64) -> Self {
+        Self::of(window, capture_scale(display, display_scale))
     }
 }
 
@@ -107,6 +158,19 @@ pub(crate) fn display_of(
         .context("the window is not on any display")
 }
 
+/// Pixels per point to record at: a 1x display is recorded at 2x when that fits in 4K. Video keeps
+/// one color for each 2×2 pixels, so at 1x thin text and small icons lose their color. The area
+/// picker's size label repeats this rule (`pixelSize` in `lib/picker/area.ts`).
+fn capture_scale(rect: cg::Rect, display_scale: f64) -> f64 {
+    const MOST_PIXELS: f64 = 3840.0 * 2160.0;
+    let fits_at_2x = rect.size.width * rect.size.height * 4.0 <= MOST_PIXELS;
+    if display_scale < 2.0 && fits_at_2x {
+        2.0
+    } else {
+        display_scale
+    }
+}
+
 pub(crate) fn display_scale(display: &sc::Display) -> f64 {
     let filter = sc::ContentFilter::with_display_excluding_windows(display, &ns::Array::new());
     f64::from(sc::ShareableContent::info_for_filter(&filter).point_pixel_scale())
@@ -121,24 +185,27 @@ pub(super) fn plan_capture(target: &Target) -> Result<CapturePlan> {
             Ok(plan(filter, &display, display.frame(), None))
         }
         Target::Window { window_id } => {
-            let window = content
-                .windows()
-                .iter()
-                .find(|window| window.id() == window_id)
-                .map(|window| window.retained())
-                .with_context(|| format!("window {window_id} is gone"))?;
+            // The window's display as macOS draws it, minus every other app's windows: the
+            // window looks just as it does on screen, over the desktop, and its menus and other
+            // windows show too. The writer crops each frame to the window (see `Follow`).
+            let window = find_window(&content, window_id)?;
             let display = display_of(&content, &window)?;
             let app = window.owning_app().context("window has no app")?;
-            let hidden = hidden_windows(&content, Some(app.process_id()));
-            let filter = sc::ContentFilter::with_display_excluding_windows(&display, &hidden);
-            let src_rect = to_display_relative(window.frame(), display.frame());
-            Ok(CapturePlan {
-                follows: Some(Follow {
-                    window_id,
-                    display: display.frame(),
-                }),
-                ..plan(filter, &display, window.frame(), Some(src_rect))
-            })
+            let filter = sc::ContentFilter::with_display_excluding_apps_excepting_windows(
+                &display,
+                &other_apps(&content, app.process_id()),
+                &ns::Array::new(),
+            );
+            // The whole display is captured, so it decides the scale (see `of_window`).
+            let scale = capture_scale(display.frame(), display_scale(&display));
+            let mut plan = plan(filter, &display, window.frame(), None);
+            let whole = CaptureSize::of(display.frame(), scale);
+            plan.config.set_width(whole.width);
+            plan.config.set_height(whole.height);
+            plan.size = CaptureSize::of(window.frame(), scale);
+            plan.follows = Some(Follow::new(&window, &display, scale));
+            plan.sound = Some(without_this_app(&content, &display));
+            Ok(plan)
         }
         Target::Area {
             display_id,
@@ -160,6 +227,15 @@ pub(super) fn plan_capture(target: &Target) -> Result<CapturePlan> {
     }
 }
 
+fn find_window(content: &sc::ShareableContent, window_id: u32) -> Result<arc::R<sc::Window>> {
+    content
+        .windows()
+        .iter()
+        .find(|window| window.id() == window_id)
+        .map(|window| window.retained())
+        .with_context(|| format!("window {window_id} is gone"))
+}
+
 fn find_display(content: &sc::ShareableContent, display_id: u32) -> Result<arc::R<sc::Display>> {
     content
         .displays()
@@ -175,7 +251,7 @@ fn plan(
     screen_rect: cg::Rect,
     src_rect: Option<cg::Rect>,
 ) -> CapturePlan {
-    let size = CaptureSize::of(screen_rect, display_scale(display));
+    let size = CaptureSize::to_record(screen_rect, display_scale(display));
     let mut config = sc::StreamCfg::new();
     config.set_width(size.width);
     config.set_height(size.height);
@@ -190,6 +266,7 @@ fn plan(
         size,
         screen_rect,
         follows: None,
+        sound: None,
     }
 }
 
@@ -205,10 +282,7 @@ fn without_this_app(
         }
     }
     if own_app.is_empty() {
-        return sc::ContentFilter::with_display_excluding_windows(
-            display,
-            &hidden_windows(content, None),
-        );
+        return sc::ContentFilter::with_display_excluding_windows(display, &own_windows(content));
     }
     sc::ContentFilter::with_display_excluding_apps_excepting_windows(
         display,
@@ -217,34 +291,41 @@ fn without_this_app(
     )
 }
 
-fn hidden_windows(
+/// Every app with ordinary windows other than `recorded`, and this app: what a window recording
+/// leaves out. The desktop, the Dock and the menu bar stay.
+fn other_apps(
     content: &sc::ShareableContent,
-    recorded_app: Option<sys::Pid>,
-) -> arc::R<ns::Array<sc::Window>> {
-    let own_pid = own_pid();
-    let mut hidden: Vec<arc::R<sc::Window>> = Vec::new();
-    for window in content.windows().iter() {
-        let owner = window.owning_app().map(|app| app.process_id());
-        if hides(window.window_layer(), owner, own_pid, recorded_app) {
-            hidden.push(window.retained());
-        }
-    }
-    ns::Array::from_slice_retained(&hidden)
+    recorded: sys::Pid,
+) -> arc::R<ns::Array<sc::RunningApp>> {
+    let windowed: HashSet<sys::Pid> = content
+        .windows()
+        .iter()
+        .filter(|window| {
+            (NORMAL_WINDOW_LAYER..=FLOATING_WINDOW_LAYER).contains(&window.window_layer())
+        })
+        .filter_map(|window| window.owning_app().map(|app| app.process_id()))
+        .chain([own_pid()])
+        .filter(|&pid| pid != recorded)
+        .collect();
+    let apps: Vec<arc::R<sc::RunningApp>> = content
+        .apps()
+        .iter()
+        .filter(|app| windowed.contains(&app.process_id()))
+        .map(|app| app.retained())
+        .collect();
+    ns::Array::from_slice_retained(&apps)
 }
 
-fn hides(
-    layer: isize,
-    owner: Option<sys::Pid>,
-    own_pid: sys::Pid,
-    recorded_app: Option<sys::Pid>,
-) -> bool {
-    let Some(owner) = owner else {
-        return false;
-    };
-    if owner == own_pid {
-        return true;
-    }
-    recorded_app.is_some_and(|app| layer == NORMAL_WINDOW_LAYER && owner != app)
+/// This app's windows, which no recording shows.
+fn own_windows(content: &sc::ShareableContent) -> arc::R<ns::Array<sc::Window>> {
+    let own_pid = own_pid();
+    let own: Vec<arc::R<sc::Window>> = content
+        .windows()
+        .iter()
+        .filter(|window| window.owning_app().map(|app| app.process_id()) == Some(own_pid))
+        .map(|window| window.retained())
+        .collect();
+    ns::Array::from_slice_retained(&own)
 }
 
 fn own_pid() -> sys::Pid {
@@ -274,56 +355,17 @@ mod tests {
     }
 
     #[test]
-    fn hides_should_leave_out_this_app_and_whatever_covers_a_recorded_window() {
-        const OWN: sys::Pid = 1;
-        let cases = [
-            (0, Some(200), true, true),
-            (0, Some(100), true, false),
-            (101, Some(200), true, false),
-            (101, Some(OWN), true, true),
-            (25, Some(OWN), false, true),
-            (0, Some(200), false, false),
-            (0, None, true, false),
-            (0, None, false, false),
-        ];
-        for (layer, owner, recording_window, hidden) in cases {
-            let recorded_app = recording_window.then_some(100);
-            assert_eq!(
-                hides(layer, owner, OWN, recorded_app),
-                hidden,
-                "layer {layer}, owner {owner:?}, recorded app {recorded_app:?}"
-            );
-        }
-        assert_eq!(own_pid(), std::process::id() as sys::Pid);
+    fn capture_scale_should_record_a_1x_display_at_2x_when_it_fits_in_4k() {
+        let rect = |width, height| cg::Rect::new(0.0, 0.0, width, height);
+        assert_eq!(capture_scale(rect(918.0, 737.0), 1.0), 2.0);
+        assert_eq!(capture_scale(rect(1920.0, 1080.0), 1.0), 2.0);
+        assert_eq!(capture_scale(rect(2560.0, 1440.0), 1.0), 1.0);
+        assert_eq!(capture_scale(rect(1512.0, 982.0), 2.0), 2.0);
     }
 
     #[test]
-    fn kept_inside_should_follow_a_window_but_stop_at_the_display_edge() {
-        let display = cg::Rect::new(0.0, 0.0, 1000.0, 800.0);
-        let size = cg::Size {
-            width: 400.0,
-            height: 300.0,
-        };
-        let at = |x, y| kept_inside(cg::Point { x, y }, size, display);
-        assert_eq!(at(100.0, 50.0), cg::Point { x: 100.0, y: 50.0 });
-        assert_eq!(at(900.0, 700.0), cg::Point { x: 600.0, y: 500.0 });
-        assert_eq!(at(-50.0, -20.0), cg::Point { x: 0.0, y: 0.0 });
-        let second = cg::Rect::new(1000.0, 0.0, 1000.0, 800.0);
-        let moved = kept_inside(
-            cg::Point {
-                x: 1200.0,
-                y: 100.0,
-            },
-            size,
-            second,
-        );
-        assert_eq!(
-            moved,
-            cg::Point {
-                x: 1200.0,
-                y: 100.0
-            }
-        );
+    fn own_pid_should_be_this_process() {
+        assert_eq!(own_pid(), std::process::id() as sys::Pid);
     }
 
     #[test]

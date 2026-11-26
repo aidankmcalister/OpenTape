@@ -48,8 +48,11 @@ type Meta = {
   first_frame_time: number;
   screen_rect: { x: number; y: number; width: number; height: number };
   pauses: [number, number][];
-  /** `[t, x, y]`: each time a recorded window's crop moved, and where to. */
-  window_moves?: [number, number, number][];
+  /**
+   * `[t, x, y, scale]` each time a recorded window moved or resized: a screen point `p` lands at
+   * `(p - (x, y)) * scale`. Older recordings have no `scale` (it was always 1).
+   */
+  window_moves?: [number, number, number, number?][];
 };
 
 type Event = {
@@ -180,14 +183,12 @@ export function readCursor(meta: string, events: string): CursorTrack {
     pauses,
     window_moves = [],
   }: Meta = JSON.parse(meta);
-  /** A recorded window's crop follows it, so a point is placed against where the crop was then. */
-  const originAt = (t: number) => {
-    const [, x, y] = window_moves.filter(([at]) => at <= t).pop() ?? [
-      0,
-      screen_rect.x,
-      screen_rect.y,
-    ];
-    return { x, y };
+  /** A recorded window can move and resize, so a point is placed against where it was then. */
+  const placeAt = (t: number) => {
+    const [, x, y, scale = 1] = window_moves
+      .filter(([at]) => at <= t)
+      .pop() ?? [0, screen_rect.x, screen_rect.y];
+    return { x, y, scale };
   };
   const videoMs = (t: number) => {
     const paused = pauses
@@ -203,12 +204,12 @@ export function readCursor(meta: string, events: string): CursorTrack {
     .map((line): Event => JSON.parse(line))
     .filter(({ t }) => t >= first_frame_time && !isPaused(t))
     .map(({ type, t, x, y, button = "left", kind = "arrow", keys = [] }) => {
-      const origin = originAt(t);
+      const place = placeAt(t);
       return {
         type,
         ms: videoMs(t),
-        x: (x - origin.x) / screen_rect.width,
-        y: (y - origin.y) / screen_rect.height,
+        x: ((x - place.x) * place.scale) / screen_rect.width,
+        y: ((y - place.y) * place.scale) / screen_rect.height,
         button,
         kind,
         caps: keys,

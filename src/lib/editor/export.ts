@@ -16,7 +16,7 @@ import {
 } from "./cursor";
 import { exportBadges } from "./keys";
 import { blurOf, outputAt, type Region, sameKind } from "./regions";
-import { DEFAULT_SOUND, type SoundSettings } from "./sound";
+import { DEFAULT_SOUND, type SoundSettings, soundVolumes } from "./sound";
 import { FRAME_MS } from "./timeline";
 import { zoomTrack } from "./zoom";
 
@@ -126,7 +126,7 @@ export function exportLayout(
           { startMs: kept[0].startMs, endMs: kept[kept.length - 1].endMs },
         )
       : null,
-    muted: sound.isMuted,
+    sound: soundVolumes(sound),
   };
 }
 

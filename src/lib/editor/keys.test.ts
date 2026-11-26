@@ -7,9 +7,7 @@ import {
   badgeSpans,
   isShortcut,
   keyCounts,
-  opensSkipped,
   pressCount,
-  skippedKeys,
   withShortcuts,
   hasCaps,
 } from "./keys";
@@ -150,14 +148,6 @@ describe("keys", () => {
     ]);
   });
 
-  test("the Skipped row opens when the recording has named keys and none makes a block", () => {
-    const at = (ms: number, ...caps: string[]) => ({ ms, caps });
-    expect(opensSkipped([at(1000), at(1200, "↵"), at(1500, "Tab")])).toBe(true);
-    expect(opensSkipped([at(1000), at(3000, "↵")])).toBe(false);
-    expect(opensSkipped([at(1000, "⌘", "S")])).toBe(false);
-    expect(opensSkipped([at(1000), at(1200)])).toBe(false);
-  });
-
   test("the same shortcut pressed again while it shows makes one longer block", () => {
     const pressed = [
       { ms: 1000, caps: ["⌘", "Z"] },
@@ -206,28 +196,7 @@ describe("keys", () => {
     ]);
   });
 
-  test("skipped keys are the named keys that aren't on a block, inside typing too", () => {
-    const pressed = [
-      { ms: 1000, caps: ["F5"] },
-      { ms: 2000, caps: ["⌘", "K"] },
-      { ms: 5000, caps: [] },
-      { ms: 5200, caps: ["↵"] },
-      { ms: 5300, caps: [] },
-      { ms: 9000, caps: ["⌘", "C"] },
-    ];
-    const block: Region = {
-      id: 1,
-      kind: "keys",
-      startMs: 2000,
-      endMs: 3500,
-      amount: 0,
-    };
-    expect(skippedKeys(pressed, [block]).map(({ ms }) => ms)).toEqual([
-      1000, 5200, 9000,
-    ]);
-  });
-
-  test("typed characters come without caps: they make typing, and are never badges or skipped keys; ↵ in typing is skipped", () => {
+  test("typed characters come without caps: they make typing, and are never badges; ↵ in typing makes none", () => {
     const pressed = [
       { ms: 1000, caps: [] },
       { ms: 1200, caps: [] },
@@ -237,7 +206,6 @@ describe("keys", () => {
     ];
     const added = withShortcuts(pressed, [], 10_000);
     expect(added.map(({ startMs }) => startMs)).toEqual([5000]);
-    expect(skippedKeys(pressed, added)).toEqual([pressed[2]]);
     expect(hasCaps(pressed)).toBe(true);
     expect(hasCaps([{ ms: 1000, caps: [] }])).toBe(false);
   });

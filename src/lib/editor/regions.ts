@@ -253,7 +253,7 @@ function seconds(ms: number): string {
 
 export const ALL_KINDS = Object.keys(REGIONS) as RegionKind[];
 
-/** The kind whose blocks show keycaps: the recorded keys, with a Skipped row for the rest. */
+/** The kind whose blocks show keycaps: the recorded shortcuts. */
 export const KEYCAPS_KIND = ALL_KINDS.find(
   (kind) => REGIONS[kind].showsKeycaps,
 ) as RegionKind;

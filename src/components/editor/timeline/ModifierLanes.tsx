@@ -9,7 +9,6 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  Eye,
   Focus,
   Trash2,
   X,
@@ -51,7 +50,6 @@ import {
   laneNeighbors,
   dragMarks,
   msAtX,
-  percentAt,
   regionsInBox,
   blockOrder,
   nextBlock,
@@ -59,7 +57,6 @@ import {
   runTier,
   selectedRun,
   timeLabel,
-  TRACKS_TOP_PX,
   type Lane,
 } from "@/lib/editor/timeline";
 import type { Clock } from "@/lib/time";
@@ -69,42 +66,17 @@ import { hueOf, REGION_ICONS, RegionValue, useMeasureText } from "./kinds";
 export function LaneGutters({
   lanes,
   laneState,
-  hasSkipped,
 }: {
   lanes: Lane[];
   laneState: Lanes;
-  hasSkipped: boolean;
 }) {
   return lanes.map((lane) => (
-    <Fragment key={lane.kind}>
-      <LaneGutter
-        lane={lane}
-        laneState={laneState}
-        hasSkipped={hasSkipped && lane.kind === KEYCAPS_KIND}
-      />
-      {lane.skippedTop !== undefined ? (
-        <div
-          className="fade-in absolute inset-x-0 flex h-8 items-center gap-2 pl-3 text-label text-muted-foreground"
-          style={{ top: lane.skippedTop }}
-        >
-          <span className="size-4 shrink-0" />
-          Skipped
-        </div>
-      ) : null}
-    </Fragment>
+    <LaneGutter key={lane.kind} lane={lane} laneState={laneState} />
   ));
 }
 
-/** A lane's name, with Solo, Collapse and (for skipped keys) Show skipped on hover. */
-function LaneGutter({
-  lane,
-  laneState,
-  hasSkipped,
-}: {
-  lane: Lane;
-  laneState: Lanes;
-  hasSkipped: boolean;
-}) {
+/** A lane's name, with Solo and Collapse on hover. */
+function LaneGutter({ lane, laneState }: { lane: Lane; laneState: Lanes }) {
   const { kind, isCollapsed } = lane;
   const { label } = REGIONS[kind];
   const Icon = REGION_ICONS[kind];
@@ -140,16 +112,6 @@ function LaneGutter({
         >
           {isCollapsed ? <ChevronRight /> : <ChevronDown />}
         </LaneToggle>
-        {hasSkipped && !isCollapsed ? (
-          <LaneToggle
-            label={`${laneState.showsSkipped ? "Hide" : "Show"} skipped keys`}
-            pressed={laneState.showsSkipped}
-            onPressedChange={laneState.toggleSkipped}
-            isCollapsed={isCollapsed}
-          >
-            <Eye />
-          </LaneToggle>
-        ) : null}
       </div>
     </div>
   );
@@ -205,7 +167,6 @@ export function LaneTracks({
   drag,
   solo,
   pressed,
-  skipped,
   onSeek,
 }: {
   edits: Edits;
@@ -217,7 +178,6 @@ export function LaneTracks({
   drag: TimelineDrag;
   solo: RegionKind | null;
   pressed: Pressed[];
-  skipped: Pressed[];
   onSeek: (ms: number) => void;
 }) {
   const { shown: regions, time, selectedIds } = edits;
@@ -248,8 +208,6 @@ export function LaneTracks({
       .map(({ startMs, caps }) => ({ ms: startMs, caps }));
   const keptPressed = inKeptTime(pressed);
   const keysLane = lanes.find(({ kind }) => kind === KEYCAPS_KIND);
-  const skippedTop = keysLane?.skippedTop;
-  const ticks = skippedTop !== undefined ? inKeptTime(skipped) : [];
   const runs =
     keysLane && !keysLane.isCollapsed
       ? keyRuns(regions, pxAt, measureText)
@@ -295,7 +253,7 @@ export function LaneTracks({
   return (
     <div
       className="absolute inset-x-0"
-      style={{ top: TRACKS_TOP_PX, height: heightPx }}
+      style={{ top: "var(--lanes-top)", height: heightPx }}
       {...marqueeProps}
     >
       {lanes.length === 0 ? <EmptyLanes /> : null}
@@ -364,20 +322,6 @@ export function LaneTracks({
           />
         );
       })}
-      {skippedTop !== undefined
-        ? ticks.map(({ ms, caps }, at) => (
-            <SkippedKey
-              key={at}
-              text={caps.join("")}
-              left={percentAt(ms, timelineMs)}
-              top={skippedTop}
-              isDimmed={isDimmed(KEYCAPS_KIND)}
-              onShow={() =>
-                edits.add(KEYCAPS_KIND, ms, { text: caps.join("") })
-              }
-            />
-          ))
-        : null}
       {drag.stretch?.track === "region" ? (
         <DragMarks
           edits={edits}
@@ -457,7 +401,7 @@ function Hovering({
         "absolute flex h-7 -translate-x-1/2 items-center gap-2 rounded-lg border border-glass-border bg-popover pl-2.5 text-label text-popover-foreground shadow-md",
         className,
       )}
-      style={{ left: atPx, top: -TRACKS_TOP_PX, zIndex }}
+      style={{ left: atPx, top: "calc(-1 * var(--lanes-top))", zIndex }}
       onPointerDown={(event) => event.stopPropagation()}
     >
       {children}
@@ -520,8 +464,8 @@ function DragMarks({
           className="pointer-events-none absolute w-px bg-foreground"
           style={{
             left: pxAt(marks.guideMs),
-            top: RULER_PX - TRACKS_TOP_PX,
-            height: TRACKS_TOP_PX - RULER_PX + heightPx,
+            top: `calc(${RULER_PX}px - var(--lanes-top))`,
+            height: `calc(var(--lanes-top) - ${RULER_PX - heightPx}px)`,
             zIndex,
           }}
         />
@@ -534,50 +478,6 @@ function DragMarks({
         {marks.label}
       </Hovering>
     </>
-  );
-}
-
-/** A key that isn't in the video: dashed keycaps in the Skipped row where it was pressed. A click adds it. */
-function SkippedKey({
-  text,
-  left,
-  top,
-  isDimmed,
-  onShow,
-}: {
-  text: string;
-  left: number;
-  top: number;
-  isDimmed: boolean;
-  onShow: () => void;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            aria-label={`Add ${text} to the video`}
-            className={cn(
-              "group fade-in absolute flex h-6 items-center rounded-md border border-dashed border-hue/55 px-1 transition-colors outline-none hover:border-solid hover:border-hue/85 focus-visible:ring-2 focus-visible:ring-highlight",
-              isDimmed && "opacity-35",
-            )}
-            style={{ ...hueOf(KEYCAPS_KIND), left: `${left}%`, top: top + 4 }}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={onShow}
-          >
-            <RegionValue
-              kind={KEYCAPS_KIND}
-              value={text}
-              capClassName="bg-transparent text-hue-foreground/70 outline-1 outline-dashed -outline-offset-1 outline-hue/55 transition-colors group-hover:text-hue-foreground"
-            />
-          </button>
-        }
-      />
-      <TooltipContent side="top" className="text-label font-medium">
-        Not in the video. Click to add it.
-      </TooltipContent>
-    </Tooltip>
   );
 }
 

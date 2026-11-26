@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import Pill from "@/components/Pill";
-import type { Rect, Size } from "@/lib/geometry";
+import { type Rect, rectStyle, type Size } from "@/lib/geometry";
 import { useGlass } from "@/hooks/picker/usePicker";
 
 export default function CaptureBar({
@@ -55,27 +55,14 @@ export function CaptureTile({
   );
 }
 
-export function DimOutside({ rect }: { rect: Rect }) {
-  const right = rect.x + rect.width;
-  const bottom = rect.y + rect.height;
+/** Dims everything but `rect`, with its corners rounded like the window inside it. */
+export function DimOutside({ rect }: { rect: Rect & { corner?: number } }) {
   return (
-    <>
+    <div className="pointer-events-none fixed inset-0 overflow-hidden">
       <div
-        className="fixed inset-x-0 top-0 bg-dim"
-        style={{ height: Math.max(rect.y, 0) }}
+        className="absolute dim-outside"
+        style={{ ...rectStyle(rect), borderRadius: rect.corner ?? 0 }}
       />
-      <div
-        className="fixed inset-x-0 bottom-0 bg-dim"
-        style={{ top: bottom }}
-      />
-      <div
-        className="fixed left-0 bg-dim"
-        style={{ top: rect.y, height: rect.height, width: Math.max(rect.x, 0) }}
-      />
-      <div
-        className="fixed right-0 bg-dim"
-        style={{ top: rect.y, height: rect.height, left: right }}
-      />
-    </>
+    </div>
   );
 }

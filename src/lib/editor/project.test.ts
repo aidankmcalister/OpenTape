@@ -51,12 +51,21 @@ describe("project", () => {
     });
   });
 
+  test("readProject opens a project muted before 0.2.0 with both tracks muted", () => {
+    const muted = { isMuted: true, volume: 100 };
+    expect(
+      readProject(JSON.stringify({ sound: { isMuted: true } })).sound,
+    ).toEqual({ systemAudio: muted, microphone: muted });
+  });
+
   test("changeProject keeps the sound the same project when nothing changes, so undo skips it", () => {
-    expect(changeProject(NEW_PROJECT, "sound", { isMuted: false })).toBe(
+    const unchanged = { isMuted: false, volume: 100 };
+    expect(changeProject(NEW_PROJECT, "sound", { microphone: unchanged })).toBe(
       NEW_PROJECT,
     );
-    const muted = changeProject(NEW_PROJECT, "sound", { isMuted: true });
-    expect(muted.sound).toEqual({ ...DEFAULT_SOUND, isMuted: true });
+    const microphone = { isMuted: true, volume: 100 };
+    const muted = changeProject(NEW_PROJECT, "sound", { microphone });
+    expect(muted.sound).toEqual({ ...DEFAULT_SOUND, microphone });
     expect(undo(record(historyOf(NEW_PROJECT), muted)).present).toBe(
       NEW_PROJECT,
     );

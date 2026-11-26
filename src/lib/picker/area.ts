@@ -98,7 +98,10 @@ export function captureBarPosition(
   };
 }
 
-export function pixelSize(points: Size, scale: number): Size {
+/** The size a recording comes out at: a 1x display records at 2x when that fits in 4K, the same rule as `capture_scale` in Rust. */
+export function pixelSize(points: Size, displayScale: number): Size {
+  const fitsAt2x = points.width * points.height * 4 <= 3840 * 2160;
+  const scale = displayScale < 2 && fitsAt2x ? 2 : displayScale;
   const even = (value: number) => Math.floor((value * scale) / 2) * 2;
   return { width: even(points.width), height: even(points.height) };
 }

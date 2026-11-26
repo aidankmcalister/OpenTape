@@ -208,10 +208,13 @@ pub(crate) async fn video_samples(app: AppHandle, from: usize, to: usize) -> Cmd
 }
 
 #[tauri::command]
-pub(crate) async fn stage_sound(app: AppHandle) -> CmdResult<Response> {
+pub(crate) async fn stage_sound(
+    app: AppHandle,
+    track: crate::export::SoundTrack,
+) -> CmdResult<Response> {
     let (video, _) = app.state::<CurrentRecording>().video(None)?;
     Ok(Response::new(
-        run_blocking(move || crate::stage::stage_sound(&video)).await?,
+        run_blocking(move || crate::stage::stage_sound(&video, track)).await?,
     ))
 }
 

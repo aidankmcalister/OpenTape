@@ -7,7 +7,7 @@ import type { Clip } from "./clips";
 import { type CursorTrack, withSuggestions } from "./cursor";
 import { withShortcuts } from "./keys";
 import type { Region } from "./regions";
-import { DEFAULT_SOUND, type SoundSettings } from "./sound";
+import { DEFAULT_SOUND, readSound, type SoundSettings } from "./sound";
 
 export type Project = {
   appearance: Appearance;
@@ -36,7 +36,7 @@ export function readProject(json: string | null, fresh = NEW_PROJECT): Project {
     appearance: readAppearance(saved.appearance),
     regions: saved.regions ?? [],
     clips: saved.clips ?? [],
-    sound: { isMuted: saved.sound?.isMuted ?? false },
+    sound: readSound(saved.sound),
     suggestionsMade: saved.suggestionsMade ?? false,
     keysAdded: saved.keysAdded ?? false,
     title: saved.title ?? null,

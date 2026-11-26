@@ -37,7 +37,7 @@ export type ExportFormat = "mp4" | "gif";
 
 export type ExportGradient = { angle: number, stops: Array<ExportStop>, };
 
-export type ExportLayout = { width: number, height: number, recording: PixelRect, video: PixelRect, radius: number, shadow: ExportShadow, border: ExportBorder | null, background: ExportGradient, backgroundImage: string | null, zoom: Array<ExportZoom>, zoomRate: number, speed: Array<ExportSpeed>, cuts: Array<ExportCut>, blurs: Array<ExportBlur>, rings: Array<ExportRing>, badges: Array<ExportBadge>, cursor: ExportCursor | null, muted: boolean, };
+export type ExportLayout = { width: number, height: number, recording: PixelRect, video: PixelRect, radius: number, shadow: ExportShadow, border: ExportBorder | null, background: ExportGradient, backgroundImage: string | null, zoom: Array<ExportZoom>, zoomRate: number, speed: Array<ExportSpeed>, cuts: Array<ExportCut>, blurs: Array<ExportBlur>, rings: Array<ExportRing>, badges: Array<ExportBadge>, cursor: ExportCursor | null, sound: ExportSound, };
 
 export type ExportOptions = { format: ExportFormat, frameRate: number, 
 /**
@@ -48,6 +48,11 @@ quality: number, toClipboard: boolean, name: string | null, };
 export type ExportRing = { t: number, x: number, y: number, color: string, size: number, style: RingStyle, };
 
 export type ExportShadow = { offsetY: number, blur: number, opacity: number, };
+
+/**
+ * How loud each track plays in the export, from 0 (muted) to 1 (as recorded).
+ */
+export type ExportSound = { systemAudio: number, microphone: number, };
 
 export type ExportSpeed = { start: number, end: number, amount: number, };
 
@@ -87,7 +92,12 @@ export type Settings = { saveFolder: string | null, export: unknown, appearance:
 /**
  * Off by default: which keys were pressed is logged only with this on.
  */
-recordsKeys: boolean, recordShortcut: string, countsDown: boolean, hidesDockIcon: boolean, sharesUsage: boolean, hasFinishedSetup: boolean, };
+recordsKeys: boolean, 
+/**
+ * On by default: a window recording's system audio is every app's sound, not only the
+ * recorded window's app.
+ */
+hearsEveryApp: boolean, recordShortcut: string, countsDown: boolean, hidesDockIcon: boolean, sharesUsage: boolean, hasFinishedSetup: boolean, };
 
 export type Setup = { session: Session, cursor: Point | null, };
 

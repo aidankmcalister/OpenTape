@@ -390,19 +390,14 @@ export function useVisibleBox(src: string) {
   return box;
 }
 
-/** `opensSkipped`: the Skipped row starts open, for a recording with only skipped keys. */
-export function useLanes(kinds: RegionKind[], opensSkipped: boolean) {
+export function useLanes(kinds: RegionKind[]) {
   const [solo, setSolo] = useState<RegionKind | null>(null);
   const [collapsed, setCollapsed] = useState<RegionKind[]>([]);
-  const [showsSkippedChoice, setShowsSkipped] = useState<boolean | null>(null);
-  const showsSkipped = showsSkippedChoice ?? opensSkipped;
   const isAllCollapsed = kinds.every((kind) => collapsed.includes(kind));
   return {
     kinds,
     solo,
     collapsed,
-    showsSkipped,
-    toggleSkipped: () => setShowsSkipped(!showsSkipped),
     hasLanes: kinds.length > 0,
     isAllCollapsed,
     toggleAll: () => setCollapsed(isAllCollapsed ? [] : kinds),

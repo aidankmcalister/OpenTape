@@ -15,22 +15,30 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow, bail};
-use cidre::{arc, av, cg, dispatch, ns, sc};
+use cidre::{arc, av, cg, cm, dispatch, ns, sc};
 
 pub(crate) use plan::{
-    CaptureSize, NORMAL_WINDOW_LAYER, Target, display_of, display_scale, shareable_content,
+    CaptureSize, FLOATING_WINDOW_LAYER, NORMAL_WINDOW_LAYER, Target, display_of, display_scale,
+    shareable_content,
 };
 
 use self::cursor_log::CursorLogger;
-use self::plan::{CapturePlan, kept_inside, plan_capture, window_frame};
+pub(crate) use self::plan::Follow;
+use self::plan::{CapturePlan, plan_capture};
 use self::timeline::{Timeline, host_time_now};
-use self::writer::{OnStop, Recorder, StopWatcher, create_recorder, finish_writing};
-use crate::geometry::to_display_relative;
+pub(crate) use self::writer::take_mic_level;
+use self::writer::{
+    OnStop, Recorder, StopWatcher, WindowFramer, WindowLog, create_recorder, finish_writing,
+    window_moves,
+};
+use crate::geometry::Frame;
 use crate::util::{lock, wait};
 
 const CAPTURE_LIMIT: Duration = Duration::from_secs(10);
-/// How often a recorded window's position is checked, so the crop follows it when it moves.
-const FOLLOW_EVERY: Duration = Duration::from_millis(33);
+/// How often the countdown checks where a recorded window is, so the dimming follows it.
+pub(crate) const FOLLOW_EVERY: Duration = Duration::from_millis(16);
+/// How often a recording checks where its window is: often, so each frame's crop is close.
+const WATCH_EVERY: Duration = Duration::from_millis(4);
 pub(crate) const VIDEO_FILE: &str = "recording.mov";
 pub(crate) const EVENTS_FILE: &str = "events.jsonl";
 pub(crate) const META_FILE: &str = "meta.json";
@@ -41,6 +49,8 @@ pub(crate) struct Inputs {
     pub system_audio: bool,
     /// Record which keys were pressed, not only when (Record keystrokes).
     pub records_keys: bool,
+    /// A window recording's system audio is every app's sound (see `CapturePlan::sound`).
+    pub hears_every_app: bool,
 }
 
 impl Inputs {
@@ -127,6 +137,7 @@ pub(crate) fn start(
     inputs: Inputs,
     folder: PathBuf,
     on_stop: impl Fn(String) + Send + 'static,
+    on_window_move: impl Fn(u32, Frame) + Send + 'static,
 ) -> Result<RunningRecording> {
     let (started_tx, started_rx) = mpsc::channel();
     let (stop_tx, stop_rx) = mpsc::channel::<()>();
@@ -139,7 +150,9 @@ pub(crate) fn start(
         let (target, folder, timeline) = (target.clone(), folder.clone(), Arc::clone(&timeline));
         move || {
             let on_stop = Box::new(on_stop);
-            let capture = ActiveCapture::start(&target, &inputs, &folder, timeline, on_stop);
+            let on_window_move = Box::new(on_window_move);
+            let capture =
+                ActiveCapture::start(&target, &inputs, &folder, timeline, on_stop, on_window_move);
             let saved = record_until_stopped(capture, &started_tx, &stop_rx);
             let _ = finished_tx.send(saved);
         }
@@ -171,14 +184,27 @@ fn record_until_stopped(
     };
     let _ = started_tx.send(Ok(()));
     let mut capture = capture;
-    while let Err(RecvTimeoutError::Timeout) = stop_rx.recv_timeout(FOLLOW_EVERY) {
-        capture.follow_window();
+    while let Err(RecvTimeoutError::Timeout) = stop_rx.recv_timeout(WATCH_EVERY) {
+        capture.watch_window();
     }
     capture.finish()
 }
 
+/// A stream that only listens: its picture is a tiny frame once a second that nothing reads.
+fn sound_stream(filter: &sc::ContentFilter) -> arc::R<sc::Stream> {
+    let mut config = sc::StreamCfg::new();
+    config.set_width(2);
+    config.set_height(2);
+    config.set_minimum_frame_interval(cm::Time::new(1, 1));
+    config.set_captures_audio(true);
+    config.set_excludes_current_process_audio(true);
+    sc::Stream::new(filter, &config)
+}
+
 struct ActiveCapture {
     stream: arc::R<sc::Stream>,
+    /// A window recording's system audio, on its own stream (see `CapturePlan::sound`).
+    sound_stream: Option<arc::R<sc::Stream>>,
     _stop_watcher: arc::R<StopWatcher>,
     queue: arc::R<dispatch::Queue>,
     recorder: arc::R<Recorder>,
@@ -186,9 +212,10 @@ struct ActiveCapture {
     timeline: Arc<Mutex<Timeline>>,
     plan: CapturePlan,
     folder: PathBuf,
-    /// Where the crop is now, and each time it moved: `[host time, x, y]` in screen points.
-    origin: cg::Point,
-    window_moves: Vec<[f64; 3]>,
+    window_log: WindowLog,
+    /// Told which display and where on it a recorded window is, at the start and after each
+    /// move, so the dimming around it follows.
+    on_window_move: Box<dyn Fn(u32, Frame) + Send>,
 }
 
 impl ActiveCapture {
@@ -198,11 +225,26 @@ impl ActiveCapture {
         folder: &Path,
         timeline: Arc<Mutex<Timeline>>,
         on_stop: OnStop,
+        on_window_move: Box<dyn Fn(u32, Frame) + Send>,
     ) -> Result<Self> {
         std::fs::create_dir_all(folder)
             .with_context(|| format!("could not create {}", folder.display()))?;
         let mut plan = plan_capture(target)?;
-        plan.config.set_captures_audio(inputs.system_audio);
+        let window_log = WindowLog::default();
+        let window = plan.follows.as_ref().map(|follow| {
+            on_window_move(follow.display_id, Frame::from(follow.frame()));
+            lock(&window_log).push((host_time_now(), follow.window));
+            let start = plan.screen_rect.size;
+            WindowFramer::new(Arc::clone(&window_log), follow.display, start, follow.scale)
+        });
+        let sound_stream = match &plan.sound {
+            Some(filter) if inputs.system_audio && inputs.hears_every_app => {
+                Some(sound_stream(filter))
+            }
+            _ => None,
+        };
+        plan.config
+            .set_captures_audio(inputs.system_audio && sound_stream.is_none());
         plan.config.set_excludes_current_process_audio(true);
         if let Some(microphone_id) = &inputs.microphone_id {
             plan.config.set_capture_mic(true);
@@ -214,6 +256,7 @@ impl ActiveCapture {
             plan.size,
             inputs,
             Arc::clone(&timeline),
+            window,
         )?;
         let stop_watcher = StopWatcher::with(on_stop);
         let stream = sc::Stream::with_delegate(&plan.filter, &plan.config, stop_watcher.as_ref());
@@ -222,7 +265,9 @@ impl ActiveCapture {
             .add_stream_output(recorder.as_ref(), sc::OutputType::Screen, Some(&queue))
             .map_err(|err| anyhow!("could not add stream output: {err:?}"))?;
         if inputs.system_audio {
-            stream
+            sound_stream
+                .as_deref()
+                .unwrap_or(&stream)
                 .add_stream_output(recorder.as_ref(), sc::OutputType::Audio, Some(&queue))
                 .map_err(|err| anyhow!("could not add system audio output: {err:?}"))?;
         }
@@ -234,46 +279,39 @@ impl ActiveCapture {
         let cursor = CursorLogger::start(&folder.join(EVENTS_FILE), inputs.records_keys)?;
         wait("starting the capture", CAPTURE_LIMIT, stream.start())?
             .map_err(|err| anyhow!("could not start capture: {err:?}"))?;
+        if let Some(sound_stream) = &sound_stream {
+            wait(
+                "starting the system audio",
+                CAPTURE_LIMIT,
+                sound_stream.start(),
+            )?
+            .map_err(|err| anyhow!("could not start the system audio: {err:?}"))?;
+        }
         lock(&timeline).started = host_time_now();
         Ok(Self {
             stream,
+            sound_stream,
             _stop_watcher: stop_watcher,
             queue,
             recorder,
             cursor,
             timeline,
-            origin: plan.screen_rect.origin,
             plan,
             folder: folder.to_path_buf(),
-            window_moves: Vec::new(),
+            window_log,
+            on_window_move,
         })
     }
 
-    /// Moves the crop to where the recorded window is now, if it moved, and notes when.
-    fn follow_window(&mut self) {
-        let Some(follow) = &self.plan.follows else {
+    /// Notes where a recorded window is now, if it moved, for the writer's crop and the dimming.
+    fn watch_window(&mut self) {
+        let Some(follow) = &mut self.plan.follows else {
             return;
         };
-        let Some(frame) = window_frame(follow.window_id) else {
-            return;
-        };
-        let size = self.plan.screen_rect.size;
-        let origin = kept_inside(frame.origin, size, follow.display);
-        if origin == self.origin {
-            return;
+        if follow.moved() {
+            lock(&self.window_log).push((host_time_now(), follow.window));
+            (self.on_window_move)(follow.display_id, Frame::from(follow.frame()));
         }
-        self.origin = origin;
-        let rect = cg::Rect { origin, size };
-        self.plan
-            .config
-            .set_src_rect(to_display_relative(rect, follow.display));
-        self.stream.update_cfg_ch(&self.plan.config, |err| {
-            if let Some(err) = err {
-                log::warn!("could not move the window crop: {err:?}");
-            }
-        });
-        self.window_moves
-            .push([host_time_now(), origin.x, origin.y]);
     }
 
     fn finish(mut self) -> Result<SavedRecording> {
@@ -285,18 +323,29 @@ impl ActiveCapture {
             }
             Err(err) => log::warn!("could not stop the capture, keeping what it recorded: {err:#}"),
         }
+        if let Some(sound_stream) = &self.sound_stream
+            && let Err(err) = wait(
+                "stopping the system audio",
+                CAPTURE_LIMIT,
+                sound_stream.stop(),
+            )
+            .and_then(|stopped| stopped.map_err(|err| anyhow!("{err:?}")))
+        {
+            log::warn!("could not stop the system audio: {err:#}");
+        }
         self.queue.sync(|| {});
         let records_keys = self.cursor.records_keys;
         let cursor = self.cursor.stop();
         let first_frame_time = finish_writing(&mut self.recorder, video_end)?;
         cursor?;
         let pauses = lock(&self.timeline).pauses().to_vec();
+        let window_moves = window_moves(&self.recorder);
         let meta = meta_json(
             self.plan.size,
             self.plan.screen_rect,
             first_frame_time,
             &pauses,
-            &self.window_moves,
+            &window_moves,
             records_keys,
         );
         std::fs::write(self.folder.join(META_FILE), meta).context("could not write meta.json")?;
@@ -311,7 +360,7 @@ fn meta_json(
     rect: cg::Rect,
     first_frame_time: f64,
     pauses: &[[f64; 2]],
-    window_moves: &[[f64; 3]],
+    window_moves: &[[f64; 4]],
     records_keys: bool,
 ) -> String {
     let meta = serde_json::json!({
@@ -322,7 +371,7 @@ fn meta_json(
         "pauses": pauses,
         "window_moves": window_moves,
         "records_keys": records_keys,
-        "clock": "host time in seconds, same as the t values in events.jsonl; pauses are cut from the video; window_moves are [t, x, y] where the recorded window's crop moved to",
+        "clock": "host time in seconds, same as the t values in events.jsonl; pauses are cut from the video; window_moves are [t, x, y, scale] each time a recorded window moved or resized: a screen point p lands at (p - (x, y)) * scale, in screen_rect's points",
     });
     serde_json::to_string_pretty(&meta).unwrap_or_default() + "\n"
 }
@@ -362,7 +411,7 @@ mod tests {
             height: 1080,
         };
         let rect = cg::Rect::new(0.0, 25.0, 960.0, 540.0);
-        let moves = [[103.0, 40.0, 60.0]];
+        let moves = [[103.0, 40.0, 60.0, 0.5]];
         let json = meta_json(size, rect, 100.5, &[[101.0, 102.0]], &moves, true);
         let meta = serde_json::from_str::<Value>(&json).expect("meta.json is JSON");
         assert_eq!(meta["video_width"], 1920);
@@ -370,6 +419,6 @@ mod tests {
         assert_eq!(meta["first_frame_time"], 100.5);
         assert_eq!(meta["pauses"], json!([[101.0, 102.0]]));
         assert_eq!(meta["records_keys"], true);
-        assert_eq!(meta["window_moves"], json!([[103.0, 40.0, 60.0]]));
+        assert_eq!(meta["window_moves"], json!([[103.0, 40.0, 60.0, 0.5]]));
     }
 }

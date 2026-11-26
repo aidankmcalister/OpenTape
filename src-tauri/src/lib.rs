@@ -181,6 +181,7 @@ pub fn run() -> tauri::Result<()> {
         })
         .invoke_handler(tauri::generate_handler![
             recording::recording_status,
+            recording::mic_level,
             recording::cancel_countdown,
             recording::set_capture_inputs,
             recording::pause_recording,

@@ -1,7 +1,14 @@
 mod overlays;
 mod sources;
 
-use std::{sync::Mutex, time::Duration};
+use std::{
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    thread,
+    time::Duration,
+};
 
 use anyhow::Result;
 use cidre::cg;
@@ -27,6 +34,8 @@ use crate::{KeySet, PageEvent, macos, recording};
 pub(crate) struct PickerState(Mutex<Option<Session>>);
 
 static SCREEN_LOOP: Poller = Poller::new();
+/// True while the window list is being read again, which can take a moment.
+static REFRESHING: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
 pub(crate) async fn open_picker(
@@ -110,6 +119,14 @@ pub(crate) fn record(app: AppHandle, state: State<'_, PickerState>, target: Targ
     let counts_down = app.state::<AppSettings>().current().counts_down;
     recording::start(app, target, counts_down.then_some(name));
     Ok(())
+}
+
+/// Moves the dimming around a recorded window to where the window is now on its display.
+pub(crate) fn move_frame(app: &AppHandle, display_id: u32, window: Frame) {
+    let label = overlay_label(display_id);
+    if app.get_webview_window(&label).is_some() {
+        let _ = PageEvent::PickerRecording(Some(window)).send_to(app, &label);
+    }
 }
 
 pub(crate) fn close_frame(app: &AppHandle) {
@@ -223,11 +240,17 @@ fn watch_screen(app: AppHandle) {
             }
         }
         ticks = ticks.wrapping_add(1);
-        if ticks.is_multiple_of(15) {
+        // Windows changed: read them again off this loop, so the cursor never waits on it.
+        if ticks.is_multiple_of(15) && !REFRESHING.load(Ordering::SeqCst) {
             let window_list = sources::stacking_order();
             if window_list != last_window_list {
                 last_window_list = window_list;
-                refresh_sources(&app);
+                REFRESHING.store(true, Ordering::SeqCst);
+                let app = app.clone();
+                thread::spawn(move || {
+                    refresh_sources(&app);
+                    REFRESHING.store(false, Ordering::SeqCst);
+                });
             }
         }
         true

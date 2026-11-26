@@ -11,8 +11,9 @@ use tauri::{AppHandle, Manager, State};
 use tauri_plugin_global_shortcut::{Code, Shortcut};
 use ts_rs::TS;
 
-use crate::capture::{self, Inputs, RunningRecording, Target};
+use crate::capture::{self, FOLLOW_EVERY, Inputs, RunningRecording, Target};
 use crate::current_recording::CurrentRecording;
+use crate::geometry::Frame;
 use crate::macos::{self, Alert, Choice};
 use crate::settings::AppSettings;
 use crate::util::{CmdResult, lock, run_blocking};
@@ -219,7 +220,7 @@ pub(crate) fn start(app: AppHandle, target: Target, countdown_target: Option<Str
     announce_status(&app);
     thread::spawn(move || {
         if let Some(id) = countdown
-            && !count_down(&app, id)
+            && !count_down(&app, id, &target)
         {
             return;
         }
@@ -227,23 +228,42 @@ pub(crate) fn start(app: AppHandle, target: Target, countdown_target: Option<Str
     });
 }
 
-fn count_down(app: &AppHandle, id: u64) -> bool {
+fn count_down(app: &AppHandle, id: u64, target: &Target) -> bool {
     if let Err(err) = CountdownKey::take(app) {
         log::warn!("could not take Esc, so the countdown can't be canceled: {err}");
     }
     let state = app.state::<RecordingState>();
+    let mut follow = match *target {
+        Target::Window { window_id } => capture::Follow::watch(window_id).ok(),
+        _ => None,
+    };
     for left in (1..=COUNTDOWN_SECONDS).rev() {
         if !state.tick(id, left) {
             return false;
         }
         announce_status(app);
-        thread::sleep(Duration::from_secs(1));
+        wait_following(app, follow.as_mut(), Duration::from_secs(1));
     }
     if !state.end_countdown(id) {
         return false;
     }
     let _ = CountdownKey::give_back(app);
     true
+}
+
+/// Waits, keeping the dimming around a recorded window as it moves during the countdown.
+fn wait_following(app: &AppHandle, follow: Option<&mut capture::Follow>, wait: Duration) {
+    let Some(follow) = follow else {
+        thread::sleep(wait);
+        return;
+    };
+    let until = Instant::now() + wait;
+    while Instant::now() < until {
+        if follow.moved() {
+            picker::move_frame(app, follow.display_id, Frame::from(follow.frame()));
+        }
+        thread::sleep(FOLLOW_EVERY);
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -282,6 +302,13 @@ pub(crate) fn recording_status(state: State<'_, RecordingState>) -> RecordingSta
     state.status()
 }
 
+/// The mic's loudest sample since the bar last asked, from 0 to 1. The bar asks about 20 times
+/// a second while recording.
+#[tauri::command]
+pub(crate) fn mic_level() -> f32 {
+    capture::take_mic_level()
+}
+
 #[tauri::command]
 pub(crate) fn set_capture_inputs(
     state: State<'_, RecordingState>,
@@ -292,6 +319,7 @@ pub(crate) fn set_capture_inputs(
         microphone_id,
         system_audio,
         records_keys: false,
+        hears_every_app: true,
     };
 }
 
@@ -423,15 +451,21 @@ async fn open_capture(app: &AppHandle, target: Target) -> Result<RunningRecordin
     let folder = app.state::<CurrentRecording>().new_folder()?;
     let state = app.state::<RecordingState>();
     let recording_number = state.next_recording_number();
+    let settings = app.state::<AppSettings>().current();
     let inputs = Inputs {
-        records_keys: app.state::<AppSettings>().current().records_keys,
+        records_keys: settings.records_keys,
+        hears_every_app: settings.hears_every_app,
         ..lock(&state.0).inputs.clone()
+    };
+    let on_window_move = {
+        let app = app.clone();
+        move |display_id, frame| picker::move_frame(&app, display_id, frame)
     };
     let app = app.clone();
     let on_stop = move |reason| {
         tauri::async_runtime::spawn(capture_stopped(app.clone(), recording_number, reason));
     };
-    run_blocking(move || capture::start(target, inputs, folder, on_stop)).await
+    run_blocking(move || capture::start(target, inputs, folder, on_stop, on_window_move)).await
 }
 
 fn go_idle(app: &AppHandle, error: Option<&anyhow::Error>) {

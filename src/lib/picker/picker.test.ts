@@ -82,13 +82,17 @@ describe("area", () => {
 
   test.each([
     [920.5, 2, 1840],
-    [333, 1.5, 498],
-    [100, 1, 100],
+    [333, 1.5, 666],
+    [100, 1, 200],
+    [2560, 1, 2560],
     [982.5, 2, 1964],
-  ])("pixelSize of %p points at %px is %p, even", (points, scale, pixels) => {
-    const size = { width: points, height: points };
-    expect(pixelSize(size, scale)).toEqual({ width: pixels, height: pixels });
-  });
+  ])(
+    "pixelSize of %p points on a %px display records at %p, even",
+    (points, scale, pixels) => {
+      const size = { width: points, height: points };
+      expect(pixelSize(size, scale)).toEqual({ width: pixels, height: pixels });
+    },
+  );
 
   test.each([
     [rect(100, 800, 400, 150), 140, 0, { x: 160, y: 648 }, "centered above"],

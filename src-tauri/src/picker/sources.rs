@@ -2,7 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     f64::consts::FRAC_1_SQRT_2,
     sync::{LazyLock, Mutex, mpsc},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use anyhow::Result;
@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use ts_rs::TS;
 
-use crate::capture::{self, CaptureSize, NORMAL_WINDOW_LAYER, Target};
+use crate::capture::{self, CaptureSize, FLOATING_WINDOW_LAYER, NORMAL_WINDOW_LAYER, Target};
 use crate::geometry::{Frame, Point};
 use crate::macos;
 use crate::util::lock;
@@ -103,7 +103,6 @@ pub(super) struct Framing {
 static ICONS: LazyLock<Mutex<HashMap<u32, String>>> = LazyLock::new(Mutex::default);
 static CORNERS: LazyLock<Mutex<HashMap<u32, f64>>> = LazyLock::new(Mutex::default);
 
-const FLOATING_WINDOW_LAYER: isize = 3;
 const CORNER_PROBE: f64 = 40.0;
 const CORNER_PIXELS: usize = 80;
 const FALLBACK_CORNER: f64 = 16.0;
@@ -118,7 +117,7 @@ pub(super) fn list(app: &AppHandle) -> Result<Sources> {
             id: display.display_id().0,
             name: format!("Display {}", index + 1),
             frame: Frame::from(display.frame()),
-            size: CaptureSize::of(display.frame(), scale),
+            size: CaptureSize::to_record(display.frame(), scale),
             scale,
             safe_top: 0.0,
         });
@@ -252,17 +251,17 @@ fn pickable_window(
     if is_own_window || !is_pickable(window.window_layer(), window.is_on_screen(), frame) {
         return None;
     }
-    let capture_display = capture::display_of(content, window).ok()?.display_id().0;
+    let capture_display = capture::display_of(content, window).ok()?;
     let scale = displays
         .iter()
-        .find(|display| display.id == capture_display)?
+        .find(|display| display.id == capture_display.display_id().0)?
         .scale;
     Some(WindowInfo {
         id: window.id(),
         pid: owner_pid,
         app: app.app_name().to_string(),
         frame,
-        size: CaptureSize::of(window.frame(), scale),
+        size: CaptureSize::of_window(window.frame(), capture_display.frame(), scale),
         display_id: display_at_center(displays, frame),
         corner: FALLBACK_CORNER,
     })
@@ -291,9 +290,14 @@ fn measure_corners(windows: &[&sc::Window]) -> HashMap<u32, f64> {
         });
         sc::ScreenshotManager::capture_image_ch(&filter, &config, Some(&mut done));
     }
-    drop(sender);
+    // Stop as soon as every window answered, giving the slow ones a second at most.
+    let deadline = Instant::now() + Duration::from_secs(1);
     let mut corners = HashMap::new();
-    while let Ok((id, corner)) = measured.recv_timeout(Duration::from_secs(1)) {
+    for _ in windows {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let Ok((id, corner)) = measured.recv_timeout(left) else {
+            break;
+        };
         if let Some(corner) = corner {
             corners.insert(id, corner);
         }

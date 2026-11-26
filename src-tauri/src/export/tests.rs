@@ -179,7 +179,10 @@ fn exports_a_recording_in_the_default_appearance() {
         cursor: std::env::var("EXPORT_TEST_CURSOR")
             .ok()
             .map(|path| serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()),
-        muted: std::env::var("EXPORT_TEST_MUTED").is_ok(),
+        sound: ExportSound {
+            system_audio: std::env::var("EXPORT_TEST_SYSTEM").map_or(1.0, |v| v.parse().unwrap()),
+            microphone: std::env::var("EXPORT_TEST_MIC").map_or(1.0, |v| v.parse().unwrap()),
+        },
     };
     let var = |name: &str, or: &str| std::env::var(name).unwrap_or(or.into());
     let options = ExportOptions {

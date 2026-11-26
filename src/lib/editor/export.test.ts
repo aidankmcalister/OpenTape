@@ -148,11 +148,20 @@ test("exportLayout exports a suggestion exactly like a kept block", () => {
   );
 });
 
-test("exportLayout sends whether the export is muted", () => {
+test("exportLayout sends each track's volume, with a muted track at 0", () => {
   const video = { width: 1920, height: 1080 };
-  expect(exportLayout(DEFAULT_APPEARANCE, video).muted).toBe(false);
-  const sound = { isMuted: true };
-  expect(exportLayout(DEFAULT_APPEARANCE, video, { sound }).muted).toBe(true);
+  expect(exportLayout(DEFAULT_APPEARANCE, video).sound).toEqual({
+    systemAudio: 1,
+    microphone: 1,
+  });
+  const sound = {
+    systemAudio: { isMuted: false, volume: 40 },
+    microphone: { isMuted: true, volume: 80 },
+  };
+  expect(exportLayout(DEFAULT_APPEARANCE, video, { sound }).sound).toEqual({
+    systemAudio: 0.4,
+    microphone: 0,
+  });
 });
 
 test("exportLayout sends each cut in seconds of the sped-up video", () => {

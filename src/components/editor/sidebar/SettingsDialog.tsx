@@ -103,6 +103,7 @@ export function SettingsPanel({
     saveFolder,
     suggestsEdits,
     recordsKeys,
+    hearsEveryApp,
     recordShortcut,
     countsDown,
     hidesDockIcon,
@@ -170,6 +171,20 @@ export function SettingsPanel({
                     checked={countsDown}
                     onCheckedChange={(checked) =>
                       change({ countsDown: checked })
+                    }
+                  />
+                </Row>
+                <Row
+                  label={
+                    <Help text="Off records only the recorded window's app.">
+                      Record all sound in window recordings
+                    </Help>
+                  }
+                >
+                  <Switch
+                    checked={hearsEveryApp}
+                    onCheckedChange={(checked) =>
+                      change({ hearsEveryApp: checked })
                     }
                   />
                 </Row>

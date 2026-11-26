@@ -106,20 +106,6 @@ export function withShortcuts(
   return added.length === 0 ? regions : [...regions, ...added];
 }
 
-/** The Skipped row starts open when the recording has named keys and none of them makes a block. */
-export function opensSkipped(pressed: Pressed[]): boolean {
-  return hasCaps(pressed) && withShortcuts(pressed, [], Infinity).length === 0;
-}
-
-/** Named keys that aren't on a Keystrokes block, so they can be added by hand. */
-export function skippedKeys(pressed: Pressed[], regions: Region[]): Pressed[] {
-  const blocks = sameKind(regions, "keys");
-  return pressed.filter(
-    ({ ms, caps }) =>
-      caps.length > 0 && !blocks.some((block) => covers(block, ms)),
-  );
-}
-
 /** How many presses of its keys a Keystrokes block holds: a joined block shows × 3. */
 export function pressCount(pressed: Pressed[], region: Region): number {
   const text = badgeText(region);

@@ -7,7 +7,7 @@ import {
   useTauriEvent,
 } from "@/hooks/useTauri";
 import type { Session, Setup, Target } from "@/lib/bindings";
-import type { Point, Rect } from "@/lib/geometry";
+import type { Point, RoundedRect } from "@/lib/geometry";
 import {
   holdsCursor,
   nextWindowId,
@@ -24,7 +24,7 @@ export function usePicker(displayId: number) {
   const [view, setView] = useState<PickerView | null>(null);
   const [framing, setFraming] = useState<{
     isFraming: boolean;
-    windowRect: Rect | null;
+    windowRect: RoundedRect | null;
   }>({ isFraming: false, windowRect: null });
   const { setPointer } = usePointerHover();
   const oneAtATime = useOneAtATime();
@@ -56,7 +56,18 @@ export function usePicker(displayId: number) {
   );
   useTauriEvent(
     "picker-recording",
-    (windowRect) => setFraming({ isFraming: true, windowRect }),
+    (windowRect) =>
+      setFraming((shown) => {
+        // Rust sends where the window is; its corner comes from the highlight it was picked by.
+        const corner =
+          shown.windowRect?.corner ??
+          (view && "highlight" in view ? view.highlight?.rect.corner : 0) ??
+          0;
+        return {
+          isFraming: true,
+          windowRect: windowRect && { ...windowRect, corner },
+        };
+      }),
     "window",
   );
 

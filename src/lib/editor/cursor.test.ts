@@ -53,6 +53,17 @@ test("a click after a recorded window moved lands where it is in the moved windo
   ]);
 });
 
+test("a click after a recorded window was resized lands scaled, where macOS drew the window", () => {
+  const resized = JSON.stringify({
+    ...JSON.parse(META),
+    window_moves: [[105.5, 500, 140, 0.5]],
+  });
+  expect(readCursor(resized, EVENTS).clicks).toEqual([
+    { ms: 1000, x: 0.25, y: 0.5, button: "left" },
+    { ms: 4000, x: 0.25, y: 0.075, button: "right" },
+  ]);
+});
+
 const CLICKS: CursorClick[] = [
   { ms: 1000, x: 0.25, y: 0.5, button: "left" },
   { ms: 4000, x: 0.75, y: 0.25, button: "right" },

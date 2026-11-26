@@ -6,8 +6,8 @@ use objc2::rc::Retained;
 use objc2_av_foundation::{
     AVAsset, AVAssetReader, AVAssetReaderAudioMixOutput, AVAssetReaderStatus,
     AVAssetReaderVideoCompositionOutput, AVAssetTrack, AVAudioTimePitchAlgorithmVarispeed,
-    AVMediaTypeAudio, AVMediaTypeVideo, AVMutableComposition, AVMutableVideoComposition,
-    AVURLAsset,
+    AVMediaTypeAudio, AVMediaTypeVideo, AVMutableAudioMix, AVMutableAudioMixInputParameters,
+    AVMutableComposition, AVMutableVideoComposition, AVURLAsset,
 };
 use objc2_core_foundation::{CGAffineTransform, CGPoint, CGRect, CGSize};
 use objc2_core_graphics::{CGBitmapContextCreateImage, CGContext, CGImage};
@@ -66,10 +66,28 @@ pub(crate) struct ExportLayout {
     rings: Vec<ExportRing>,
     badges: Vec<ExportBadge>,
     cursor: Option<ExportCursor>,
-    muted: bool,
+    sound: ExportSound,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, TS)]
+/// How loud each track plays in the export, from 0 (muted) to 1 (as recorded).
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "bindings.ts")]
+pub(crate) struct ExportSound {
+    system_audio: f32,
+    microphone: f32,
+}
+
+impl ExportSound {
+    fn volume(&self, track: SoundTrack) -> f32 {
+        match track {
+            SoundTrack::SystemAudio => self.system_audio,
+            SoundTrack::Microphone => self.microphone,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "bindings.ts")]
 pub(crate) enum SoundTrack {
@@ -351,7 +369,7 @@ pub(crate) fn export(
         reader.addOutput(&frames);
     }
     let sound = match options.format {
-        ExportFormat::Mp4 if !layout.muted => mixed_sound(&asset, &reader)?,
+        ExportFormat::Mp4 => mixed_sound(&asset, &reader, layout.sound)?,
         _ => None,
     };
     let duration = unsafe { asset.duration().seconds() };
@@ -421,7 +439,7 @@ pub(crate) fn audio_tracks(asset: &AVAsset) -> Result<Retained<NSArray<AVAssetTr
     Ok(unsafe { asset.tracksWithMediaType(audio_type) })
 }
 
-fn sound_track(track: &AVAssetTrack) -> SoundTrack {
+pub(crate) fn sound_track(track: &AVAssetTrack) -> SoundTrack {
     let channels = unsafe { track.formatDescriptions() }
         .firstObject()
         .and_then(|format| unsafe {
@@ -436,20 +454,39 @@ fn sound_track(track: &AVAssetTrack) -> SoundTrack {
     }
 }
 
+/// Mixes the recording's sound tracks at their export volumes, leaving out muted ones. None
+/// when nothing is heard.
 fn mixed_sound(
     asset: &AVAsset,
     reader: &AVAssetReader,
+    sound: ExportSound,
 ) -> Result<Option<Retained<AVAssetReaderAudioMixOutput>>> {
-    let tracks = audio_tracks(asset)?;
-    if tracks.is_empty() {
+    let heard: Vec<_> = audio_tracks(asset)?
+        .iter()
+        .filter(|track| sound.volume(sound_track(track)) > 0.0)
+        .collect();
+    if heard.is_empty() {
         return Ok(None);
     }
+    let volumes: Vec<_> = heard
+        .iter()
+        .map(|track| unsafe {
+            let volume =
+                AVMutableAudioMixInputParameters::audioMixInputParametersWithTrack(Some(track));
+            volume.setVolume_atTime(sound.volume(sound_track(track)), kCMTimeZero);
+            Retained::into_super(volume)
+        })
+        .collect();
+    let mix = unsafe { AVMutableAudioMix::audioMix() };
+    unsafe { mix.setInputParameters(&NSArray::from_retained_slice(&volumes)) };
     let output = unsafe {
         AVAssetReaderAudioMixOutput::assetReaderAudioMixOutputWithAudioTracks_audioSettings(
-            &tracks, None,
+            &NSArray::from_retained_slice(&heard),
+            None,
         )
     };
     unsafe {
+        output.setAudioMix(Some(&mix));
         if let Some(varispeed) = AVAudioTimePitchAlgorithmVarispeed {
             output.setAudioTimePitchAlgorithm(varispeed);
         }

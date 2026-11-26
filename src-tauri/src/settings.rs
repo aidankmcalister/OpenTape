@@ -26,6 +26,9 @@ pub(crate) struct Settings {
     pub suggests_edits: bool,
     /// Off by default: which keys were pressed is logged only with this on.
     pub records_keys: bool,
+    /// On by default: a window recording's system audio is every app's sound, not only the
+    /// recorded window's app.
+    pub hears_every_app: bool,
     pub record_shortcut: String,
     pub counts_down: bool,
     pub hides_dock_icon: bool,
@@ -41,6 +44,7 @@ impl Default for Settings {
             appearance: None,
             suggests_edits: true,
             records_keys: false,
+            hears_every_app: true,
             record_shortcut: "Alt+Shift+KeyR".into(),
             counts_down: true,
             hides_dock_icon: false,

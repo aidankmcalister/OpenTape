@@ -1,7 +1,7 @@
-import { type ReactNode, type RefObject } from "react";
+import { type CSSProperties, type ReactNode, type RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { Film, Minus, Plus, Scissors } from "lucide-react";
-import { useClockValue } from "@/hooks/editor/usePlayback";
+import { type LoadedTrack, useClockValue } from "@/hooks/editor/usePlayback";
 import { useReflow } from "@/hooks/useMorph";
 import type { Lanes } from "@/hooks/editor/useProject";
 import { useTimelineDrag } from "@/hooks/editor/useTimelineDrag";
@@ -21,6 +21,7 @@ import {
   TRACK_INSET_PX,
   RULER_PX,
   TRACKS_TOP_PX,
+  AUDIO_LANE_PX,
   type Lane,
 } from "@/lib/editor/timeline";
 import type { Pressed } from "@/lib/editor/keys";
@@ -29,7 +30,7 @@ import type { Clock } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { hueOf } from "./kinds";
 import { LaneGutters, LaneTracks } from "./ModifierLanes";
-import RecordingTrack from "./RecordingTrack";
+import RecordingTrack, { SoundGutters, SoundLanes } from "./RecordingTrack";
 
 export default function Timeline({
   clock,
@@ -40,11 +41,11 @@ export default function Timeline({
   onSkim,
   lanes: laneState,
   pressed,
-  skipped,
   trackRef,
   trackWidth,
   viewportRef,
   zoom,
+  sounds,
 }: {
   clock: Clock;
   durationMs: number;
@@ -54,11 +55,11 @@ export default function Timeline({
   onSkim: (ms: number | null) => void;
   lanes: Lanes;
   pressed: Pressed[];
-  skipped: Pressed[];
   trackRef: RefObject<HTMLDivElement | null>;
   trackWidth: number;
   viewportRef: RefObject<HTMLDivElement | null>;
   zoom: TimelineZoom;
+  sounds: LoadedTrack[];
 }) {
   const { time, shown } = edits;
   const { at } = time;
@@ -70,17 +71,12 @@ export default function Timeline({
       : 0;
   const scrubProps = useScrub(lengthMs, (ms) => onSeek(time.source(ms)));
   const { regions } = edits.project;
-  const { lanes, heightPx } = laneLayout(
-    laneState.kinds,
-    laneState.collapsed,
-    laneState.showsSkipped && skipped.length > 0,
-  );
+  const { lanes, heightPx } = laneLayout(laneState.kinds, laneState.collapsed);
+  const lanesTop = TRACKS_TOP_PX + sounds.length * AUDIO_LANE_PX;
   const isReflowing = useReflow(
     [
       lengthMs,
-      ...lanes.map(
-        ({ kind, isCollapsed, skippedTop }) => kind + isCollapsed + skippedTop,
-      ),
+      ...lanes.map(({ kind, isCollapsed }) => kind + isCollapsed),
     ].join(),
     drag.stretch !== null,
   );
@@ -94,9 +90,12 @@ export default function Timeline({
         "relative isolate flex flex-col transition-[height] duration-160 ease-out motion-reduce:transition-none",
         isReflowing && "reflow",
       )}
-      style={{
-        height: TRACKS_TOP_PX + heightPx + 2 * TRACK_INSET_PX + FOOTER_PX,
-      }}
+      style={
+        {
+          height: lanesTop + heightPx + 2 * TRACK_INSET_PX + FOOTER_PX,
+          "--lanes-top": `${lanesTop}px`,
+        } as CSSProperties
+      }
     >
       <div className="flex min-h-0 flex-1 pt-2 pr-2 pb-2">
         <div className="relative shrink-0" style={{ width: GUTTER_PX }}>
@@ -104,12 +103,9 @@ export default function Timeline({
             <Film className="size-4 shrink-0" />
             Recording
           </div>
-          <div className="absolute inset-x-0" style={{ top: TRACKS_TOP_PX }}>
-            <LaneGutters
-              lanes={lanes}
-              laneState={laneState}
-              hasSkipped={skipped.length > 0}
-            />
+          <SoundGutters sounds={sounds} />
+          <div className="absolute inset-x-0" style={{ top: lanesTop }}>
+            <LaneGutters lanes={lanes} laneState={laneState} />
           </div>
         </div>
         <div className="relative flex-1 overflow-hidden rounded-lg bg-track-modifiers">
@@ -119,7 +115,7 @@ export default function Timeline({
               key={kind}
               data-flow
               className="absolute inset-x-0 h-px bg-foreground/6"
-              style={{ top: TRACKS_TOP_PX + top }}
+              style={{ top: lanesTop + top }}
             />
           ))}
           <EdgeFades
@@ -164,6 +160,13 @@ export default function Timeline({
                     drag={drag.clip}
                     onScrub={scrubProps.onPointerDown}
                   />
+                  <SoundLanes
+                    sounds={sounds}
+                    settings={edits.project.sound}
+                    timelineMs={lengthMs}
+                    trackWidth={trackWidth}
+                    sourceAt={time.source}
+                  />
                   <LaneTracks
                     edits={edits}
                     lanes={lanes}
@@ -174,7 +177,6 @@ export default function Timeline({
                     drag={drag}
                     solo={laneState.solo}
                     pressed={pressed}
-                    skipped={skipped}
                     onSeek={(ms) => onSeek(time.source(ms))}
                   />
                   <Playhead

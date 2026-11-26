@@ -12,11 +12,11 @@ use objc2_avf_audio::{
     AVLinearPCMIsNonInterleaved, AVNumberOfChannelsKey, AVSampleRateKey,
 };
 use objc2_core_media::{CMTime, CMTimeRange, kCMTimeZero};
-use objc2_foundation::{NSDictionary, NSNumber, NSString};
+use objc2_foundation::{NSArray, NSDictionary, NSNumber, NSString};
 use serde::Serialize;
 use ts_rs::TS;
 
-use crate::export::{audio_tracks, file_url, read_all, reason, seconds};
+use crate::export::{SoundTrack, audio_tracks, file_url, read_all, reason, seconds, sound_track};
 use crate::util::lock;
 
 #[derive(Debug, Serialize, TS)]
@@ -504,12 +504,18 @@ fn cut_end_ms(video: &Path) -> Result<Option<f64>> {
     Ok(ends.into_iter().reduce(f64::min))
 }
 
-pub(crate) fn stage_sound(video: &Path) -> Result<Vec<u8>> {
+/// One sound track of the recording as 16-bit stereo PCM, so the editor can play each track at
+/// its own volume. Empty when the recording doesn't have that track.
+pub(crate) fn stage_sound(video: &Path, track: SoundTrack) -> Result<Vec<u8>> {
     let asset = unsafe { AVURLAsset::URLAssetWithURL_options(&file_url(video), None) };
-    let tracks = audio_tracks(&asset)?;
+    let tracks: Vec<_> = audio_tracks(&asset)?
+        .iter()
+        .filter(|found| sound_track(found) == track)
+        .collect();
     if tracks.is_empty() {
         return Ok(Vec::new());
     }
+    let tracks = NSArray::from_retained_slice(&tracks);
     let reader = unsafe { AVAssetReader::assetReaderWithAsset_error(&asset) }.map_err(|error| {
         anyhow::anyhow!("could not read the recording: {}", reason(Some(error)))
     })?;
@@ -789,7 +795,7 @@ mod tests {
         );
         let length = u32::from_be_bytes(bytes[..4].try_into().unwrap()) as usize;
         assert!(length < first, "{length} {first}");
-        let sound = stage_sound(video).unwrap();
+        let sound = stage_sound(video, SoundTrack::SystemAudio).unwrap();
         let seconds = sound.len() as f64 / 4.0 / SOUND_RATE;
         println!("{seconds:.3}s of sound");
         assert!(

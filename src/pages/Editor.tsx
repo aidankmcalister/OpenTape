@@ -26,7 +26,7 @@ import {
 import { frameCrop } from "@/lib/editor/appearance";
 import { timeMap } from "@/lib/editor/clips";
 import ModifierEditor from "@/components/editor/timeline/ModifierEditor";
-import { hasCaps, opensSkipped, skippedKeys } from "@/lib/editor/keys";
+import { hasCaps } from "@/lib/editor/keys";
 import {
   KEYCAPS_KIND,
   laneKinds,
@@ -68,17 +68,12 @@ function Workspace({
   const hasSound = soundTracks === null || soundTracks.length > 0;
   const lanes = useLanes(
     laneKinds(edits.shown, hasCaps(cursor.pressed) ? [KEYCAPS_KIND] : []),
-    opensSkipped(cursor.pressed),
   );
   const editing =
     edits.selectedIds.length === 1
       ? edits.project.regions.find(({ id }) => id === edits.editingId)
       : undefined;
   const { appearance, regions, clips } = edits.project;
-  const skipped = useMemo(
-    () => skippedKeys(cursor.pressed, regions),
-    [cursor.pressed, regions],
-  );
   const soloed = useMemo(
     () =>
       lanes.solo ? regions.filter(({ kind }) => kind === lanes.solo) : regions,
@@ -100,7 +95,12 @@ function Workspace({
     playback.isPlaying,
     (seconds) => edits.time.at(seconds * 1000),
   );
-  useStageSound(playback, time, edits.project.sound);
+  const sounds = useStageSound(
+    playback,
+    time,
+    edits.project.sound,
+    soundTracks,
+  );
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [panel, setPanel] = useState<SidebarPanel>("background");
   const [dialog, setDialog] = useState<EditorDialog | null>(null);
@@ -249,11 +249,11 @@ function Workspace({
               onSkim={playback.skim}
               lanes={lanes}
               pressed={cursor.pressed}
-              skipped={skipped}
               trackRef={trackRef}
               trackWidth={track.width}
               viewportRef={timelineZoom.viewportRef}
               zoom={timelineZoom.controls}
+              sounds={sounds}
             />
           </Island>
           <ModifierEditor

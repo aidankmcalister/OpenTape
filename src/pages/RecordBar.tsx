@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   AppWindow,
   ChevronDown,
@@ -110,7 +111,9 @@ export default function RecordBar() {
               onCancel={bar.cancelCountdown}
             />
           ) : null,
-          recording: <Recording bar={bar} />,
+          recording: (
+            <Recording bar={bar} hasMicrophone={options.microphone !== null} />
+          ),
           error: (
             <>
               <CircleAlert className="ml-3 size-4 shrink-0 text-destructive" />
@@ -337,9 +340,16 @@ function UpdateLayer({ bar, news }: { bar: Bar; news: News }) {
   );
 }
 
-function Recording({ bar }: { bar: Bar }) {
+function Recording({
+  bar,
+  hasMicrophone,
+}: {
+  bar: Bar;
+  hasMicrophone: boolean;
+}) {
   const isPaused = bar.phase === "paused";
   const isRunning = bar.phase === "recording" || isPaused;
+  const { microphoneRefused } = bar.timer.status;
   return (
     <>
       <span
@@ -349,8 +359,10 @@ function Recording({ bar }: { bar: Bar }) {
         )}
       />
       <Elapsed timer={bar.timer} />
-      {bar.timer.status.microphoneRefused ? (
+      {microphoneRefused ? (
         <PillMessage icon={<MicOff />}>Microphone access is off</PillMessage>
+      ) : hasMicrophone ? (
+        <MicLevel isListening={bar.phase === "recording"} />
       ) : null}
       <div className="flex items-center gap-2">
         <Button
@@ -381,6 +393,52 @@ function Recording({ bar }: { bar: Bar }) {
         </Button>
       </div>
     </>
+  );
+}
+
+/** How tall each bar can get, tallest in the middle, so the meter reads like a voice. */
+const BAR_SHAPE = [0.45, 0.8, 1, 0.7, 0.5];
+const QUIET = BAR_SHAPE.map(() => 0);
+
+/**
+ * A peak level from 0 to 1 as a bar height from 0 to 1, on a decibel scale: -50 dB and below is
+ * flat and -10 dB is full, so normal speech fills most of the bar.
+ */
+const levelHeight = (level: number) =>
+  Math.min(1, Math.max(0, (20 * Math.log10(level) + 50) / 40));
+
+/**
+ * The mic's loudness as five small bars that rise together, each by its own share with a little
+ * jitter so they move apart. Flat while paused.
+ */
+function MicLevel({ isListening }: { isListening: boolean }) {
+  const [heights, setHeights] = useState(QUIET);
+  useEffect(() => {
+    if (!isListening) return;
+    const timer = setInterval(() => {
+      void invoke<number>("mic_level").then((level) =>
+        setHeights(
+          BAR_SHAPE.map(
+            (most) => levelHeight(level) * most * (0.6 + Math.random() * 0.4),
+          ),
+        ),
+      );
+    }, 50);
+    return () => {
+      clearInterval(timer);
+      setHeights(QUIET);
+    };
+  }, [isListening]);
+  return (
+    <span className="-ml-5 mr-5 flex h-4 items-center gap-0.5" aria-hidden>
+      {heights.map((height, index) => (
+        <span
+          key={index}
+          className="w-0.5 rounded-full bg-primary transition-[height] duration-75"
+          style={{ height: 2 + height * 14 }}
+        />
+      ))}
+    </span>
   );
 }
 
