@@ -60,6 +60,12 @@ export type ExportStop = { color: string, at: number, };
 
 export type ExportZoom = { scale: number, x: number, y: number, };
 
+/**
+ * A finished export: where it went, and how big it is, so the editor can say when a GIF is
+ * too big to post.
+ */
+export type Exported = { path: string, bytes: number, };
+
 export type Frame = { x: number, y: number, width: number, height: number, };
 
 export type MenuChoice = { text: string, enabled: boolean, };

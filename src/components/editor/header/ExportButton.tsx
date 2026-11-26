@@ -14,7 +14,9 @@ import {
 } from "@/components/ui/tooltip";
 import type { Exporting } from "@/hooks/editor/useExport";
 import {
+  exportedText,
   exportResolution,
+  isTooBigForX,
   QUALITIES,
   type ExportSettings as Settings,
 } from "@/lib/editor/export";
@@ -29,6 +31,8 @@ export default function ExportButton({ exporting }: { exporting: Exporting }) {
   const { state, start: onExport, showInFinder: onShowInFinder } = exporting;
   const progress = state.stage === "exporting" ? state.progress : 1;
   const reason = state.stage === "failed" ? state.reason : undefined;
+  const done = state.stage === "done" ? state : null;
+  const isTooBig = done !== null && isTooBigForX(done.path, done.bytes);
   return (
     <MorphPill
       active={state.stage}
@@ -62,12 +66,12 @@ export default function ExportButton({ exporting }: { exporting: Exporting }) {
             </span>
           </div>
         ),
-        done:
-          state.stage === "done" && state.toClipboard ? (
-            <PillMessage icon={<Check />}>Copied to clipboard</PillMessage>
-          ) : (
-            <>
-              <PillMessage icon={<Check />}>Exported</PillMessage>
+        done: (
+          <>
+            <PillMessage icon={isTooBig ? <CircleAlert /> : <Check />}>
+              {done && exportedText(done)}
+            </PillMessage>
+            {done?.toClipboard ? null : (
               <Button
                 variant="primary"
                 size="xs"
@@ -76,8 +80,9 @@ export default function ExportButton({ exporting }: { exporting: Exporting }) {
               >
                 Show in Finder
               </Button>
-            </>
-          ),
+            )}
+          </>
+        ),
         failed: (
           <span title={reason}>
             <PillMessage icon={<CircleAlert />}>Export failed</PillMessage>

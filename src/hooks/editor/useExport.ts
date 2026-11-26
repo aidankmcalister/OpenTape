@@ -6,12 +6,13 @@ import {
   exportLayout,
   exportOptions,
   exportResolution,
+  isTooBigForX,
   RESOLUTIONS,
   type ExportSettings,
   type ExportState,
   type ExportTimeline,
 } from "@/lib/editor/export";
-import type { CursorImage } from "@/lib/bindings";
+import type { CursorImage, Exported } from "@/lib/bindings";
 import type { CursorStyle } from "@/lib/editor/appearance";
 import {
   cursorPictures,
@@ -24,7 +25,8 @@ import type { Project } from "@/lib/editor/project";
 import type { Size } from "@/lib/geometry";
 import type { Playback } from "./usePlayback";
 
-const SHOWS_FOR_MS = { done: 4000, failed: 5000 };
+/** How long a result stays in the pill. A GIF too big for X stays longer, so it's read. */
+const SHOWS_FOR_MS = { done: 4000, tooBig: 8000, failed: 5000 };
 
 export function useExport(
   { appearance, regions, clips, sound, title }: Project,
@@ -35,7 +37,7 @@ export function useExport(
   isReady: boolean,
 ) {
   const [state, setState] = useState<ExportState>({ stage: "idle" });
-  const [savedTo, setSavedTo] = useState<string | null>(null);
+  const [savedTo, setSavedTo] = useState<Exported | null>(null);
   const [closesAfterExport, setClosesAfterExport] = useState(false);
   const settings = app.exportSettings;
   const layoutAt = (size: Size, timeline?: Partial<ExportTimeline>) =>
@@ -57,14 +59,19 @@ export function useExport(
 
   useTauriEvent("export-and-close", () => setClosesAfterExport(true), "window");
 
+  const showsFor =
+    state.stage === "failed"
+      ? SHOWS_FOR_MS.failed
+      : state.stage !== "done"
+        ? null
+        : isTooBigForX(state.path, state.bytes)
+          ? SHOWS_FOR_MS.tooBig
+          : SHOWS_FOR_MS.done;
   useEffect(() => {
-    if (state.stage !== "done" && state.stage !== "failed") return;
-    const timeout = setTimeout(
-      () => setState({ stage: "idle" }),
-      SHOWS_FOR_MS[state.stage],
-    );
+    if (showsFor === null) return;
+    const timeout = setTimeout(() => setState({ stage: "idle" }), showsFor);
     return () => clearTimeout(timeout);
-  }, [state.stage]);
+  }, [state.stage, showsFor]);
 
   async function start(size: Size, to: ExportSettings["to"], closes = false) {
     const toClipboard = to === "clipboard";
@@ -80,13 +87,13 @@ export function useExport(
         cursor: { ...cursor, images },
         sound,
       });
-      const path = await invoke<string | null>("export_recording", {
+      const exported = await invoke<Exported | null>("export_recording", {
         layout,
         options: exportOptions({ ...settings, to }, title),
       });
-      if (path === null) return setState({ stage: "idle" });
-      setState({ stage: "done", path, toClipboard });
-      if (!toClipboard) setSavedTo(path);
+      if (exported === null) return setState({ stage: "idle" });
+      setState({ stage: "done", ...exported, toClipboard });
+      if (!toClipboard) setSavedTo(exported);
       if (closes) await invoke("close_recording");
     } catch (error) {
       setState({ stage: "failed", reason: String(error) });
@@ -109,7 +116,7 @@ export function useExport(
     start: canStart ? (to = settings.to) => void start(videoSize, to) : null,
     showSaved:
       canStart && savedTo
-        ? () => setState({ stage: "done", path: savedTo, toClipboard: false })
+        ? () => setState({ stage: "done", ...savedTo, toClipboard: false })
         : null,
     settings,
     change: (part: Partial<ExportSettings>) =>

@@ -16,12 +16,13 @@ use objc2_av_foundation::{
     AVAssetTrack, AVAsynchronousVideoCompositionRequest, AVMutableVideoComposition,
     AVVideoCompositing, AVVideoCompositionInstructionProtocol, AVVideoCompositionRenderContext,
 };
-use objc2_core_foundation::CFString;
+use objc2_core_foundation::{CFRetained, CFString, CGPoint, CGRect, CGSize};
+use objc2_core_graphics::{CGColorSpace, kCGColorSpaceSRGB};
 use objc2_core_image::{CIContext, CIImage, kCIContextCacheIntermediates};
 use objc2_core_media::{CMPersistentTrackID, CMTimeRange, kCMPersistentTrackID_Invalid};
 use objc2_core_video::{
-    kCVPixelBufferPixelFormatTypeKey, kCVPixelFormatType_32BGRA,
-    kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+    CVPixelBufferGetHeight, CVPixelBufferGetWidth, kCVPixelBufferPixelFormatTypeKey,
+    kCVPixelFormatType_32BGRA, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
 };
 use objc2_foundation::{NSArray, NSDictionary, NSError, NSNumber, NSString, NSValue};
 
@@ -33,6 +34,9 @@ pub(super) type DrawFrame = Box<dyn Fn(f64, &CIImage) -> Retained<CIImage>>;
 struct Drawing {
     draw: DrawFrame,
     context: Retained<CIContext>,
+    /// Frames are drawn in sRGB, the colors the editor shows. Left to itself, Core Image
+    /// matched the recording's video gamma, which darkened every midtone in a GIF.
+    srgb: CFRetained<CGColorSpace>,
 }
 
 // Core Image images and contexts are safe to use from any thread, and the export
@@ -65,7 +69,13 @@ pub(super) fn use_compositor(
         &[&*NSNumber::new_bool(false) as &AnyObject],
     );
     let context = unsafe { CIContext::contextWithOptions(Some(&options)) };
-    *lock(&DRAWING) = Some(Drawing { draw, context });
+    let srgb =
+        CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB })).expect("macOS always has sRGB");
+    *lock(&DRAWING) = Some(Drawing {
+        draw,
+        context,
+        srgb,
+    });
     let instruction = Instruction::new(Span {
         range,
         track: unsafe { track.trackID() },
@@ -98,7 +108,17 @@ fn compose(request: &AVAsynchronousVideoCompositionRequest) -> Result<()> {
     let now = unsafe { request.compositionTime().seconds() };
     let image = (drawing.draw)(now, &*unsafe { CIImage::imageWithCVPixelBuffer(&source) });
     unsafe {
-        drawing.context.render_toCVPixelBuffer(&image, &output);
+        let size = CGSize::new(
+            CVPixelBufferGetWidth(&output) as f64,
+            CVPixelBufferGetHeight(&output) as f64,
+        );
+        let bounds = CGRect::new(CGPoint::new(0.0, 0.0), size);
+        (drawing.context).render_toCVPixelBuffer_bounds_colorSpace(
+            &image,
+            &output,
+            bounds,
+            Some(&drawing.srgb),
+        );
         request.finishWithComposedVideoFrame(&output);
     }
     Ok(())

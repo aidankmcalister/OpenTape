@@ -175,8 +175,38 @@ export type ExportSettings = {
 export type ExportState =
   | { stage: "idle" }
   | { stage: "exporting"; progress: number; toClipboard: boolean }
-  | { stage: "done"; path: string; toClipboard: boolean }
+  | { stage: "done"; path: string; bytes?: number; toClipboard: boolean }
   | { stage: "failed"; reason: string };
+
+/** X takes GIFs up to 15 MB, counted like Finder counts: a megabyte is 1,000,000 bytes. */
+export const X_GIF_LIMIT = 15_000_000;
+
+/** A file size the way Finder shows it, like "842 KB" or "4.2 MB". */
+export function sizeText(bytes: number): string {
+  return bytes < 1_000_000
+    ? `${Math.max(1, Math.round(bytes / 1000))} KB`
+    : `${(bytes / 1_000_000).toFixed(1)} MB`;
+}
+
+/** True for a GIF too big to post on X. */
+export function isTooBigForX(path: string, bytes = 0): boolean {
+  return path.toLowerCase().endsWith(".gif") && bytes > X_GIF_LIMIT;
+}
+
+type Done = Extract<ExportState, { stage: "done" }>;
+
+/**
+ * What a finished export says, with its size: "Exported · 4.2 MB", or the size and X's limit
+ * for a GIF too big to post there. `saved` is the word for a file ("Saved" in the preview).
+ */
+export function exportedText(done: Done, saved = "Exported"): string {
+  const size = done.bytes ? sizeText(done.bytes) : null;
+  if (size && isTooBigForX(done.path, done.bytes)) {
+    return `${size}, over X's 15 MB for GIFs`;
+  }
+  const said = done.toClipboard ? "Copied to clipboard" : saved;
+  return size ? `${said} · ${size}` : said;
+}
 
 export const DEFAULT_EXPORT: ExportSettings = {
   format: "mp4",

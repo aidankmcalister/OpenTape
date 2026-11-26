@@ -2,9 +2,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, ensure};
+use serde::Serialize;
 use tauri::ipc::Response;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
+use ts_rs::TS;
 
 use super::{
     CurrentRecording, CursorLog, PICTURE_TYPES, Shell, ShownRecording, TYPING_FILE, Window,
@@ -87,13 +89,23 @@ fn label(window: Window) -> &'static str {
     }
 }
 
+/// A finished export: where it went, and how big it is, so the editor can say when a GIF is
+/// too big to post.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "bindings.ts")]
+pub(crate) struct Exported {
+    path: String,
+    #[ts(type = "number")]
+    bytes: u64,
+}
+
 #[tauri::command]
 pub(crate) async fn export_recording(
     app: AppHandle,
     window: tauri::WebviewWindow,
     layout: ExportLayout,
     options: ExportOptions,
-) -> CmdResult<Option<String>> {
+) -> CmdResult<Option<Exported>> {
     let handle = app.clone();
     let to_clipboard = options.to_clipboard;
     let format = options.extension();
@@ -117,10 +129,14 @@ pub(crate) async fn export_recording(
     let Some(path) = path? else {
         return Ok(None);
     };
+    let bytes = std::fs::metadata(&path).map_or(0, |file| file.len());
     if to_clipboard {
         macos::put_file_on_clipboard(&app, path.clone())?;
     }
-    Ok(Some(path.display().to_string()))
+    Ok(Some(Exported {
+        path: path.display().to_string(),
+        bytes,
+    }))
 }
 
 #[tauri::command]

@@ -15,8 +15,10 @@ use objc2_av_foundation::{
     AVAssetReaderAudioMixOutput, AVAssetReaderOutput, AVAssetReaderVideoCompositionOutput,
     AVAssetWriter, AVAssetWriterInput, AVAssetWriterStatus, AVFileTypeMPEG4, AVMediaTypeAudio,
     AVMediaTypeVideo, AVVideoCodecKey, AVVideoCodecTypeH264, AVVideoCodecTypeHEVC,
+    AVVideoColorPrimaries_ITU_R_709_2, AVVideoColorPrimariesKey, AVVideoColorPropertiesKey,
     AVVideoCompressionPropertiesKey, AVVideoHeightKey, AVVideoMaxKeyFrameIntervalDurationKey,
-    AVVideoQualityKey, AVVideoWidthKey,
+    AVVideoQualityKey, AVVideoTransferFunction_ITU_R_709_2, AVVideoTransferFunctionKey,
+    AVVideoWidthKey, AVVideoYCbCrMatrix_ITU_R_709_2, AVVideoYCbCrMatrixKey,
 };
 use objc2_avf_audio::{AVFormatIDKey, AVNumberOfChannelsKey, AVSampleRateKey};
 use objc2_core_media::{CMTime, kCMTimeZero};
@@ -165,6 +167,8 @@ struct GifWriter {
     /// The last frame, held until the next one starts, which sets how long it shows.
     held: Option<(Frame<'static>, i32)>,
     batch_size: usize,
+    /// The last frame moved the whole picture, so this one may be left out. See `CAMERA_MOVE`.
+    may_skip: bool,
 }
 
 impl GifWriter {
@@ -181,11 +185,18 @@ impl GifWriter {
             parts: Vec::new(),
             held: None,
             batch_size: std::thread::available_parallelism().map_or(4, |cores| cores.get()),
+            may_skip: false,
         })
     }
 
     /// Adds the frame that shows from `start` hundredths of a second.
     fn push(&mut self, rgba: &[u8], start: i32) -> Result<()> {
+        let is_camera_move = moving_share(rgba, &self.before) > CAMERA_MOVE;
+        if is_camera_move && self.may_skip {
+            self.may_skip = false;
+            return Ok(());
+        }
+        self.may_skip = is_camera_move;
         let (shown, before) = (&mut self.shown, &mut self.before);
         let close = self.close;
         (self.parts).extend(changed_part(rgba, shown, before, self.width, start, close));
@@ -266,6 +277,25 @@ fn rgba(pixels: &CVPixelBuffer) -> Result<Vec<u8>> {
     // SAFETY: locked above with the same flags.
     unsafe { CVPixelBufferUnlockBaseAddress(pixels, read_only) };
     rgba
+}
+
+/// When more than this share of the pixels moves from one frame to the next (a zoom, a pan or
+/// a scroll), every other frame is left out until it settles. Those frames redraw the whole
+/// picture, so they're most of a GIF's size. Measured on real recordings: 12–23% of pixels
+/// move while zooming a dark UI (flat backgrounds don't change), and under 4% otherwise.
+const CAMERA_MOVE: f64 = 0.06;
+
+/// The share of pixels that moved since `before`; none on the first frame.
+fn moving_share(rgba: &[u8], before: &[u8]) -> f64 {
+    if before.len() != rgba.len() {
+        return 0.0;
+    }
+    let pixels = rgba.as_chunks::<4>().0;
+    let moved = (pixels.iter())
+        .zip(before.as_chunks::<4>().0)
+        .filter(|(a, b)| (0..3).any(|c| a[c].abs_diff(b[c]) > SAME_COLOR))
+        .count();
+    moved as f64 / pixels.len().max(1) as f64
 }
 
 /// Pixels within this many shades of what's showing count as unchanged, so video noise
@@ -590,12 +620,28 @@ pub(super) fn compression(
             AVVideoCodecTypeH264
         }
     })?;
+    // Frames are drawn in sRGB; tagged as HD video, which players show as sRGB on the web.
+    // Without the matrix tag some players guessed the older SD colors.
+    let hd = [
+        key(unsafe { AVVideoColorPrimaries_ITU_R_709_2 })?,
+        key(unsafe { AVVideoTransferFunction_ITU_R_709_2 })?,
+        key(unsafe { AVVideoYCbCrMatrix_ITU_R_709_2 })?,
+    ];
+    let colors = NSDictionary::<NSString, NSString>::from_slices(
+        &[
+            key(unsafe { AVVideoColorPrimariesKey })?,
+            key(unsafe { AVVideoTransferFunctionKey })?,
+            key(unsafe { AVVideoYCbCrMatrixKey })?,
+        ],
+        &hd,
+    );
     let (width, height) = (NSNumber::new_u32(width), NSNumber::new_u32(height));
-    let values: [&AnyObject; 4] = [
+    let values: [&AnyObject; 5] = [
         codec.as_ref(),
         width.as_ref(),
         height.as_ref(),
         compression.as_ref(),
+        colors.as_ref(),
     ];
     Ok(NSDictionary::from_slices(
         &[
@@ -603,6 +649,7 @@ pub(super) fn compression(
             key(unsafe { AVVideoWidthKey })?,
             key(unsafe { AVVideoHeightKey })?,
             key(unsafe { AVVideoCompressionPropertiesKey })?,
+            key(unsafe { AVVideoColorPropertiesKey })?,
         ],
         &values,
     ))
@@ -628,6 +675,28 @@ mod tests {
         assert_eq!(pixel(1, 1), [200, 210, 220, 50]);
         assert_eq!(pixel(2, 1), [50, 50, 50, 50]);
         assert_eq!(pixel(0, 0), [50, 50, 50, 50]);
+    }
+
+    #[test]
+    fn whole_picture_motion_should_keep_every_other_frame_until_it_settles() {
+        let path = std::env::temp_dir().join("opentape-motion-test.gif");
+        let mut gif = GifWriter::new(&path, 4, 4, CLOSE_COLOR).unwrap();
+        let gray = |level: u8| [level, level, level, 255].repeat(16);
+        for (i, level) in [0, 50, 100, 150, 200, 250, 250].into_iter().enumerate() {
+            gif.push(&gray(level), i as i32 * 4).unwrap();
+        }
+        gif.finish(28).unwrap();
+        let mut decoder = gif::DecodeOptions::new()
+            .read_info(File::open(&path).unwrap())
+            .unwrap();
+        let mut delays = Vec::new();
+        while let Some(frame) = decoder.read_next_frame().unwrap() {
+            delays.push(frame.delay);
+        }
+        // Drawn: the first frame, then every other moving one. The skipped frames' time goes
+        // to the frame before them, so the GIF still lasts the whole 28 hundredths.
+        assert_eq!(delays, [4, 8, 8, 8]);
+        std::fs::remove_file(path).ok();
     }
 
     /// One row of gray pixels, to feed `changed_part`.

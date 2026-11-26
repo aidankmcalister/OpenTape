@@ -13,6 +13,7 @@ import { useClockValue } from "@/hooks/editor/usePlayback";
 import { formatClock, type Clock } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { loopProgress } from "@/lib/preview/preview";
+import { exportedText, isTooBigForX } from "@/lib/editor/export";
 import { useRecordingPreview } from "@/hooks/preview/useRecordingPreview";
 import { useOpenedRecording } from "@/hooks/editor/useProject";
 import { Frame } from "@/components/editor/Stage";
@@ -39,6 +40,13 @@ function Preview({
   const { playback, edits, exporting, isHovered, layer, hoveredName } = preview;
   const { state } = exporting;
   const progress = state.stage === "exporting" ? state.progress : 1;
+  const done = state.stage === "done" ? state : null;
+  const doneIcon =
+    done && isTooBigForX(done.path, done.bytes) ? (
+      <CircleAlert className="text-destructive" />
+    ) : (
+      <Check className="text-highlight" />
+    );
   const reason = state.stage === "failed" ? state.reason : undefined;
   const isDockShown = isHovered || layer !== "actions";
 
@@ -133,14 +141,14 @@ function Preview({
             saving: <Progress label="Saving…" progress={progress} />,
             copying: <Progress label="Copying…" progress={progress} />,
             copied: (
-              <PillMessage icon={<Check className="text-highlight" />}>
-                Copied to clipboard
+              <PillMessage icon={doneIcon}>
+                {done && exportedText(done)}
               </PillMessage>
             ),
             saved: (
               <>
-                <PillMessage icon={<Check className="text-highlight" />}>
-                  Saved
+                <PillMessage icon={doneIcon}>
+                  {done && exportedText(done, "Saved")}
                 </PillMessage>
                 <Button
                   variant="secondary"

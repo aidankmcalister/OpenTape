@@ -5,8 +5,11 @@ import {
   DEFAULT_EXPORT,
   exportLayout,
   exportOptions,
+  exportedText,
   exportResolution,
+  isTooBigForX,
   readExport,
+  sizeText,
 } from "./export";
 
 describe("export", () => {
@@ -376,4 +379,34 @@ test("GIFs keep their own frame rate, 30 unless 50 is picked; MP4 keeps its own"
   expect(exportOptions(gif, null).frameRate).toBe(25);
   expect(exportOptions({ ...gif, gifFrameRate: 50 }, null).frameRate).toBe(50);
   expect(exportOptions(DEFAULT_EXPORT, null).frameRate).toBe(60);
+});
+
+test("sizes read like Finder's, in KB under a megabyte and MB with one decimal above", () => {
+  expect(sizeText(400)).toBe("1 KB");
+  expect(sizeText(842_300)).toBe("842 KB");
+  expect(sizeText(4_160_000)).toBe("4.2 MB");
+  expect(sizeText(18_400_000)).toBe("18.4 MB");
+});
+
+test("only a GIF over 15 MB is too big for X", () => {
+  expect(isTooBigForX("/a.gif", 15_000_000)).toBe(false);
+  expect(isTooBigForX("/a.gif", 15_000_001)).toBe(true);
+  expect(isTooBigForX("/a.GIF", 20_000_000)).toBe(true);
+  expect(isTooBigForX("/a.mp4", 90_000_000)).toBe(false);
+  expect(isTooBigForX("/a.gif")).toBe(false);
+});
+
+test("a finished export says what happened and how big it is", () => {
+  const done = { stage: "done" as const, path: "/a.mp4", toClipboard: false };
+  expect(exportedText({ ...done, bytes: 4_160_000 })).toBe("Exported · 4.2 MB");
+  expect(exportedText({ ...done, bytes: 4_160_000 }, "Saved")).toBe(
+    "Saved · 4.2 MB",
+  );
+  expect(exportedText({ ...done, toClipboard: true, bytes: 900_000 })).toBe(
+    "Copied to clipboard · 900 KB",
+  );
+  expect(exportedText(done)).toBe("Exported");
+  expect(exportedText({ ...done, path: "/a.gif", bytes: 18_400_000 })).toBe(
+    "18.4 MB, over X's 15 MB for GIFs",
+  );
 });

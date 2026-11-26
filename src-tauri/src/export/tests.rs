@@ -74,6 +74,24 @@ fn the_zoom_is_read_at_the_nearest_step_and_holds_past_the_end() {
     assert_eq!(zoom_at(&[], 60.0, 1.0), NO_ZOOM);
 }
 
+/// Zooms like a real edit: eases in to 2x, pans, and eases back out, at 60 steps a second.
+fn animated_zooms() -> Vec<ExportZoom> {
+    let ease = |from: f64, to: f64, start: f64, end: f64, t: f64| {
+        let k = ((t - start) / (end - start)).clamp(0.0, 1.0);
+        from + (to - from) * k * k * (3.0 - 2.0 * k)
+    };
+    (0..360)
+        .map(|step| {
+            let t = f64::from(step) / 60.0;
+            ExportZoom {
+                scale: ease(1.0, 2.0, 1.0, 1.7, t) - ease(0.0, 1.0, 3.5, 4.2, t),
+                x: ease(0.3, 0.6, 2.3, 2.9, t),
+                y: ease(0.3, 0.5, 2.3, 2.9, t),
+            }
+        })
+        .collect()
+}
+
 #[test]
 #[ignore = "needs a real video"]
 fn exports_a_recording_in_the_default_appearance() {
@@ -141,12 +159,16 @@ fn exports_a_recording_in_the_default_appearance() {
             ],
         },
         background_image: std::env::var("EXPORT_TEST_BACKGROUND").ok(),
-        zoom: (0..180)
-            .map(|step| ExportZoom {
-                scale: if (60..120).contains(&step) { 1.5 } else { 1.0 },
-                ..NO_ZOOM
-            })
-            .collect(),
+        zoom: if std::env::var("EXPORT_TEST_ZOOMS").is_ok() {
+            animated_zooms()
+        } else {
+            (0..180)
+                .map(|step| ExportZoom {
+                    scale: if (60..120).contains(&step) { 1.5 } else { 1.0 },
+                    ..NO_ZOOM
+                })
+                .collect()
+        },
         zoom_rate: 60.0,
         speed: std::env::var("EXPORT_TEST_SPEED").map_or(vec![], |amount| {
             vec![ExportSpeed {
